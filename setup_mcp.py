@@ -2,6 +2,7 @@ import os
 import json
 import subprocess
 import sys
+import platform
 
 def setup_venv():
     # Get the absolute path to the current directory
@@ -22,7 +23,10 @@ def setup_venv():
     if venv_created:
         print("\nInstalling requirements...")
         # Use the venv's pip to install requirements
-        pip_path = os.path.join(venv_path, 'Scripts', 'pip.exe')
+        if platform.system() == 'Windows':
+            pip_path = os.path.join(venv_path, 'Scripts', 'pip.exe')
+        else:  # macOS and Linux
+            pip_path = os.path.join(venv_path, 'bin', 'pip')
         requirements_path = os.path.join(base_path, 'requirements.txt')
         subprocess.run([pip_path, 'install', '-r', requirements_path], check=True)
         print("Requirements installed successfully!")
@@ -31,8 +35,11 @@ def generate_mcp_config():
     # Get the absolute path to the current directory
     base_path = os.path.abspath(os.path.dirname(__file__))
     
-    # Construct the paths
-    python_path = os.path.join(base_path, 'venv', 'Scripts', 'python.exe')
+    # Construct the paths based on the operating system
+    if platform.system() == 'Windows':
+        python_path = os.path.join(base_path, 'venv', 'Scripts', 'python.exe')
+    else:  # macOS and Linux
+        python_path = os.path.join(base_path, 'venv', 'bin', 'python')
     server_script_path = os.path.join(base_path, 'mcp_server.py')
     
     # Create the config dictionary
