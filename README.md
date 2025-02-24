@@ -18,7 +18,13 @@ Archon will be developed in iterations, starting with just a simple Pydantic AI 
 all the way to a full agentic workflow using LangGraph that can build other AI agents with any framework.
 Through its iterative development, Archon showcases the power of planning, feedback loops, and domain-specific knowledge in creating robust AI agents.
 
-The current version of Archon is V3 as mentioned above - see [V3 Documentation](iterations/v3-mcp-support/README.md) for details.
+## Important Links
+
+- The current version of Archon is V3 as mentioned above - see [V3 Documentation](iterations/v3-mcp-support/README.md) for details.
+
+- I **just** created the [Archon community](https://thinktank.ottomator.ai/c/archon/30) forum over in the oTTomator Think Tank! Please post any questions you have there!
+
+- [GitHub Kanban board](https://github.com/users/coleam00/projects/1) for feature implementation and bug squashing.
 
 ## Vision
 
