@@ -26,8 +26,8 @@ If applicable, add screenshots to help explain your problem.
 
 ## Environment
  - OS: [e.g. Windows 10, macOS Monterey, Ubuntu 22.04]
- - Browser: [e.g. Chrome 119, Firefox 115, Safari 16]
- - Version: [e.g. v1.2.3]
+ - Python Version: [e.g. Python 3.13, Python 3.12]
+ - Using MCP or Streamlit (or something else)
 
 ## Additional Context
 Add any other context about the problem here, such as:
