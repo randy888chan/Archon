@@ -105,9 +105,9 @@ pip install -r requirements.txt
 python crawl_pydantic_ai_docs.py
 ```
 
-If you want to test docling instead of crawl4ai use the aleternative parsing strategy
+If you want to test docling instead of crawl4ai use the alternative parsing strategy
 ```bash
-python dolcing_pydantic_ai_docs.py
+python docling_pydantic_ai_docs.py
 ```
 
 3. Launch the UI:
