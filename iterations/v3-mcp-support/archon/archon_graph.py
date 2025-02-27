@@ -48,7 +48,13 @@ end_conversation_agent = Agent(
     system_prompt='Your job is to end a conversation for creating an AI agent by giving instructions for how to execute the agent and they saying a nice goodbye to the user.',  
 )
 
-openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+openai_client=None
+
+if is_ollama:
+    openai_client = AsyncOpenAI(base_url=base_url,api_key=api_key)
+else:
+    openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
 supabase: Client = Client(
     os.getenv("SUPABASE_URL"),
     os.getenv("SUPABASE_SERVICE_KEY")
