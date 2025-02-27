@@ -6,8 +6,8 @@
 
 <h3>🚀 **CURRENT VERSION** 🚀</h3>
 
-**[ V3 - MCP Support ]**
-*Using LangGraph + Pydantic AI with AI IDE integration*
+**[ V4 - Massive Streamlit UI Overhaul ]**
+*Comprehensive dashboard interface for managing Archon with Streamlit*
 
 </div>
 
@@ -20,7 +20,7 @@ Through its iterative development, Archon showcases the power of planning, feedb
 
 ## Important Links
 
-- The current version of Archon is V3 as mentioned above - see [V3 Documentation](iterations/v3-mcp-support/README.md) for details.
+- The current version of Archon is V4 as mentioned above - see [V4 Documentation](iterations/v4-streamlit-ui-overhaul/README.md) for details.
 
 - I **just** created the [Archon community](https://thinktank.ottomator.ai/c/archon/30) forum over in the oTTomator Think Tank! Please post any questions you have there!
 
@@ -33,6 +33,48 @@ Archon demonstrates three key principles in modern AI development:
 1. **Agentic Reasoning**: Planning, iterative feedback, and self-evaluation overcome the limitations of purely reactive systems
 2. **Domain Knowledge Integration**: Seamless embedding of frameworks like Pydantic AI and LangGraph within autonomous workflows
 3. **Scalable Architecture**: Modular design supporting maintainability, cost optimization, and ethical AI practices
+
+## Getting Started with V4 (current version)
+
+Since V4 is the current version of Archon, all the code for V4 is in both the main directory and `archon/iterations/v4-streamlit-ui-overhaul` directory.
+
+### Prerequisites
+- Python 3.11+
+- Supabase account (for vector database)
+- OpenAI/OpenRouter API key or Ollama for local LLMs
+
+### Installation
+
+1. Clone the repository:
+```bash
+git clone https://github.com/coleam00/archon.git
+cd archon
+```
+
+2. Install dependencies:
+```bash
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+### Quick Start
+
+1. Start the Streamlit UI:
+```bash
+streamlit run streamlit_ui.py
+```
+
+2. Follow the guided setup process in the Intro section of the Streamlit UI:
+   - **Environment**: Configure your API keys and model settings
+   - **Database**: Set up your Supabase vector database
+   - **Documentation**: Crawl and index the Pydantic AI documentation
+   - **Agent Service**: Start the agent service for generating agents
+   - **Chat**: Interact with Archon to create AI agents
+   - **MCP** (optional): Configure integration with AI IDEs
+
+The Streamlit interface will guide you through each step with clear instructions and interactive elements.
+There are a good amount of steps for the setup but it goes quick!
 
 ## Project Evolution
 
@@ -49,18 +91,27 @@ Archon demonstrates three key principles in modern AI development:
 - Support for local LLMs via Ollama
 - [Learn more about V2](iterations/v2-agentic-workflow/README.md)
 
-### V3: Current - MCP Support
+### V3: MCP Support
 - Integration with AI IDEs like Windsurf and Cursor
 - Automated file creation and dependency management
 - FastAPI service for agent generation
 - Improved project structure and organization
 - [Learn more about V3](iterations/v3-mcp-support/README.md)
 
+### V4: Current - Streamlit UI Overhaul
+- Comprehensive Streamlit interface for managing all aspects of Archon
+- Guided setup process with interactive tabs
+- Environment variable management through the UI
+- Database setup and documentation crawling simplified
+- Agent service control and monitoring
+- MCP configuration through the UI
+- [Learn more about V4](iterations/v4-streamlit-ui-overhaul/README.md)
+
 ### Future Iterations
-- V4: Self-Feedback Loop - Automated validation and error correction
-- V5: Tool Library Integration - Pre-built external tool incorporation
-- V6: Multi-Framework Support - Framework-agnostic agent generation
-- V7: Autonomous Framework Learning - Self-updating framework adapters
+- V5: Self-Feedback Loop - Automated validation and error correction
+- V6: Tool Library Integration - Pre-built external tool incorporation
+- V7: Multi-Framework Support - Framework-agnostic agent generation
+- V8: Autonomous Framework Learning - Self-updating framework adapters
 
 ### Future Integrations
 - Docker
@@ -68,128 +119,12 @@ Archon demonstrates three key principles in modern AI development:
 - Other frameworks besides Pydantic AI
 - Other vector databases besides Supabase
 
-## Getting Started with V3 (current version)
-
-Since V3 is the current version of Archon, all the code for V3 is in both the `archon` and `archon/iterations/v3-mcp-support` directories.
-
-### Prerequisites
-- Python 3.11+
-- Supabase account and database
-- OpenAI/OpenRouter API key or Ollama for local LLMs
-- Streamlit (for web interface)
-- Windsurf, Cursor, or another MCP-compatible AI IDE (optional)
-
-### Installation
-
-There are two ways to install Archon V3:
-
-#### Option 1: Standard Installation (for Streamlit UI)
-
-1. Clone the repository:
-```bash
-git clone https://github.com/coleam00/archon.git
-cd archon
-```
-
-2. Install dependencies:
-```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-pip install -r requirements.txt
-```
-
-#### Option 2: MCP Server Setup (for AI IDE integration)
-
-1. Clone the repository as above
-
-2. Run the MCP setup script:
-```bash
-python setup_mcp.py
-```
-
-For running the crawler and graph service later, activate the virtual environment too:
-
-```bash
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-```
-
-This will:
-- Create a virtual environment if it doesn't exist
-- Install dependencies from requirements.txt
-- Generate an MCP configuration file
-
-3. Configure your AI IDE:
-   - **In Windsurf**:
-        - Click on the hammer icon above the chat input
-        - Click on "Configure"
-        - Paste the JSON that `setup_mcp.py` gave you as the MCP config
-        - Click "Refresh" next to "Configure"
-   - **In Cursor**:
-        - Go to Cursor Settings > Features > MCP
-        - Click on "+ Add New MCP Server"
-        - Name: Archon
-        - Type: command (equivalent to stdio)
-        - Command: Paste the command that `setup_mcp.py` gave for Cursor
-
-### Environment Setup
-
-1. Configure environment:
-   - Rename `.env.example` to `.env`
-   - Edit `.env` with your settings:
-   ```env
-   BASE_URL=https://api.openai.com/v1 for OpenAI, https://api.openrouter.ai/v1 for OpenRouter, or your Ollama URL
-   LLM_API_KEY=your_openai_or_openrouter_api_key
-   OPENAI_API_KEY=your_openai_api_key  # Required for embeddings
-   SUPABASE_URL=your_supabase_url
-   SUPABASE_SERVICE_KEY=your_supabase_service_key
-   PRIMARY_MODEL=gpt-4o-mini  # Main agent model
-   REASONER_MODEL=o3-mini    # Planning model
-   ```
-
-### Quick Start
-
-1. Set up the database:
-   - Execute `utils/site_pages.sql` in your Supabase SQL Editor
-   - This creates tables and enables vector similarity search
-   - See the Database Setup section for more details
-
-2. Crawl documentation:
-```bash
-python archon/crawl_pydantic_ai_docs.py
-```
-
-3. Run Archon either as an MCP Server or with Streamlit:
-
-### Using with AI IDEs (MCP Support)
-
-1. After crawling the documentation, start the graph service:
-
-```bash
-python graph_service.py
-```
-
-Archon runs as a separate API endpoint for MCP instead of directly in the MCP server because that way Archon can be updated separately without having to restart the MCP server, and the communication protocols for MCP seemed to interfere with LLM calls when done directly within the MCP server.
-
-2. Restart the MCP server in your AI IDE
-3. You can now ask your AI IDE to create agents with Archon
-4. Be sure to specify when you want to use Archon - not necessary but it helps a lot
-
-### Using the Streamlit UI
-
-For an interactive web interface:
-
-```bash
-streamlit run streamlit_ui.py
-```
-
-The interface will be available at `http://localhost:8501`
 ## Architecture
 
 ### Core Files
-- `mcp_server.py`: MCP server script for AI IDE integration
+- `streamlit_ui.py`: Comprehensive web interface for managing all aspects of Archon
 - `graph_service.py`: FastAPI service that handles the agentic workflow
-- `setup_mcp.py`: MCP setup script
-- `streamlit_ui.py`: Web interface with streaming support
+- `mcp_server.py`: MCP server script for AI IDE integration
 - `requirements.txt`: Project dependencies
 
 ### Archon Package
@@ -202,7 +137,7 @@ The interface will be available at `http://localhost:8501`
 - `utils/`: Utility functions and database setup
   - `utils.py`: Shared utility functions
   - `site_pages.sql`: Database setup commands
-  - `site_pages_ollama.sql`: Database setup commands with vector dimensions updated for nomic-embed-text  
+  - `env_vars.json`: Environment variables defined in the UI are stored here (included in .gitignore, file is created automatically)
 
 ### Database Setup
 
@@ -221,14 +156,7 @@ CREATE TABLE site_pages (
 );
 ```
 
-Execute the SQL commands in `utils/site_pages.sql` to:
-1. Create the necessary tables
-2. Enable vector similarity search
-3. Set up Row Level Security policies
-
-In Supabase, do this by going to the "SQL Editor" tab and pasting in the SQL into the editor there. Then click "Run".
-
-If using Ollama with the nomic-embed-text embedding model or another with 786 dimensions, either update site_pages.sql so that the dimensions are 768 instead of 1536 or use `utils/ollama_site_pages.sql`
+The Streamlit UI provides an interface to set up this database structure automatically.
 
 ## Contributing
 
@@ -244,3 +172,4 @@ For version-specific details:
 - [V1 Documentation](iterations/v1-single-agent/README.md)
 - [V2 Documentation](iterations/v2-agentic-workflow/README.md)
 - [V3 Documentation](iterations/v3-mcp-support/README.md)
+- [V4 Documentation](iterations/v4-streamlit-ui-overhaul/README.md)

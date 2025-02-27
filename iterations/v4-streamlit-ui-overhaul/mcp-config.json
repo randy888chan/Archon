@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "archon": {
+      "command": "C:\\Users\\colem\\oTTomator\\archon\\venv\\Scripts\\python.exe",
+      "args": [
+        "C:\\Users\\colem\\oTTomator\\archon\\mcp_server.py"
+      ]
+    }
+  }
+}
