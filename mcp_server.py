@@ -45,7 +45,7 @@ def _make_request(thread_id: str, user_input: str, config: dict) -> str:
         json={
             "message": user_input,
             "thread_id": thread_id,
-        "is_first_message": not active_threads[thread_id],
+            "is_first_message": not active_threads[thread_id],
             "config": config
     }
     )

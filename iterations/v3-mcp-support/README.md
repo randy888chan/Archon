@@ -8,8 +8,6 @@ The core remains an intelligent documentation crawler and RAG (Retrieval-Augment
 
 This version supports both local LLMs with Ollama and cloud-based LLMs through OpenAI/OpenRouter.
 
-Note: We still rely on OpenAI for embeddings, but future versions will add alternatives. I wanted to do this for v3 but MCP support tool a LOT of work to implement.
-
 ## Features
 
 - MCP server support for AI IDE integration
@@ -96,8 +94,9 @@ Be sure to restart your MCP server after finishing all steps.
    OPENAI_API_KEY=your_openai_api_key
    SUPABASE_URL=your_supabase_url
    SUPABASE_SERVICE_KEY=your_supabase_service_key
-   PRIMARY_MODEL=gpt-4o-mini  # or your preferred OpenAI model for main agent
-   REASONER_MODEL=o3-mini     # or your preferred OpenAI model for reasoning
+   PRIMARY_MODEL=your_main_coding_llm
+   REASONER_MODEL=your_reasoning_llm
+   EMBEDDING_MODEL=your_embedding_model
    ```
 
 ## Usage
@@ -110,6 +109,8 @@ Execute the SQL commands in `utils/site_pages.sql` to:
 3. Set up Row Level Security policies
 
 In Supabase, do this by going to the "SQL Editor" tab and pasting in the SQL into the editor there. Then click "Run".
+
+If using Ollama with the nomic-embed-text embedding model or another with 786 dimensions, either update site_pages.sql so that the dimensions are 768 instead of 1536 or use `utils/ollama_site_pages.sql`
 
 ### Crawl Documentation
 
@@ -162,7 +163,7 @@ CREATE TABLE site_pages (
     summary TEXT,
     content TEXT,
     metadata JSONB,
-    embedding VECTOR(1536)
+    embedding VECTOR(1536) -- Adjust dimensions as necessary (i.e. 768 for nomic-embed-text)
 );
 ```
 

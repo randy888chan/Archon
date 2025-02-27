@@ -244,7 +244,20 @@ def get_pydantic_ai_docs_urls() -> List[str]:
         print(f"Error fetching sitemap: {e}")
         return []
 
+async def clear_existing_records():
+    """Clear all existing records with source='pydantic_ai_docs' from the site_pages table."""
+    try:
+        result = supabase.table("site_pages").delete().eq("metadata->>source", "pydantic_ai_docs").execute()
+        print("Cleared existing pydantic_ai_docs records from site_pages")
+        return result
+    except Exception as e:
+        print(f"Error clearing existing records: {e}")
+        return None
+
 async def main():
+    # Clear existing records first
+    await clear_existing_records()
+    
     # Get URLs from Pydantic AI docs
     urls = get_pydantic_ai_docs_urls()
     if not urls:
