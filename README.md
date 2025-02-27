@@ -67,7 +67,6 @@ Archon demonstrates three key principles in modern AI development:
 - LangSmith
 - Other frameworks besides Pydantic AI
 - Other vector databases besides Supabase
-- Alternative embedding models besides OpenAI
 
 ## Getting Started with V3 (current version)
 
@@ -152,6 +151,7 @@ This will:
 1. Set up the database:
    - Execute `utils/site_pages.sql` in your Supabase SQL Editor
    - This creates tables and enables vector similarity search
+   - See the Database Setup section for more details
 
 2. Crawl documentation:
 ```bash
@@ -202,8 +202,12 @@ The interface will be available at `http://localhost:8501`
 - `utils/`: Utility functions and database setup
   - `utils.py`: Shared utility functions
   - `site_pages.sql`: Database setup commands
+  - `site_pages_ollama.sql`: Database setup commands with vector dimensions updated for nomic-embed-text  
 
-### Database Schema
+### Database Setup
+
+The Supabase database uses the following schema:
+
 ```sql
 CREATE TABLE site_pages (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -213,9 +217,18 @@ CREATE TABLE site_pages (
     summary TEXT,
     content TEXT,
     metadata JSONB,
-    embedding VECTOR(1536)
+    embedding VECTOR(1536) -- Adjust dimensions as necessary (i.e. 768 for nomic-embed-text)
 );
 ```
+
+Execute the SQL commands in `utils/site_pages.sql` to:
+1. Create the necessary tables
+2. Enable vector similarity search
+3. Set up Row Level Security policies
+
+In Supabase, do this by going to the "SQL Editor" tab and pasting in the SQL into the editor there. Then click "Run".
+
+If using Ollama with the nomic-embed-text embedding model or another with 786 dimensions, either update site_pages.sql so that the dimensions are 768 instead of 1536 or use `utils/ollama_site_pages.sql`
 
 ## Contributing
 

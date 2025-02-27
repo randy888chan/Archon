@@ -187,6 +187,7 @@ CREATE TABLE site_pages (
 - `utils/`: Utility functions and database setup
   - `utils.py`: Shared utility functions
   - `site_pages.sql`: Database setup commands
+  - `site_pages_ollama.sql`: Database setup commands with vector dimensions updated for nomic-embed-text
 
 ### Runtime
 - `workbench/`: Runtime files and logs

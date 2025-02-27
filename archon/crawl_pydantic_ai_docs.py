@@ -17,7 +17,20 @@ from supabase import create_client, Client
 load_dotenv()
 
 # Initialize OpenAI and Supabase clients
-openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+base_url = os.getenv('BASE_URL', 'https://api.openai.com/v1')
+api_key = os.getenv('LLM_API_KEY', 'no-llm-api-key-provided')
+is_ollama = "localhost" in base_url.lower()
+
+embedding_model = os.getenv('EMBEDDING_MODEL', 'text-embedding-3-small')
+
+openai_client=None
+
+if is_ollama:
+    openai_client = AsyncOpenAI(base_url=base_url,api_key=api_key)
+else:
+    openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
 supabase: Client = create_client(
     os.getenv("SUPABASE_URL"),
     os.getenv("SUPABASE_SERVICE_KEY")
@@ -88,7 +101,7 @@ async def get_title_and_summary(chunk: str, url: str) -> Dict[str, str]:
     
     try:
         response = await openai_client.chat.completions.create(
-            model=os.getenv("LLM_MODEL", "gpt-4o-mini"),
+            model=os.getenv("PRIMARY_MODEL", "gpt-4o-mini"),
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": f"URL: {url}\n\nContent:\n{chunk[:1000]}..."}  # Send first 1000 chars for context
@@ -104,7 +117,7 @@ async def get_embedding(text: str) -> List[float]:
     """Get embedding vector from OpenAI."""
     try:
         response = await openai_client.embeddings.create(
-            model="text-embedding-3-small",
+            model= embedding_model,
             input=text
         )
         return response.data[0].embedding
@@ -231,7 +244,20 @@ def get_pydantic_ai_docs_urls() -> List[str]:
         print(f"Error fetching sitemap: {e}")
         return []
 
+async def clear_existing_records():
+    """Clear all existing records with source='pydantic_ai_docs' from the site_pages table."""
+    try:
+        result = supabase.table("site_pages").delete().eq("metadata->>source", "pydantic_ai_docs").execute()
+        print("Cleared existing pydantic_ai_docs records from site_pages")
+        return result
+    except Exception as e:
+        print(f"Error clearing existing records: {e}")
+        return None
+
 async def main():
+    # Clear existing records first
+    await clear_existing_records()
+    
     # Get URLs from Pydantic AI docs
     urls = get_pydantic_ai_docs_urls()
     if not urls:
