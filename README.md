@@ -39,12 +39,35 @@ Archon demonstrates three key principles in modern AI development:
 Since V4 is the current version of Archon, all the code for V4 is in both the main directory and `archon/iterations/v4-streamlit-ui-overhaul` directory.
 
 ### Prerequisites
+- Docker (optional but preferred)
 - Python 3.11+
 - Supabase account (for vector database)
 - OpenAI/OpenRouter API key or Ollama for local LLMs
 
 ### Installation
 
+#### Option 1: Docker (Recommended)
+1. Clone the repository:
+```bash
+git clone https://github.com/coleam00/archon.git
+cd archon
+```
+
+2. Run the Docker setup script:
+```bash
+# This will build both containers and start Archon
+python run_docker.py
+```
+
+3. Access the Streamlit UI at http://localhost:8501.
+
+> **Note:** `run_docker.py` will automatically:
+> - Build the MCP server container
+> - Build the main Archon container
+> - Run Archon with the appropriate port mappings
+> - Use environment variables from `.env` file if it exists
+
+#### Option 2: Local Python Installation
 1. Clone the repository:
 ```bash
 git clone https://github.com/coleam00/archon.git
@@ -58,20 +81,22 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-### Quick Start
-
-1. Start the Streamlit UI:
+3. Start the Streamlit UI:
 ```bash
 streamlit run streamlit_ui.py
 ```
 
-2. Follow the guided setup process in the Intro section of the Streamlit UI:
-   - **Environment**: Configure your API keys and model settings
-   - **Database**: Set up your Supabase vector database
-   - **Documentation**: Crawl and index the Pydantic AI documentation
-   - **Agent Service**: Start the agent service for generating agents
-   - **Chat**: Interact with Archon to create AI agents
-   - **MCP** (optional): Configure integration with AI IDEs
+4. Access the Streamlit UI at http://localhost:8501.
+
+### Setup Process
+
+After installation, follow the guided setup process in the Intro section of the Streamlit UI:
+- **Environment**: Configure your API keys and model settings
+- **Database**: Set up your Supabase vector database
+- **Documentation**: Crawl and index the Pydantic AI documentation
+- **Agent Service**: Start the agent service for generating agents
+- **Chat**: Interact with Archon to create AI agents
+- **MCP** (optional): Configure integration with AI IDEs
 
 The Streamlit interface will guide you through each step with clear instructions and interactive elements.
 There are a good amount of steps for the setup but it goes quick!
@@ -99,6 +124,7 @@ There are a good amount of steps for the setup but it goes quick!
 - [Learn more about V3](iterations/v3-mcp-support/README.md)
 
 ### V4: Current - Streamlit UI Overhaul
+- Docker support
 - Comprehensive Streamlit interface for managing all aspects of Archon
 - Guided setup process with interactive tabs
 - Environment variable management through the UI
@@ -114,8 +140,8 @@ There are a good amount of steps for the setup but it goes quick!
 - V8: Autonomous Framework Learning - Self-updating framework adapters
 
 ### Future Integrations
-- Docker
 - LangSmith
+- MCP marketplace
 - Other frameworks besides Pydantic AI
 - Other vector databases besides Supabase
 
@@ -124,8 +150,13 @@ There are a good amount of steps for the setup but it goes quick!
 ### Core Files
 - `streamlit_ui.py`: Comprehensive web interface for managing all aspects of Archon
 - `graph_service.py`: FastAPI service that handles the agentic workflow
-- `mcp_server.py`: MCP server script for AI IDE integration
-- `requirements.txt`: Project dependencies
+- `run_docker.py`: Script to build and run Archon Docker containers
+- `Dockerfile`: Container definition for the main Archon application
+
+### MCP Integration
+- `mcp/`: Model Context Protocol server implementation
+  - `mcp_server.py`: MCP server script for AI IDE integration
+  - `Dockerfile`: Container definition for the MCP server
 
 ### Archon Package
 - `archon/`: Core agent and workflow implementation
@@ -139,7 +170,29 @@ There are a good amount of steps for the setup but it goes quick!
   - `site_pages.sql`: Database setup commands
   - `env_vars.json`: Environment variables defined in the UI are stored here (included in .gitignore, file is created automatically)
 
-### Database Setup
+## Deployment Options
+- **Docker Containers**: Run Archon in isolated containers with all dependencies included
+  - Main container: Runs the Streamlit UI and graph service
+  - MCP container: Provides MCP server functionality for AI IDEs
+- **Local Python**: Run directly on your system with a Python virtual environment
+
+### Docker Architecture
+The Docker implementation consists of two containers:
+1. **Main Archon Container**:
+   - Runs the Streamlit UI on port 8501
+   - Hosts the Graph Service on port 8100
+   - Built from the root Dockerfile
+   - Handles all agent functionality and user interactions
+
+2. **MCP Container**:
+   - Implements the Model Context Protocol for AI IDE integration
+   - Built from the mcp/Dockerfile
+   - Communicates with the main container's Graph Service
+   - Provides a standardized interface for AI IDEs like Windsurf, Cursor, and Cline
+
+When running with Docker, the `run_docker.py` script automates building and starting both containers with the proper configuration.
+
+## Database Setup
 
 The Supabase database uses the following schema:
 

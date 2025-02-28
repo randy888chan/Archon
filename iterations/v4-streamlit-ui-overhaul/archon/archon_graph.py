@@ -53,8 +53,10 @@ openai_client=None
 
 if is_ollama:
     openai_client = AsyncOpenAI(base_url=base_url,api_key=api_key)
-else:
+elif get_env_var("OPENAI_API_KEY"):
     openai_client = AsyncOpenAI(api_key=get_env_var("OPENAI_API_KEY"))
+else:
+    openai_client = None
 
 if get_env_var("SUPABASE_URL"):
     supabase: Client = Client(

@@ -43,6 +43,27 @@ from archon.archon_graph import agentic_flow
 # Load environment variables from .env file
 load_dotenv()
 
+# Initialize clients
+openai_client = None
+base_url = get_env_var('BASE_URL') or 'https://api.openai.com/v1'
+api_key = get_env_var('LLM_API_KEY') or 'no-llm-api-key-provided'
+is_ollama = "localhost" in base_url.lower()
+
+if is_ollama:
+    openai_client = AsyncOpenAI(base_url=base_url,api_key=api_key)
+elif get_env_var("OPENAI_API_KEY"):
+    openai_client = AsyncOpenAI(api_key=get_env_var("OPENAI_API_KEY"))
+else:
+    openai_client = None
+
+if get_env_var("SUPABASE_URL"):
+    supabase: Client = Client(
+            get_env_var("SUPABASE_URL"),
+            get_env_var("SUPABASE_SERVICE_KEY")
+        )
+else:
+    supabase = None
+
 # Set page config - must be the first Streamlit command
 st.set_page_config(
     page_title="Archon - Agent Builder",
@@ -175,25 +196,6 @@ def reload_archon_graph():
     except Exception as e:
         st.error(f"Error reloading Archon modules: {str(e)}")
         return False
-
-# Initialize clients
-openai_client = None
-base_url = get_env_var('BASE_URL') or 'https://api.openai.com/v1'
-api_key = get_env_var('LLM_API_KEY') or 'no-llm-api-key-provided'
-is_ollama = "localhost" in base_url.lower()
-
-if is_ollama:
-    openai_client = AsyncOpenAI(base_url=base_url,api_key=api_key)
-else:
-    openai_client = AsyncOpenAI(api_key=get_env_var("OPENAI_API_KEY"))
-
-if get_env_var("SUPABASE_URL"):
-    supabase: Client = Client(
-            get_env_var("SUPABASE_URL"),
-            get_env_var("SUPABASE_SERVICE_KEY")
-        )
-else:
-    supabase = None
     
 # Configure logfire to suppress warnings (optional)
 logfire.configure(send_to_logfire='never')
@@ -241,10 +243,10 @@ def generate_mcp_config(ide_type):
     else:  # macOS or Linux
         python_path = os.path.join(base_path, 'venv', 'bin', 'python')
     
-    server_script_path = os.path.join(base_path, 'mcp_server.py')
+    server_script_path = os.path.join(base_path, 'mcp', 'mcp_server.py')
     
-    # Create the config dictionary
-    config = {
+    # Create the config dictionary for Python
+    python_config = {
         "mcpServers": {
             "archon": {
                 "command": python_path,
@@ -253,15 +255,121 @@ def generate_mcp_config(ide_type):
         }
     }
     
+    # Create the config dictionary for Docker
+    docker_config = {
+        "mcpServers": {
+            "archon": {
+                "command": "docker",
+                "args": [
+                    "run",
+                    "-i",
+                    "--rm",
+                    "-e", 
+                    "GRAPH_SERVICE_URL",
+                    "archon-mcp:latest"
+                ],
+                "env": {
+                    "GRAPH_SERVICE_URL": "http://host.docker.internal:8100"
+                }
+            }
+        }
+    }
+    
     # Return appropriate configuration based on IDE type
     if ide_type == "Windsurf":
-        return json.dumps(config, indent=2)
+        return json.dumps(python_config, indent=2), json.dumps(docker_config, indent=2)
     elif ide_type == "Cursor":
-        return f"{python_path} {server_script_path}"
+        return f"{python_path} {server_script_path}", f"docker run --rm -p 8100:8100 archon:latest python mcp_server.py"
     elif ide_type == "Cline":
-        return json.dumps(config, indent=2)  # Assuming Cline uses the same format as Windsurf
+        return json.dumps(python_config, indent=2), json.dumps(docker_config, indent=2)  # Assuming Cline uses the same format as Windsurf
     else:
-        return "Unknown IDE type selected"
+        return "Unknown IDE type selected", "Unknown IDE type selected"
+
+def mcp_tab():
+    """Display the MCP configuration interface"""
+    st.header("MCP Configuration")
+    st.write("Select your AI IDE to get the appropriate MCP configuration:")
+    
+    # IDE selection with side-by-side buttons
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        windsurf_button = st.button("Windsurf", use_container_width=True, key="windsurf_button")
+    with col2:
+        cursor_button = st.button("Cursor", use_container_width=True, key="cursor_button")
+    with col3:
+        cline_button = st.button("Cline", use_container_width=True, key="cline_button")
+    
+    # Initialize session state for selected IDE if not present
+    if "selected_ide" not in st.session_state:
+        st.session_state.selected_ide = None
+    
+    # Update selected IDE based on button clicks
+    if windsurf_button:
+        st.session_state.selected_ide = "Windsurf"
+    elif cursor_button:
+        st.session_state.selected_ide = "Cursor"
+    elif cline_button:
+        st.session_state.selected_ide = "Cline"
+    
+    # Display configuration if an IDE is selected
+    if st.session_state.selected_ide:
+        selected_ide = st.session_state.selected_ide
+        st.subheader(f"MCP Configuration for {selected_ide}")
+        python_config, docker_config = generate_mcp_config(selected_ide)
+        
+        # Configuration type tabs
+        config_tab1, config_tab2 = st.tabs(["Docker Configuration", "Python Configuration"])
+        
+        with config_tab1:
+            st.markdown("### Docker Configuration")
+            st.code(docker_config, language="json" if selected_ide != "Cursor" else None)
+            
+            st.markdown("#### Requirements:")
+            st.markdown("- Docker installed")
+            st.markdown("- Run the setup script to build and start both containers:")
+            st.code("python run_docker.py", language="bash")
+        
+        with config_tab2:
+            st.markdown("### Python Configuration")
+            st.code(python_config, language="json" if selected_ide != "Cursor" else None)
+            
+            st.markdown("#### Requirements:")
+            st.markdown("- Python 3.11+ installed")
+            st.markdown("- Virtual environment created and activated")
+            st.markdown("- All dependencies installed via `pip install -r requirements.txt`")
+            st.markdown("- Must be running Archon not within a container")           
+        
+        # Instructions based on IDE type
+        st.markdown("---")
+        st.markdown("### Setup Instructions")
+        
+        if selected_ide == "Windsurf":
+            st.markdown("""
+            #### How to use in Windsurf:
+            1. Click on the hammer icon above the chat input
+            2. Click on "Configure"
+            3. Paste the JSON from your preferred configuration tab above
+            4. Click "Refresh" next to "Configure"
+            """)
+        elif selected_ide == "Cursor":
+            st.markdown("""
+            #### How to use in Cursor:
+            1. Go to Cursor Settings > Features > MCP
+            2. Click on "+ Add New MCP Server"
+            3. Name: Archon
+            4. Type: command (equivalent to stdio)
+            5. Command: Paste the command from your preferred configuration tab above
+            """)
+        elif selected_ide == "Cline":
+            st.markdown("""
+            #### How to use in Cline:
+            1. From the Cline extension, click the "MCP Server" tab
+            2. Click the "Edit MCP Settings" button
+            3. The MCP settings file should be displayed in a tab in VS Code
+            4. Paste the JSON from your preferred configuration tab above
+            5. Cline will automatically detect and start the MCP server
+            """)
 
 async def chat_tab():
     """Display the chat interface for talking to Archon"""
@@ -301,70 +409,6 @@ async def chat_tab():
                 message_placeholder.markdown(response_content)
         
         st.session_state.messages.append({"type": "ai", "content": response_content})
-
-def mcp_tab():
-    """Display the MCP configuration interface"""
-    st.header("MCP Configuration")
-    st.write("Select your AI IDE to get the appropriate MCP configuration:")
-    
-    # IDE selection with side-by-side buttons
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        windsurf_button = st.button("Windsurf", use_container_width=True, key="windsurf_button")
-    with col2:
-        cursor_button = st.button("Cursor", use_container_width=True, key="cursor_button")
-    with col3:
-        cline_button = st.button("Cline", use_container_width=True, key="cline_button")
-    
-    # Initialize session state for selected IDE if not present
-    if "selected_ide" not in st.session_state:
-        st.session_state.selected_ide = None
-    
-    # Update selected IDE based on button clicks
-    if windsurf_button:
-        st.session_state.selected_ide = "Windsurf"
-    elif cursor_button:
-        st.session_state.selected_ide = "Cursor"
-    elif cline_button:
-        st.session_state.selected_ide = "Cline"
-    
-    # Display configuration if an IDE is selected
-    if st.session_state.selected_ide:
-        selected_ide = st.session_state.selected_ide
-        st.subheader(f"MCP Configuration for {selected_ide}")
-        config = generate_mcp_config(selected_ide)
-        
-        # Display the configuration
-        st.code(config, language="json" if selected_ide != "Cursor" else None)
-        
-        # Instructions based on IDE type
-        if selected_ide == "Windsurf":
-            st.markdown("""
-            ### How to use in Windsurf:
-            1. Click on the hammer icon above the chat input
-            2. Click on "Configure"
-            3. Paste the JSON above as the MCP config
-            4. Click "Refresh" next to "Configure"
-            """)
-        elif selected_ide == "Cursor":
-            st.markdown("""
-            ### How to use in Cursor:
-            1. Go to Cursor Settings > Features > MCP
-            2. Click on "+ Add New MCP Server"
-            3. Name: Archon
-            4. Type: command (equivalent to stdio)
-            5. Command: Paste the command above
-            """)
-        elif selected_ide == "Cline":
-            st.markdown("""
-            ### How to use in Cline:
-            1. From the Cline extension, click the "MCP Server" tab
-            2. Click the "Edit MCP Settings" button
-            3. The MCP settings file should be displayed in a tab in VS Code
-            4. Paste the JSON above as the MCP config
-            5. Cline will automatically detect and start the MCP server
-            """)
 
 def intro_tab():
     """Display the introduction and setup guide for Archon"""
