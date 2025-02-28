@@ -138,10 +138,11 @@ There are a good amount of steps for the setup but it goes quick!
 - V6: Tool Library and Example Integration - Pre-built external tool and agent examples incorporation
 - V7: LangGraph Documentation - Allow Archon to build Pydantic AI AND LangGraph agents
 - V8: Self-Feedback Loop - Automated validation and error correction
-- V9: Multi-Framework Support - Framework-agnostic agent generation
-- V10: Autonomous Framework Learning - Self-updating framework adapters
-- V11: Advanced RAG Techniques - Enhanced retrieval and incorporation of framework documentation
-- V12: MCP Agent Marketplace - Integrating Archon agents as MCP servers and publishing to marketplaces
+- V9: Self Agent Execution - Testing and iterating on agents in an isolated environment
+- V10: Multi-Framework Support - Framework-agnostic agent generation
+- V11: Autonomous Framework Learning - Self-updating framework adapters
+- V12: Advanced RAG Techniques - Enhanced retrieval and incorporation of framework documentation
+- V13: MCP Agent Marketplace - Integrating Archon agents as MCP servers and publishing to marketplaces
 
 ### Future Integrations
 - LangSmith

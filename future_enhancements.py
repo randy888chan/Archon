@@ -595,8 +595,37 @@ def future_enhancements_tab():
         7. Repeat until validation passes
         """)
     
-    # V9: Multi-Framework Support
-    with st.expander("V9: Multi-Framework Support"):
+    # V9: Self Agent Execution
+    with st.expander("V9: Self Agent Execution"):
+        st.write("Testing and iterating on agents in an isolated environment")
+        
+        st.write("#### Agent Execution Process")
+        
+        execution_process = [
+            {"phase": "Sandbox Creation", "description": "Set up isolated environment using Local AI package"},
+            {"phase": "Agent Deployment", "description": "Load the generated agent into the testing environment"},
+            {"phase": "Test Execution", "description": "Run the agent against predefined scenarios and user queries"},
+            {"phase": "Performance Monitoring", "description": "Track response quality, latency, and resource usage"},
+            {"phase": "Error Detection", "description": "Identify runtime errors and logical inconsistencies"},
+            {"phase": "Iterative Improvement", "description": "Refine agent based on execution results"}
+        ]
+        
+        for i, phase in enumerate(execution_process):
+            st.write(f"**{i+1}. {phase['phase']}:** {phase['description']}")
+        
+        st.write("#### Local AI Package Integration")
+        st.markdown("""
+        The [Local AI package](https://github.com/coleam00/local-ai-packaged) provides a containerized environment for:
+        - Running LLMs locally for agent testing
+        - Simulating API calls and external dependencies
+        - Monitoring agent behavior in a controlled setting
+        - Collecting performance metrics for optimization
+        """)
+        
+        st.info("This enables Archon to test and refine agents in a controlled environment before deployment, significantly improving reliability and performance through empirical iteration.")
+    
+    # V10: Multi-Framework Support
+    with st.expander("V10: Multi-Framework Support"):
         st.write("Framework-agnostic agent generation")
         
         frameworks = {
@@ -617,8 +646,8 @@ def future_enhancements_tab():
         
         st.dataframe(df_data, use_container_width=True)
     
-    # V10: Autonomous Framework Learning
-    with st.expander("V10: Autonomous Framework Learning"):
+    # V11: Autonomous Framework Learning
+    with st.expander("V11: Autonomous Framework Learning"):
         st.write("Self-learning from mistakes and continuous improvement")
         
         st.write("#### Self-Improvement Process")
@@ -637,8 +666,8 @@ def future_enhancements_tab():
         
         st.info("This enables Archon to stay updated with the latest AI frameworks without manual intervention.")
     
-    # V11: Advanced RAG Techniques
-    with st.expander("V11: Advanced RAG Techniques"):
+    # V12: Advanced RAG Techniques
+    with st.expander("V12: Advanced RAG Techniques"):
         st.write("Enhanced retrieval and incorporation of framework documentation")
         
         st.write("#### Advanced RAG Components")
@@ -681,8 +710,8 @@ def future_enhancements_tab():
         
         st.info("This enables Archon to more effectively retrieve and incorporate framework documentation, leading to more accurate and contextually appropriate agent generation.")
     
-    # V12: MCP Agent Marketplace
-    with st.expander("V12: MCP Agent Marketplace"):
+    # V13: MCP Agent Marketplace
+    with st.expander("V13: MCP Agent Marketplace"):
         st.write("Integrating Archon agents as MCP servers and publishing to marketplaces")
         
         st.write("#### MCP Integration Process")
