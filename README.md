@@ -134,16 +134,21 @@ There are a good amount of steps for the setup but it goes quick!
 - [Learn more about V4](iterations/v4-streamlit-ui-overhaul/README.md)
 
 ### Future Iterations
-- V5: Self-Feedback Loop - Automated validation and error correction
-- V6: Tool Library Integration - Pre-built external tool incorporation
-- V7: Multi-Framework Support - Framework-agnostic agent generation
-- V8: Autonomous Framework Learning - Self-updating framework adapters
+- V5: Multi-Agent Coding Workflow - Specialized agents for different parts of the agent creation process
+- V6: Tool Library and Example Integration - Pre-built external tool and agent examples incorporation
+- V7: LangGraph Documentation - Allow Archon to build Pydantic AI AND LangGraph agents
+- V8: Self-Feedback Loop - Automated validation and error correction
+- V9: Multi-Framework Support - Framework-agnostic agent generation
+- V10: Autonomous Framework Learning - Self-updating framework adapters
+- V11: Advanced RAG Techniques - Enhanced retrieval and incorporation of framework documentation
+- V12: MCP Agent Marketplace - Integrating Archon agents as MCP servers and publishing to marketplaces
 
 ### Future Integrations
 - LangSmith
 - MCP marketplace
 - Other frameworks besides Pydantic AI
 - Other vector databases besides Supabase
+- [Local AI package](https://github.com/coleam00/local-ai-packaged) for the agent environment
 
 ## Architecture
 
