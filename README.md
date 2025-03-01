@@ -42,7 +42,7 @@ Since V4 is the current version of Archon, all the code for V4 is in both the ma
 - Docker (optional but preferred)
 - Python 3.11+
 - Supabase account (for vector database)
-- OpenAI/OpenRouter API key or Ollama for local LLMs
+- OpenAI/Anthropic/OpenRouter API key or Ollama for local LLMs (note that only OpenAI supports streaming in the Streamlit UI currently)
 
 ### Installation
 

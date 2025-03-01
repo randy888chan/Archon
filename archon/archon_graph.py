@@ -1,3 +1,4 @@
+from pydantic_ai.models.anthropic import AnthropicModel
 from pydantic_ai.models.openai import OpenAIModel
 from pydantic_ai import Agent, RunContext
 from langgraph.graph import StateGraph, START, END
@@ -31,21 +32,29 @@ logfire.configure(send_to_logfire='never')
 
 base_url = get_env_var('BASE_URL') or 'https://api.openai.com/v1'
 api_key = get_env_var('LLM_API_KEY') or 'no-llm-api-key-provided'
+
 is_ollama = "localhost" in base_url.lower()
-reasoner_llm_model = get_env_var('REASONER_MODEL') or 'o3-mini'
+is_anthropic = "anthropic" in base_url.lower()
+is_openai = "openai" in base_url.lower()
+
+reasoner_llm_model_name = get_env_var('REASONER_MODEL') or 'o3-mini'
+reasoner_llm_model = AnthropicModel(reasoner_llm_model_name, api_key=api_key) if is_anthropic else OpenAIModel(reasoner_llm_model_name, base_url=base_url, api_key=api_key)
+
 reasoner = Agent(  
-    OpenAIModel(reasoner_llm_model, base_url=base_url, api_key=api_key),
+    reasoner_llm_model,
     system_prompt='You are an expert at coding AI agents with Pydantic AI and defining the scope for doing so.',  
 )
 
-primary_llm_model = get_env_var('PRIMARY_MODEL') or 'gpt-4o-mini'
+primary_llm_model_name = get_env_var('PRIMARY_MODEL') or 'gpt-4o-mini'
+primary_llm_model = AnthropicModel(primary_llm_model_name, api_key=api_key) if is_anthropic else OpenAIModel(primary_llm_model_name, base_url=base_url, api_key=api_key)
+
 router_agent = Agent(  
-    OpenAIModel(primary_llm_model, base_url=base_url, api_key=api_key),
+    primary_llm_model,
     system_prompt='Your job is to route the user message either to the end of the conversation or to continue coding the AI agent.',  
 )
 
 end_conversation_agent = Agent(  
-    OpenAIModel(primary_llm_model, base_url=base_url, api_key=api_key),
+    primary_llm_model,
     system_prompt='Your job is to end a conversation for creating an AI agent by giving instructions for how to execute the agent and they saying a nice goodbye to the user.',  
 )
 
@@ -124,7 +133,7 @@ async def coder_agent(state: AgentState, writer):
         message_history.extend(ModelMessagesTypeAdapter.validate_json(message_row))
 
     # Run the agent in a stream
-    if is_ollama:
+    if not is_openai:
         writer = get_stream_writer()
         result = await pydantic_ai_coder.run(state['latest_user_message'], deps=deps, message_history= message_history)
         writer(result.data)
@@ -178,7 +187,7 @@ async def finish_conversation(state: AgentState, writer):
         message_history.extend(ModelMessagesTypeAdapter.validate_json(message_row))
 
     # Run the agent in a stream
-    if is_ollama:
+    if not is_openai:
         writer = get_stream_writer()
         result = await end_conversation_agent.run(state['latest_user_message'], message_history= message_history)
         writer(result.data)   

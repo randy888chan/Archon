@@ -25,7 +25,7 @@ This version continues to support both local LLMs with Ollama and cloud-based LL
 - Docker (optional but preferred)
 - Python 3.11+
 - Supabase account (for vector database)
-- OpenAI/OpenRouter API key or Ollama for local LLMs
+- OpenAI/OpenRouter/Anthropic API key or Ollama for local LLMs
 
 ## Installation
 

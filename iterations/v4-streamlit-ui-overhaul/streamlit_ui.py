@@ -21,6 +21,7 @@ from openai import AsyncOpenAI
 from supabase import Client, create_client
 from dotenv import load_dotenv
 from utils.utils import get_env_var, save_env_var, write_to_log
+from future_enhancements import future_enhancements_tab
 
 # Import all the message part classes
 from pydantic_ai.messages import (
@@ -71,13 +72,13 @@ st.set_page_config(
     layout="wide",
 )
 
-# Set custom theme colors to match Archon logo (pink and green)
-# Primary color (pink) and secondary color (green)
+# Set custom theme colors to match Archon logo (green and pink)
+# Primary color (green) and secondary color (pink)
 st.markdown("""
     <style>
     :root {
-        --primary-color: #00CC99;  /* Pink */
-        --secondary-color: #FF69B4; /* Green */
+        --primary-color: #00CC99;  /* Green */
+        --secondary-color: #EB2D8C; /* Pink */
         --text-color: #262730;
     }
     
@@ -487,9 +488,9 @@ def intro_tab():
         create_new_tab_button("Go to the Documentation Section (New Tab)", "Documentation", key="goto_docs", use_container_width=True)
     
     # Step 4: Agent Service
-    with st.expander("Step 4: Agent Service Setup", expanded=False):
+    with st.expander("Step 4: Agent Service Setup (for MCP)", expanded=False):
         st.markdown("""
-        ### Agent Service Setup
+        ### MCP Agent Service Setup
         
         Start the graph service for agent generation:
         
@@ -879,8 +880,8 @@ def show_manual_sql_instructions(sql, recreate=False):
 
 def agent_service_tab():
     """Display the agent service interface for managing the graph service"""
-    st.header("Agent Service")
-    st.write("Start, restart, and monitor the Archon agent service.")
+    st.header("MCP Agent Service")
+    st.write("Start, restart, and monitor the Archon agent service for MCP.")
     
     # Initialize session state variables if they don't exist
     if "service_process" not in st.session_state:
@@ -1102,17 +1103,18 @@ def environment_tab():
     st.write("- Configure your environment variables for Archon. These settings will be saved and used for future sessions.")
     st.write("- NOTE: Press 'enter' to save after inputting a variable, otherwise click the 'save' button at the bottom.")
     st.write("- HELP: Hover over the '?' icon on the right for each environment variable for help/examples.")
-    
+    st.warning("⚠️ If your agent service for MCP is already running, you'll need to restart it after changing environment variables.")
+
     # Define environment variables and their descriptions from .env.example
     env_vars = {
         "BASE_URL": {
             "description": "Base URL for the OpenAI instance (default is https://api.openai.com/v1)",
-            "help": "OpenAI: https://api.openai.com/v1\n\nOllama (example): http://localhost:11434/v1\n\nOpenRouter: https://openrouter.ai/api/v1",
+            "help": "OpenAI: https://api.openai.com/v1\n\n\n\nAnthropic: https://api.anthropic.com/v1\n\nOllama (example): http://localhost:11434/v1\n\nOpenRouter: https://openrouter.ai/api/v1",
             "sensitive": False
         },
         "LLM_API_KEY": {
             "description": "API key for your LLM provider",
-            "help": "For OpenAI: https://help.openai.com/en/articles/4936850-where-do-i-find-my-openai-api-key\n\nFor OpenRouter: https://openrouter.ai/keys\n\nFor Ollama, no need to set this unless you specifically configured an API key",
+            "help": "For OpenAI: https://help.openai.com/en/articles/4936850-where-do-i-find-my-openai-api-key\n\nFor Anthropic: https://console.anthropic.com/account/keys\n\nFor OpenRouter: https://openrouter.ai/keys\n\nFor Ollama, no need to set this unless you specifically configured an API key",
             "sensitive": True
         },
         "OPENAI_API_KEY": {
@@ -1207,7 +1209,7 @@ async def main():
     query_params = st.query_params
     if "tab" in query_params:
         tab_name = query_params["tab"]
-        if tab_name in ["Intro", "Chat", "Environment", "Database", "Documentation", "Agent Service", "MCP"]:
+        if tab_name in ["Intro", "Chat", "Environment", "Database", "Documentation", "Agent Service", "MCP", "Future Enhancements"]:
             st.session_state.selected_tab = tab_name
 
     # Add sidebar navigation
@@ -1229,6 +1231,7 @@ async def main():
         docs_button = st.button("Documentation", use_container_width=True, key="docs_button")
         service_button = st.button("Agent Service", use_container_width=True, key="service_button")
         mcp_button = st.button("MCP", use_container_width=True, key="mcp_button")
+        future_enhancements_button = st.button("Future Enhancements", use_container_width=True, key="future_enhancements_button")
         
         # Update selected tab based on button clicks
         if intro_button:
@@ -1245,6 +1248,8 @@ async def main():
             st.session_state.selected_tab = "Database"
         elif docs_button:
             st.session_state.selected_tab = "Documentation"
+        elif future_enhancements_button:
+            st.session_state.selected_tab = "Future Enhancements"
     
     # Display the selected tab
     if st.session_state.selected_tab == "Intro":
@@ -1268,6 +1273,9 @@ async def main():
     elif st.session_state.selected_tab == "Documentation":
         st.title("Archon - Documentation")
         documentation_tab()
+    elif st.session_state.selected_tab == "Future Enhancements":
+        st.title("Archon - Future Enhancements")
+        future_enhancements_tab()
 
 if __name__ == "__main__":
     asyncio.run(main())

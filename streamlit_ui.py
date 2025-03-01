@@ -1103,17 +1103,18 @@ def environment_tab():
     st.write("- Configure your environment variables for Archon. These settings will be saved and used for future sessions.")
     st.write("- NOTE: Press 'enter' to save after inputting a variable, otherwise click the 'save' button at the bottom.")
     st.write("- HELP: Hover over the '?' icon on the right for each environment variable for help/examples.")
-    
+    st.warning("⚠️ If your agent service for MCP is already running, you'll need to restart it after changing environment variables.")
+
     # Define environment variables and their descriptions from .env.example
     env_vars = {
         "BASE_URL": {
             "description": "Base URL for the OpenAI instance (default is https://api.openai.com/v1)",
-            "help": "OpenAI: https://api.openai.com/v1\n\nOllama (example): http://localhost:11434/v1\n\nOpenRouter: https://openrouter.ai/api/v1",
+            "help": "OpenAI: https://api.openai.com/v1\n\n\n\nAnthropic: https://api.anthropic.com/v1\n\nOllama (example): http://localhost:11434/v1\n\nOpenRouter: https://openrouter.ai/api/v1",
             "sensitive": False
         },
         "LLM_API_KEY": {
             "description": "API key for your LLM provider",
-            "help": "For OpenAI: https://help.openai.com/en/articles/4936850-where-do-i-find-my-openai-api-key\n\nFor OpenRouter: https://openrouter.ai/keys\n\nFor Ollama, no need to set this unless you specifically configured an API key",
+            "help": "For OpenAI: https://help.openai.com/en/articles/4936850-where-do-i-find-my-openai-api-key\n\nFor Anthropic: https://console.anthropic.com/account/keys\n\nFor OpenRouter: https://openrouter.ai/keys\n\nFor Ollama, no need to set this unless you specifically configured an API key",
             "sensitive": True
         },
         "OPENAI_API_KEY": {
