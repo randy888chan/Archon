@@ -12,7 +12,6 @@ from supabase import Client
 import logfire
 import os
 import sys
-from utils.utils import get_env_var
 
 # Import the message classes from Pydantic AI
 from pydantic_ai.messages import (
@@ -23,6 +22,7 @@ from pydantic_ai.messages import (
 # Add the parent directory to Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from archon.pydantic_ai_coder import pydantic_ai_coder, PydanticAIDeps, list_documentation_pages_helper
+from utils.utils import get_env_var
 
 # Load environment variables
 load_dotenv()

@@ -11,7 +11,7 @@
 
 </div>
 
-Archon is an AI meta-agent designed to autonomously build, refine, and optimize other AI agents. 
+Archon is the world's first **"Agenteer"**, an AI agent designed to autonomously build, refine, and optimize other AI agents. 
 
 It serves both as a practical tool for developers and as an educational framework demonstrating the evolution of agentic systems.
 Archon will be developed in iterations, starting with just a simple Pydantic AI agent that can build other Pydantic AI agents,
