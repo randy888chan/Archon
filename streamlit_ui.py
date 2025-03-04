@@ -770,123 +770,31 @@ def documentation_tab():
                         # Import the progress tracker
                         from archon.crawl_supabase_docs import start_crawl_with_requests
                         
-                        # Import threading
-                        import threading
-                        import time
-                        from datetime import datetime
-                        
-                        # Define a callback function to update the session state
+                        # DRASTICALLY SIMPLIFIED APPROACH
+                        # Just a basic callback function that stores status without complex threading
                         def update_supabase_progress(status):
-                            # Update the session state variables with lock protection
-                            with supabase_crawler_lock:
-                                print(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} Progress callback with status: {status.get('urls_processed', 0)}/{status.get('urls_found', 0)} URLs")
-                                st.session_state.supabase_crawl_status = status
-                                st.session_state.supabase_crawl_urls_found = status.get("urls_found", 0)
-                                st.session_state.supabase_crawl_urls_processed = status.get("urls_processed", 0)
-                                st.session_state.supabase_crawl_successes = status.get("urls_succeeded", 0) 
-                                st.session_state.supabase_crawl_failures = status.get("urls_failed", 0)
-                                st.session_state.supabase_crawl_logs = status.get("logs", [])
-                                st.session_state.supabase_crawl_is_running = status.get("is_running", False)
-                                st.session_state.supabase_crawl_is_stopping = status.get("is_stopping", False)
-                                st.session_state.supabase_crawl_chunks_stored = status.get("chunks_stored", 0)
-                                
-                                # Check if we have the end_time, which would indicate completion
-                                if status.get("end_time") is not None:
-                                    print(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} Crawl completion detected in callback")
-                                    st.session_state.supabase_crawl_complete = True
-                                    # Force a rerun directly from the callback when complete
-                                    try:
-                                        # Small delay to allow other operations to complete
-                                        time.sleep(0.2)
-                                        st.rerun()
-                                    except Exception as e:
-                                        print(f"Error forcing rerun from callback: {str(e)}")
+                            # Store in session state
+                            st.session_state.supabase_crawl_status = status
+                            
+                            # Also store end time when crawler finishes
+                            if status.get("end_time"):
+                                st.session_state.supabase_crawl_end_time = status.get("end_time")
                         
-                        try:
-                            # Start the crawling process in a separate thread with the specified URL limit
-                            print(f"Starting crawler with URL limit {url_limit}")
-                            st.session_state.supabase_crawl_tracker = start_crawl_with_requests(
-                                update_supabase_progress, 
-                                url_limit=url_limit
-                            )
-                            
-                            # Initialize session state variables safely
-                            with supabase_crawler_lock:
-                                st.session_state.supabase_crawl_status = st.session_state.supabase_crawl_tracker.get_status()
-                                st.session_state.supabase_crawl_complete = False
-                                st.session_state.supabase_crawl_is_running = True
-                                
-                                # Also create a timestamp for UI update checks
-                                st.session_state.supabase_last_check_time = time.time()
-                            
-                            # Create a simpler UI update thread that just checks status periodically
-                            def check_status_thread():
-                                print(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} Starting status check thread")
-                                while True:
-                                    try:
-                                        with supabase_crawler_lock:
-                                            # Break if tracker is gone or explicitly marked as not running
-                                            if (not st.session_state.get("supabase_crawl_tracker") or 
-                                                not st.session_state.get("supabase_crawl_is_running", False)):
-                                                print(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} Status thread detected crawler exit")
-                                                break
-                                                
-                                            # Get latest status
-                                            status = st.session_state.supabase_crawl_tracker.get_status() 
-                                            
-                                            # Check for completion
-                                            if (not status.get("is_running", False) and 
-                                                status.get("end_time") is not None):
-                                                print(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} Status thread detected crawler completion")
-                                                # Directly update the status
-                                                st.session_state.supabase_crawl_status = status
-                                                st.session_state.supabase_crawl_complete = True
-                                                st.session_state.supabase_crawl_is_running = False
-                                                
-                                                # Show final stats
-                                                print(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} Final stats: {status.get('urls_processed', 0)}/{status.get('urls_found', 0)} URLs processed, {status.get('chunks_stored', 0)} chunks stored")
-                                                
-                                                # Break out after detecting completion
-                                                break
-                                        
-                                        # Force a rerun every few seconds regardless of status changes
-                                        # This ensures the UI stays updated even if callbacks aren't triggering reruns
-                                        try:
-                                            # Sleep to avoid overwhelming the UI
-                                            time.sleep(2)
-                                            st.rerun()
-                                        except Exception as e:
-                                            print(f"Error forcing UI update: {str(e)}")
-                                            # In case of rerun error, still pause to avoid tight loop
-                                            time.sleep(2)
-                                            
-                                    except Exception as e:
-                                        print(f"Error in status check thread: {str(e)}")
-                                        time.sleep(2)
-                                        
-                                # After completion, force one final rerun
-                                try:
-                                    print(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} Status thread exiting, forcing final rerun")
-                                    time.sleep(0.5)  # Brief pause
-                                    st.rerun()
-                                except Exception as e:
-                                    print(f"Error in final rerun: {str(e)}")
-                            
-                            # Start the check thread
-                            check_thread = threading.Thread(target=check_status_thread, daemon=True)
-                            check_thread.start()
-                            
-                            # Set a flag to avoid multiple threads
-                            st.session_state.supabase_status_thread_started = True
-                            
-                            # Also force immediate rerun to show the crawl has started
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"❌ Error starting Supabase crawl: {str(e)}")
-                            print(f"Error with crawler setup: {str(e)}")
+                        # Start the crawler
+                        st.session_state.supabase_crawl_tracker = start_crawl_with_requests(
+                            update_supabase_progress, 
+                            url_limit=url_limit
+                        )
+                        
+                        # Store start time
+                        st.session_state.supabase_crawl_start_time = time.time()
+                        
+                        # Force a rerun to show we've started
+                        st.rerun()
+                        
                     except Exception as e:
-                        st.error(f"❌ Error importing or setting up Supabase crawl: {str(e)}")
-                        print(f"Error with crawler import: {str(e)}")
+                        st.error(f"❌ Error starting Supabase crawl: {str(e)}")
+                        print(f"Error with crawler setup: {str(e)}")
             
             with col2:
                 # Button to clear existing Supabase docs
@@ -941,45 +849,19 @@ def documentation_tab():
                     except Exception as e:
                         st.error(f"❌ Error starting test crawl: {str(e)}")
             
-            # Update the status if a crawl is in progress
+            # Check if we have a tracker running - SIMPLIFIED VERSION
             if st.session_state.get("supabase_crawl_tracker"):
-                # Use the module-level lock for thread-safe access
-                with supabase_crawler_lock:
-                    try:
-                        # Get current status
-                        status = st.session_state.supabase_crawl_tracker.get_status()
-                        
-                        # Update session state with latest status - inside the lock
-                        st.session_state.supabase_crawl_status = status
-                        
-                        # Explicitly update running status
-                        st.session_state.supabase_crawl_is_running = status.get("is_running", False)
-                        
-                        # Check for completion
-                        if not status.get("is_running", True) and status.get("end_time") is not None:
-                            st.session_state.supabase_crawl_complete = True
-                            print(f"Status display detected completion at {time.time()}")
-                    except Exception as e:
-                        print(f"Error updating status: {str(e)}")
                 
-            # Show crawl progress if a crawl is in progress or has completed
-            if st.session_state.get("supabase_crawl_status"):
-                # Use thread-safe access with module-level lock
-                with supabase_crawler_lock:
-                    try:
-                        status = st.session_state.supabase_crawl_status.copy()  # Make a copy to avoid potential race conditions
-                        is_running = st.session_state.get("supabase_crawl_is_running", False)
-                        is_complete = st.session_state.get("supabase_crawl_complete", False)
-                    except Exception as e:
-                        print(f"Error copying status: {str(e)}")
-                        status = {}
-                        is_running = False
-                        is_complete = False
+                # Get current status
+                status = st.session_state.get("supabase_crawl_status", {})
                 
-                # Create a progress bar
-                progress = st.progress(status.get("progress_percentage", 0) / 100)
+                # Create a simple progress bar
+                urls_found = status.get("urls_found", 0) 
+                urls_processed = status.get("urls_processed", 0)
+                progress_value = urls_processed / max(1, urls_found) if urls_found > 0 else 0
+                progress = st.progress(progress_value)
                 
-                # Display crawl statistics
+                # Display simple stats
                 col1, col2, col3, col4 = st.columns(4)
                 with col1:
                     st.metric("URLs Found", status.get("urls_found", 0))
@@ -990,65 +872,74 @@ def documentation_tab():
                 with col4:
                     st.metric("Failures", status.get("urls_failed", 0))
                 
-                # Show appropriate status messages based on the crawl state
-                if status.get("is_stopping", False):
-                    st.warning("⏳ Crawl is stopping... Please wait for current tasks to complete.")
-                elif is_complete or (not is_running and status.get("end_time")):
+                # Determine crawler state
+                is_running = status.get("is_running", True)
+                has_ended = status.get("end_time") is not None or st.session_state.get("supabase_crawl_end_time") is not None
+                is_stopping = status.get("is_stopping", False)
+                
+                # Display appropriate message
+                if is_stopping:
+                    st.warning("⏳ Crawl is stopping... Please wait.")
+                elif not is_running and has_ended:
                     if status.get("urls_succeeded", 0) > 0:
                         st.success(f"✅ Crawl completed! Processed {status.get('urls_processed', 0)} URLs and stored {status.get('chunks_stored', 0)} chunks.")
                     else:
-                        st.error("❌ Crawl completed but no documents were successfully processed.")
-                elif is_running:
-                    if status.get("urls_processed", 0) > 0:
-                        st.info(f"⏳ Crawling in progress... ({status.get('urls_processed', 0)}/{status.get('urls_found', 0)} URLs processed)")
+                        st.error("❌ Crawl completed but no documents were processed.")
+                else:
+                    if urls_processed > 0:
+                        st.info(f"⏳ Crawling in progress... ({urls_processed}/{urls_found} URLs processed)")
                     else:
                         st.info("🔍 Preparing to crawl...")
                 
-                # Display a stop button ONLY if the crawl is still running
-                if is_running and not status.get("is_stopping", False):
-                    stop_col, _ = st.columns([1, 3])
-                    with stop_col:
-                        stop_button = st.button("⚠️ Stop Crawling", key="stop_supabase_crawl")
-                        if stop_button:
-                            print("Stop button clicked")
-                            if st.session_state.get("supabase_crawl_tracker"):
-                                # Use the module-level lock for thread-safe access
-                                with supabase_crawler_lock:
-                                    # Set the stop flag on the tracker
-                                    st.session_state.supabase_crawl_tracker.stop()
-                                    print("Tracker stop() called")
-                                    
-                                    # Force an immediate update to the UI
-                                    st.session_state.supabase_crawl_status = st.session_state.supabase_crawl_tracker.get_status()
-                                    
-                                st.info("Stopping the crawl process... This may take a moment as current tasks complete.")
-                                print("Stop message displayed")
+                # Create a row of buttons for all possible actions
+                button_cols = st.columns([1, 1, 2])
+                
+                # First column: Check Status button (always visible when crawler is running)
+                with button_cols[0]:
+                    if is_running or is_stopping:
+                        if st.button("🔄 Check Status", key="check_supabase_status"):
+                            # Manually get the latest status
+                            current_status = st.session_state.supabase_crawl_tracker.get_status()
+                            st.session_state.supabase_crawl_status = current_status
+                            
+                            # Check if the crawler has completed
+                            if not current_status.get("is_running", True) and current_status.get("end_time") is not None:
+                                st.session_state.supabase_crawl_end_time = current_status.get("end_time")
                                 
-                                # Force an immediate rerun to update UI
-                                st.rerun()
-                # Only show the clear button when crawling is complete
-                elif is_complete or not is_running:
-                    clear_col, _ = st.columns([1, 3])
-                    with clear_col:
-                        if st.button("Clear Status", key="clear_supabase_status"):
-                            print("Clear status button clicked")
-                            # Reset the crawl tracker and status with thread safety
-                            with supabase_crawler_lock:
-                                st.session_state.supabase_crawl_tracker = None
-                                st.session_state.supabase_crawl_status = None
-                                st.session_state.supabase_crawl_complete = False
-                                st.session_state.supabase_crawl_is_running = False
-                            print("Session state cleared")
+                            # Show success message with the current progress
+                            st.success(f"Status updated: {current_status.get('urls_processed', 0)}/{current_status.get('urls_found', 0)} URLs processed")
+                            
+                            # Force a rerun to show the updated status
                             st.rerun()
                 
-                # Display crawl logs (most recent first)
-                logs_expander = st.expander("Show Crawl Logs", expanded=True)
-                with logs_expander:
+                # Second column: Stop or Clear button
+                with button_cols[1]:
+                    # Show either a stop button or clear button
+                    if is_running and not is_stopping:
+                        if st.button("⚠️ Stop Crawling", key="stop_supabase_crawl"):
+                            # Stop the crawler
+                            st.session_state.supabase_crawl_tracker.stop()
+                            st.info("Stopping the crawl...")
+                            st.rerun()
+                    elif not is_running or has_ended:
+                        if st.button("🗑️ Clear Status", key="clear_supabase_status"):
+                            # Remove all crawler state
+                            st.session_state.supabase_crawl_tracker = None
+                            st.session_state.supabase_crawl_status = None
+                            st.session_state.supabase_crawl_start_time = None
+                            st.session_state.supabase_crawl_end_time = None
+                            st.rerun()
+                
+                # Show logs in an expander
+                with st.expander("📋 Show Crawl Logs", expanded=False):
                     logs = status.get("logs", [])
                     if logs:
-                        st.code("\n".join(logs[::-1]))
+                        st.code("\n".join(logs[::-1]))  # Display newest first
                     else:
                         st.text("No logs yet")
+                         
+                # Note: Removed the auto-refresh to avoid UI issues
+                # Users can now manually check status with the "Check Status" button
 
     with doc_tabs[2]:
         st.subheader("Future Documentation Sources")
