@@ -157,12 +157,11 @@ async def retrieve_relevant_documentation(ctx: RunContext[SupabaseDeps], user_qu
         
         # Search for related documentation
         result = ctx.deps.supabase.rpc(
-            "match_documents",
+            "match_site_pages",
             {
                 "query_embedding": query_embedding,
-                "match_threshold": 0.5,
                 "match_count": 5,
-                "filter_source": "supabase_docs"
+                "filter": {"source": "supabase_docs"}
             }
         ).execute()
         

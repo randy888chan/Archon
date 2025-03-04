@@ -86,12 +86,15 @@ class AgentState(TypedDict):
     latest_user_message: str
     messages: Annotated[List[bytes], lambda x, y: x + y]
     scope: str
-    agent_type: str
+    agent_type: str = "Pydantic AI Agent"  # Default to Pydantic AI Agent if not specified
 
 # Scope Definition Node with Reasoner LLM
 async def define_scope_with_reasoner(state: AgentState):
     # Get the agent type from the state
     agent_type = state.get('agent_type', 'Pydantic AI Agent')
+    
+    # Print for debugging
+    print(f"Using agent type: {agent_type}")
     
     # First, get the documentation pages so the reasoner can decide which ones are necessary
     documentation_pages = []
@@ -166,6 +169,9 @@ async def define_scope_with_reasoner(state: AgentState):
 async def coder_agent(state: AgentState, writer):    
     # Get the agent type from the state
     agent_type = state.get('agent_type', 'Pydantic AI Agent')
+    
+    # Print for debugging
+    print(f"Coder using agent type: {agent_type}")
     
     # Get the message history into the format for Pydantic AI
     message_history: list[ModelMessage] = []

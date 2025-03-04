@@ -208,15 +208,23 @@ def get_thread_id():
 
 thread_id = get_thread_id()
 
-async def run_agent_with_streaming(user_input: str, agent_type: str = "Pydantic AI Agent"):
+async def run_agent_with_streaming(user_input: str, agent_type: str = ""):
     """
     Run the agent with streaming text for the user_input prompt,
     while maintaining the entire conversation in `st.session_state.messages`.
     
     Args:
         user_input: The user's input message
-        agent_type: The type of agent to use (Pydantic AI Agent or Supabase Agent)
+        agent_type: The type of agent to use (e.g., "Pydantic AI Agent" or "Supabase Agent")
     """
+    # Validate agent type
+    if not agent_type:
+        yield "Please select an agent type first."
+        return
+        
+    # Log which agent type is being used
+    print(f"Starting agent with type: {agent_type}")
+    
     config = {
         "configurable": {
             "thread_id": thread_id,
@@ -227,13 +235,18 @@ async def run_agent_with_streaming(user_input: str, agent_type: str = "Pydantic 
     # First message from user
     if len(st.session_state.messages) == 1:
         async for msg in agentic_flow.astream(
-                {"latest_user_message": user_input}, config, stream_mode="custom"
+                {"latest_user_message": user_input, "agent_type": agent_type}, config, stream_mode="custom"
             ):
                 yield msg
     # Continue the conversation
     else:
         async for msg in agentic_flow.astream(
-            Command(resume=user_input), config, stream_mode="custom"
+            Command(
+                resume=user_input,
+                update={"agent_type": agent_type}  # Update the agent_type in the state
+            ), 
+            config, 
+            stream_mode="custom"
         ):
             yield msg
 
@@ -380,8 +393,8 @@ def mcp_tab():
 
 async def chat_tab():
     """Display the chat interface for talking to Archon"""
-    # Add agent selection
-    agent_options = ["Pydantic AI Agent", "Supabase Agent"]
+    # Add agent selection with blank default option
+    agent_options = ["", "Pydantic AI Agent", "Supabase Agent"]
     
     # Create a container for the agent selection UI
     agent_selection_container = st.container()
@@ -393,9 +406,11 @@ async def chat_tab():
         with col1:
             # Add description based on the selected agent
             if "selected_agent" not in st.session_state:
-                st.session_state.selected_agent = agent_options[0]
+                st.session_state.selected_agent = agent_options[0]  # Start with blank
             
-            if st.session_state.selected_agent == "Pydantic AI Agent":
+            if not st.session_state.selected_agent:  # Blank/default state
+                st.write("👈 Please select an agent type to begin.")
+            elif st.session_state.selected_agent == "Pydantic AI Agent":
                 st.write("Describe to me an AI agent you want to build and I'll code it for you with Pydantic AI.")
                 st.write("Example: Build me an AI agent that can search the web with the Brave API.")
             elif st.session_state.selected_agent == "Supabase Agent":
@@ -408,7 +423,8 @@ async def chat_tab():
                 "Select Agent",
                 agent_options,
                 index=agent_options.index(st.session_state.selected_agent) if "selected_agent" in st.session_state else 0,
-                key="agent_selector"
+                key="agent_selector",
+                format_func=lambda x: "Select an agent type..." if x == "" else x
             )
             
             # Update session state when selection changes
@@ -434,8 +450,15 @@ async def chat_tab():
             with st.chat_message(message_type):
                 st.markdown(message["content"])    
 
-    # Chat input for the user
-    user_input = st.chat_input(f"What do you want to build with {st.session_state.selected_agent}?")
+    # Initialize user_input to None before conditional
+    user_input = None
+    
+    # Add the chat input at the bottom
+    if not st.session_state.selected_agent:
+        # Disable chat input if no agent selected
+        st.chat_input("Please select an agent type first...", disabled=True)
+    else:
+        user_input = st.chat_input(f"What do you want to build with {st.session_state.selected_agent}?")
 
     if user_input:
         # We append a new request to the conversation explicitly
@@ -457,9 +480,11 @@ async def chat_tab():
                 # Update the placeholder with the current response content
                 message_placeholder.markdown(response_content)
         
-        st.session_state.messages.append({"type": "ai", "content": response_content})
-        # Also update the agent-specific message history
-        st.session_state[agent_key] = st.session_state.messages
+        # Only add the response to chat history if it's not a validation message
+        if not response_content.startswith("Please select an agent type first"):
+            st.session_state.messages.append({"type": "ai", "content": response_content})
+            # Also update the agent-specific message history
+            st.session_state[agent_key] = st.session_state.messages
 
 def intro_tab():
     """Display the introduction and setup guide for Archon"""
