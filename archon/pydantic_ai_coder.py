@@ -300,6 +300,9 @@ async def retrieve_relevant_documentation(ctx: RunContext[PydanticAIDeps], user_
         # Get the embedding for the query
         query_embedding = await get_embedding(user_query, ctx.deps.openai_client)
         
+        # Log the database query details
+        print(f"[PYDANTIC QUERY] Searching for documentation with filter: {{\"source\": \"pydantic_ai_docs\"}}")
+        
         # Query Supabase for relevant documents
         result = ctx.deps.supabase.rpc(
             'match_site_pages',
@@ -310,9 +313,17 @@ async def retrieve_relevant_documentation(ctx: RunContext[PydanticAIDeps], user_
             }
         ).execute()
         
+        if hasattr(result, 'error') and result.error is not None:
+            print(f"[PYDANTIC ERROR] Error querying database: {result.error}")
+            return f"Error querying database: {result.error}"
+        
         if not result.data:
+            print("[PYDANTIC RESULT] No relevant documentation found")
             return "No relevant documentation found."
             
+        # Log the result count
+        print(f"[PYDANTIC RESULT] Found {len(result.data)} matching documents")
+        
         # Format the results
         formatted_chunks = []
         for doc in result.data:
@@ -340,18 +351,32 @@ async def list_documentation_pages_helper(supabase: Client) -> List[str]:
         List[str]: List of unique URLs for all documentation pages
     """
     try:
+        # Log the query
+        print(f"[PYDANTIC QUERY] Getting document URLs with filter: metadata->>source=pydantic_ai_docs")
+        
         # Query Supabase for unique URLs where source is pydantic_ai_docs
         result = supabase.from_('site_pages') \
             .select('url') \
             .eq('metadata->>source', 'pydantic_ai_docs') \
             .execute()
         
-        if not result.data:
+        if hasattr(result, 'error') and result.error is not None:
+            print(f"[PYDANTIC ERROR] Error querying database: {result.error}")
             return []
             
+        if not result.data:
+            print("[PYDANTIC RESULT] No documentation pages found")
+            return []
+        
         # Extract unique URLs
-        urls = sorted(set(doc['url'] for doc in result.data))
-        return urls
+        urls = set()
+        for item in result.data:
+            urls.add(item["url"])
+        
+        # Log the result count
+        print(f"[PYDANTIC RESULT] Found {len(urls)} unique documentation URLs")
+        
+        return list(urls)
         
     except Exception as e:
         print(f"Error retrieving documentation pages: {e}")

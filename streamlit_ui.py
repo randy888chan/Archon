@@ -1,7 +1,13 @@
 from __future__ import annotations
+
+import logging
 from typing import Literal, TypedDict
 from langgraph.types import Command
 import os
+
+# Set up HTTP request logging to show database queries
+logging.basicConfig(level=logging.INFO)
+logging.getLogger("httpx").setLevel(logging.INFO)
 
 import streamlit as st
 import logfire
@@ -222,8 +228,11 @@ async def run_agent_with_streaming(user_input: str, agent_type: str = ""):
         yield "Please select an agent type first."
         return
         
-    # Log which agent type is being used
-    print(f"Starting agent with type: {agent_type}")
+    # Enhanced logging for agent initialization
+    print(f"\n====================================================")
+    print(f"[AGENT INITIALIZATION] Starting agent with type: {agent_type}")
+    print(f"[AGENT INITIALIZATION] User input: {user_input[:50]}...")
+    print(f"====================================================\n")
     
     config = {
         "configurable": {

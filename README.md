@@ -232,3 +232,16 @@ For version-specific details:
 - [V2 Documentation](iterations/v2-agentic-workflow/README.md)
 - [V3 Documentation](iterations/v3-mcp-support/README.md)
 - [V4 Documentation](iterations/v4-streamlit-ui-overhaul/README.md)
+
+## Creating New Agents
+
+Archon supports the creation of custom agents that can access different documentation sources. If you want to create a new specialized agent (beyond the existing Pydantic AI and Supabase agents), we've provided a detailed guide and templates to help you.
+
+Check out the [NEW_AGENT_GUIDE.md](docs/NEW_AGENT_GUIDE.md) in the `docs` directory for step-by-step instructions on:
+
+- Creating an agent implementation
+- Setting up a documentation crawler
+- Integrating with the Archon Graph
+- Adding your agent to the UI
+
+The `docs/agent_template/` directory contains template files you can use as a starting point for your own agents.

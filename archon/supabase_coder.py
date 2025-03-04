@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from dotenv import load_dotenv
 import logfire
 import asyncio
-import httpx
 import os
 import sys
 import json
@@ -155,6 +154,9 @@ async def retrieve_relevant_documentation(ctx: RunContext[SupabaseDeps], user_qu
         # Generate embedding for the query
         query_embedding = await get_embedding(user_query, ctx.deps.openai_client)
         
+        # Log the database query details
+        print(f"[SUPABASE QUERY] Searching for documentation with filter: {{\"source\": \"supabase_docs\"}}")
+        
         # Search for related documentation
         result = ctx.deps.supabase.rpc(
             "match_site_pages",
@@ -166,7 +168,11 @@ async def retrieve_relevant_documentation(ctx: RunContext[SupabaseDeps], user_qu
         ).execute()
         
         if hasattr(result, 'error') and result.error is not None:
+            print(f"[SUPABASE ERROR] Error querying database: {result.error}")
             return f"Error querying database: {result.error}"
+        
+        # Log the result count
+        print(f"[SUPABASE RESULT] Found {len(result.data if result.data else [])} matching documents")
         
         # Process the results
         if not result.data or len(result.data) == 0:
@@ -193,6 +199,9 @@ async def retrieve_relevant_documentation(ctx: RunContext[SupabaseDeps], user_qu
 async def list_documentation_pages_helper(supabase: Client) -> List[str]:
     """Helper function to list all Supabase documentation pages."""
     try:
+        # Log the query
+        print(f"[SUPABASE QUERY] Getting document URLs with filter: metadata->>source=supabase_docs")
+        
         # Get distinct URLs for Supabase docs
         result = supabase.table("site_pages") \
             .select("url") \
@@ -200,13 +209,16 @@ async def list_documentation_pages_helper(supabase: Client) -> List[str]:
             .execute()
         
         if hasattr(result, 'error') and result.error is not None:
-            print(f"Error querying database: {result.error}")
+            print(f"[SUPABASE ERROR] Error querying database: {result.error}")
             return []
         
         # Extract unique URLs
         urls = set()
         for item in result.data:
             urls.add(item["url"])
+        
+        # Log the result count
+        print(f"[SUPABASE RESULT] Found {len(urls)} unique documentation URLs")
         
         return sorted(list(urls))
     

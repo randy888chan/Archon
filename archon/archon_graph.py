@@ -93,21 +93,27 @@ async def define_scope_with_reasoner(state: AgentState):
     # Get the agent type from the state
     agent_type = state.get('agent_type', 'Pydantic AI Agent')
     
-    # Print for debugging
-    print(f"Using agent type: {agent_type}")
+    # Enhanced logging
+    print(f"\n====================================================")
+    print(f"[AGENT SELECTION] Using agent type: {agent_type}")
+    print(f"====================================================\n")
     
     # First, get the documentation pages so the reasoner can decide which ones are necessary
     documentation_pages = []
     
     if agent_type == "Pydantic AI Agent":
         # Get Pydantic AI documentation pages
+        print(f"[DOCUMENTATION] Retrieving Pydantic AI documentation pages")
         documentation_pages = await list_documentation_pages_helper(supabase)
         source_filter = "pydantic_ai_docs"
+        print(f"[DOCUMENTATION] Using source filter: {source_filter}")
     else:  # Supabase Agent
         # Get Supabase documentation pages
+        print(f"[DOCUMENTATION] Retrieving Supabase documentation pages")
         from archon.supabase_coder import list_documentation_pages_helper as supabase_list_docs
         documentation_pages = await supabase_list_docs(supabase)
         source_filter = "supabase_docs"
+        print(f"[DOCUMENTATION] Using source filter: {source_filter}")
         
     documentation_pages_str = "\n".join(documentation_pages)
 
