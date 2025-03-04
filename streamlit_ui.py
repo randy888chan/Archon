@@ -207,14 +207,19 @@ def get_thread_id():
 
 thread_id = get_thread_id()
 
-async def run_agent_with_streaming(user_input: str):
+async def run_agent_with_streaming(user_input: str, agent_type: str = "Pydantic AI Agent"):
     """
     Run the agent with streaming text for the user_input prompt,
     while maintaining the entire conversation in `st.session_state.messages`.
+    
+    Args:
+        user_input: The user's input message
+        agent_type: The type of agent to use (Pydantic AI Agent or Supabase Agent)
     """
     config = {
         "configurable": {
-            "thread_id": thread_id
+            "thread_id": thread_id,
+            "agent_type": agent_type  # Pass the agent type to the graph
         }
     }
 
@@ -374,12 +379,52 @@ def mcp_tab():
 
 async def chat_tab():
     """Display the chat interface for talking to Archon"""
-    st.write("Describe to me an AI agent you want to build and I'll code it for you with Pydantic AI.")
-    st.write("Example: Build me an AI agent that can search the web with the Brave API.")
-
-    # Initialize chat history in session state if not present
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
+    # Add agent selection
+    agent_options = ["Pydantic AI Agent", "Supabase Agent"]
+    
+    # Create a container for the agent selection UI
+    agent_selection_container = st.container()
+    
+    with agent_selection_container:
+        # Create columns for the agent selection
+        col1, col2 = st.columns([3, 1])
+        
+        with col1:
+            # Add description based on the selected agent
+            if "selected_agent" not in st.session_state:
+                st.session_state.selected_agent = agent_options[0]
+            
+            if st.session_state.selected_agent == "Pydantic AI Agent":
+                st.write("Describe to me an AI agent you want to build and I'll code it for you with Pydantic AI.")
+                st.write("Example: Build me an AI agent that can search the web with the Brave API.")
+            elif st.session_state.selected_agent == "Supabase Agent":
+                st.write("Describe a Supabase application you want to build and I'll code it for you.")
+                st.write("Example: Build me a user authentication system with Supabase and Next.js.")
+        
+        with col2:
+            # Add agent selection dropdown
+            selected_agent = st.selectbox(
+                "Select Agent",
+                agent_options,
+                index=agent_options.index(st.session_state.selected_agent) if "selected_agent" in st.session_state else 0,
+                key="agent_selector"
+            )
+            
+            # Update session state when selection changes
+            if "selected_agent" not in st.session_state or st.session_state.selected_agent != selected_agent:
+                st.session_state.selected_agent = selected_agent
+                # Clear messages when switching agents
+                if "messages" in st.session_state:
+                    st.session_state.messages = []
+                st.rerun()
+    
+    # Initialize chat history for the selected agent in session state if not present
+    agent_key = "messages_" + st.session_state.selected_agent.lower().replace(" ", "_")
+    if agent_key not in st.session_state:
+        st.session_state[agent_key] = []
+    
+    # Set the current messages based on the selected agent
+    st.session_state.messages = st.session_state[agent_key]
 
     # Display chat messages from history on app rerun
     for message in st.session_state.messages:
@@ -389,11 +434,13 @@ async def chat_tab():
                 st.markdown(message["content"])    
 
     # Chat input for the user
-    user_input = st.chat_input("What do you want to build today?")
+    user_input = st.chat_input(f"What do you want to build with {st.session_state.selected_agent}?")
 
     if user_input:
         # We append a new request to the conversation explicitly
         st.session_state.messages.append({"type": "human", "content": user_input})
+        # Also update the agent-specific message history
+        st.session_state[agent_key] = st.session_state.messages
         
         # Display user prompt in the UI
         with st.chat_message("user"):
@@ -404,12 +451,14 @@ async def chat_tab():
         with st.chat_message("assistant"):
             message_placeholder = st.empty()  # Placeholder for updating the message
             # Run the async generator to fetch responses
-            async for chunk in run_agent_with_streaming(user_input):
+            async for chunk in run_agent_with_streaming(user_input, st.session_state.selected_agent):
                 response_content += chunk
                 # Update the placeholder with the current response content
                 message_placeholder.markdown(response_content)
         
         st.session_state.messages.append({"type": "ai", "content": response_content})
+        # Also update the agent-specific message history
+        st.session_state[agent_key] = st.session_state.messages
 
 def intro_tab():
     """Display the introduction and setup guide for Archon"""
@@ -549,7 +598,7 @@ def documentation_tab():
     st.header("Documentation")
     
     # Create tabs for different documentation sources
-    doc_tabs = st.tabs(["Pydantic AI Docs", "Future Sources"])
+    doc_tabs = st.tabs(["Pydantic AI Docs", "Supabase Docs", "Future Sources"])
     
     with doc_tabs[0]:
         st.subheader("Pydantic AI Documentation")
@@ -649,60 +698,273 @@ def documentation_tab():
                     if status:
                         col1.metric("URLs Found", status["urls_found"])
                         col2.metric("URLs Processed", status["urls_processed"])
-                        col3.metric("Successful", status["urls_succeeded"])
-                        col4.metric("Failed", status["urls_failed"])
-                    else:
-                        col1.metric("URLs Found", 0)
-                        col2.metric("URLs Processed", 0)
-                        col3.metric("Successful", 0)
-                        col4.metric("Failed", 0)
+                        col3.metric("Chunks Stored", status["chunks_stored"])
+                        col4.metric("Progress", f"{status['progress_percentage']:.1f}%")
                     
-                    # Display logs in an expander
-                    with st.expander("Crawling Logs", expanded=True):
-                        if status and "logs" in status:
-                            logs_text = "\n".join(status["logs"][-20:])  # Show last 20 logs
-                            st.code(logs_text)
-                        else:
-                            st.code("No logs available yet...")
-                    
-                    # Show completion message
-                    if status and not status["is_running"] and status["end_time"]:
-                        if status["urls_failed"] == 0:
-                            st.success("✅ Crawling process completed successfully!")
-                        else:
-                            st.warning(f"⚠️ Crawling process completed with {status['urls_failed']} failed URLs.")
-                
-                # Auto-refresh while crawling is in progress
-                if not status or status["is_running"]:
-                    st.rerun()
-        
-        # Display database statistics
-        st.subheader("Database Statistics")
-        try:
-            # Connect to Supabase
-            from supabase import create_client
-            supabase_client = create_client(supabase_url, supabase_key)
-            
-            # Query the count of Pydantic AI docs
-            result = supabase_client.table("site_pages").select("count", count="exact").eq("metadata->>source", "pydantic_ai_docs").execute()
-            count = result.count if hasattr(result, "count") else 0
-            
-            # Display the count
-            st.metric("Pydantic AI Docs Chunks", count)
-            
-            # Add a button to view the data
-            if count > 0 and st.button("View Indexed Data", key="view_pydantic_data"):
-                # Query a sample of the data
-                sample_data = supabase_client.table("site_pages").select("url,title,summary,chunk_number").eq("metadata->>source", "pydantic_ai_docs").limit(10).execute()
-                
-                # Display the sample data
-                st.dataframe(sample_data.data)
-                st.info("Showing up to 10 sample records. The database contains more records.")
-        except Exception as e:
-            st.error(f"Error querying database: {str(e)}")
-    
+                    # Display logs
+                    if status and status["logs"]:
+                        st.subheader("Crawl Logs")
+                        log_text = "\n".join(status["logs"][-10:])  # Show last 10 logs
+                        st.text_area("Recent Logs", log_text, height=200, disabled=True)
+
     with doc_tabs[1]:
-        st.info("Additional documentation sources will be available in future updates.")
+        st.subheader("Supabase Documentation")
+        st.markdown("""
+        This section allows you to crawl and index the Supabase documentation.
+        The crawler will:
+        
+        1. Fetch URLs from the Supabase sitemap
+        2. Crawl each page and extract content
+        3. Split content into chunks
+        4. Generate embeddings for each chunk
+        5. Store the chunks in the Supabase database
+        
+        This process may take several minutes depending on the number of pages.
+        """)
+        
+        # Check if the database is configured
+        supabase_url = get_env_var("SUPABASE_URL")
+        supabase_key = get_env_var("SUPABASE_SERVICE_KEY")
+        
+        if not supabase_url or not supabase_key:
+            st.warning("⚠️ Supabase is not configured. Please set up your environment variables first.")
+            create_new_tab_button("Go to Environment Section", "Environment", key="goto_env_from_supabase_docs")
+        else:
+            # Initialize session state for Supabase crawl if not already done
+            if "supabase_crawl_tracker" not in st.session_state:
+                st.session_state.supabase_crawl_tracker = None
+            if "supabase_crawl_status" not in st.session_state:
+                st.session_state.supabase_crawl_status = None
+            if "supabase_last_update_time" not in st.session_state:
+                st.session_state.supabase_last_update_time = time.time()
+            if "supabase_crawl_complete" not in st.session_state:
+                st.session_state.supabase_crawl_complete = False
+            
+            # Create columns for the buttons
+            col1, col2, col3 = st.columns(3)
+            
+            # Add a slider for URL limit
+            url_limit = st.slider(
+                "Maximum URLs to crawl", 
+                min_value=10, 
+                max_value=500, 
+                value=50, 
+                step=10,
+                help="Set to control how many URLs to crawl. Higher values will take longer but provide more comprehensive documentation."
+            )
+            
+            with col1:
+                # Button to start crawling
+                is_crawling = (st.session_state.supabase_crawl_tracker and 
+                             (st.session_state.supabase_crawl_tracker.is_running or 
+                              st.session_state.supabase_crawl_tracker.is_stopping))
+                
+                crawl_button = st.button("Crawl Supabase Docs", key="crawl_supabase")
+                
+                if crawl_button and not is_crawling:
+                    try:
+                        # Import the progress tracker
+                        from archon.crawl_supabase_docs import start_crawl_with_requests
+                        
+                        # Define a callback function to update the session state
+                        def update_supabase_progress(status):
+                            print(f"Progress callback received: URLs found={status.get('urls_found')}, processed={status.get('urls_processed')}")
+                            
+                            # Always update session state
+                            st.session_state.supabase_crawl_status = status
+                            
+                            # Force a rerun on certain conditions to ensure UI updates
+                            if (status.get("urls_found", 0) > 0 or 
+                                status.get("urls_processed", 0) > 0 or 
+                                status.get("is_stopping", False) or 
+                                not status.get("is_running", True)):
+                                print("Forcing UI rerun due to significant status change")
+                                # Only rerun if we're not already in a rerun
+                                if not st.session_state.get("currently_rerunning", False):
+                                    st.session_state.currently_rerunning = True
+                                    st.rerun()
+                        
+                        # Start the crawling process in a separate thread with the specified URL limit
+                        print(f"Starting crawler with URL limit {url_limit}")
+                        st.session_state.supabase_crawl_tracker = start_crawl_with_requests(
+                            update_supabase_progress, 
+                            url_limit=url_limit
+                        )
+                        
+                        # Initialize session state variables
+                        st.session_state.supabase_crawl_status = st.session_state.supabase_crawl_tracker.get_status()
+                        st.session_state.supabase_last_update_time = time.time()
+                        st.session_state.supabase_crawl_complete = False
+                        st.session_state.last_forced_rerun_time = time.time()
+                        st.session_state.currently_rerunning = False
+                        
+                        # Force a rerun to start showing progress
+                        print("Initial UI rerun after starting crawler")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"❌ Error starting Supabase crawl: {str(e)}")
+                        print(f"Error starting crawler: {str(e)}")
+            
+            with col2:
+                # Button to clear existing Supabase docs
+                if st.button("Clear Supabase Docs", key="clear_supabase"):
+                    with st.spinner("Clearing existing Supabase docs..."):
+                        try:
+                            # Import the function to clear records
+                            from archon.crawl_supabase_docs import clear_existing_records
+                            
+                            # Create a synchronous wrapper function
+                            def sync_clear_records():
+                                import asyncio
+                                loop = asyncio.new_event_loop()
+                                asyncio.set_event_loop(loop)
+                                result = loop.run_until_complete(clear_existing_records())
+                                loop.close()
+                                return result
+                            
+                            # Run the function in a thread to avoid blocking the UI
+                            import threading
+                            thread = threading.Thread(target=sync_clear_records)
+                            thread.start()
+                            thread.join()  # Wait for completion
+                            
+                            st.success("✅ Successfully cleared existing Supabase docs from the database.")
+                            
+                            # Force a rerun to update the UI
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"❌ Error clearing Supabase docs: {str(e)}")
+            
+            with col3:
+                # Button for test crawl (a single page)
+                test_button = st.button("Test Crawl (Single Page)", key="test_supabase_crawl")
+                
+                if test_button and not is_crawling:
+                    try:
+                        # Import the test crawler
+                        from archon.crawl_supabase_docs import start_test_crawler
+                        
+                        # Define a callback function to update the session state
+                        def update_supabase_progress(status):
+                            st.session_state.supabase_crawl_status = status
+                        
+                        # Start the test crawling process in a separate thread
+                        st.session_state.supabase_crawl_tracker = start_test_crawler(update_supabase_progress)
+                        st.session_state.supabase_crawl_status = st.session_state.supabase_crawl_tracker.get_status()
+                        st.session_state.supabase_last_update_time = time.time()
+                        
+                        # Force a rerun to start showing progress
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"❌ Error starting test crawl: {str(e)}")
+            
+            # Update the status if a crawl is in progress
+            if st.session_state.supabase_crawl_tracker:
+                current_time = time.time()
+                # Get current status
+                status = st.session_state.supabase_crawl_tracker.get_status()
+                
+                # Auto-clear completed crawls that haven't been manually cleared after 2 seconds
+                if (not status["is_running"] and 
+                    status.get("end_time") is not None and 
+                    not st.session_state.get("supabase_crawl_complete", False)):
+                    # Mark as complete in the session state
+                    st.session_state.supabase_crawl_complete = True
+                    # Force a final UI update
+                    st.rerun()
+                    
+                # Update session state with latest status
+                st.session_state.supabase_crawl_status = status
+                
+            # Show crawl progress if a crawl is in progress or has completed
+            if st.session_state.get("supabase_crawl_status"):
+                status = st.session_state.supabase_crawl_status
+                
+                # Force a periodic rerun every 2 seconds while crawling is active
+                if status.get("is_running", False):
+                    current_time = time.time()
+                    if "last_forced_rerun_time" not in st.session_state:
+                        st.session_state.last_forced_rerun_time = current_time
+                    
+                    # Force a rerun every 2 seconds
+                    if current_time - st.session_state.last_forced_rerun_time > 2:
+                        st.session_state.last_forced_rerun_time = current_time
+                        st.rerun()
+                
+                # Create a progress bar
+                progress = st.progress(status.get("progress_percentage", 0) / 100)
+                
+                # Display crawl statistics
+                col1, col2, col3, col4 = st.columns(4)
+                with col1:
+                    st.metric("URLs Found", status.get("urls_found", 0))
+                with col2:
+                    st.metric("URLs Processed", status.get("urls_processed", 0))
+                with col3:
+                    st.metric("Successes", status.get("urls_succeeded", 0))
+                with col4:
+                    st.metric("Failures", status.get("urls_failed", 0))
+                
+                # Show appropriate status messages based on the crawl state
+                if status.get("is_stopping", False):
+                    st.warning("⏳ Crawl is stopping... Please wait for current tasks to complete.")
+                elif not status.get("is_running", True) and status.get("end_time"):
+                    if status.get("urls_succeeded", 0) > 0:
+                        st.success(f"✅ Crawl completed! Processed {status.get('urls_processed', 0)} URLs and stored {status.get('chunks_stored', 0)} chunks.")
+                    else:
+                        st.error("❌ Crawl completed but no documents were successfully processed.")
+                elif status.get("is_running", False):
+                    if status.get("urls_processed", 0) > 0:
+                        st.info(f"⏳ Crawling in progress... ({status.get('urls_processed', 0)}/{status.get('urls_found', 0)} URLs processed)")
+                    else:
+                        st.info("🔍 Preparing to crawl...")
+                
+                # Display a stop button ONLY if the crawl is still running
+                if status.get("is_running", False) and not status.get("is_stopping", False):
+                    stop_col, _ = st.columns([1, 3])
+                    with stop_col:
+                        stop_button = st.button("⚠️ Stop Crawling", key="stop_supabase_crawl")
+                        if stop_button:
+                            print("Stop button clicked")
+                            if st.session_state.get("supabase_crawl_tracker"):
+                                # Set the stop flag on the tracker
+                                st.session_state.supabase_crawl_tracker.stop()
+                                print("Tracker stop() called")
+                                
+                                # Force an immediate update to the UI
+                                st.session_state.supabase_crawl_status = st.session_state.supabase_crawl_tracker.get_status()
+                                st.info("Stopping the crawl process... This may take a moment as current tasks complete.")
+                                print("Stop message displayed")
+                                
+                                # Force an immediate rerun to update UI
+                                st.rerun()
+                # Only show the clear button when crawling is complete
+                elif not status.get("is_running", True):
+                    clear_col, _ = st.columns([1, 3])
+                    with clear_col:
+                        if st.button("Clear Status", key="clear_supabase_status"):
+                            print("Clear status button clicked")
+                            # Reset the crawl tracker and status
+                            st.session_state.supabase_crawl_tracker = None
+                            st.session_state.supabase_crawl_status = None
+                            st.session_state.supabase_crawl_complete = False
+                            print("Session state cleared")
+                            st.rerun()
+                
+                # Display crawl logs (most recent first)
+                logs_expander = st.expander("Show Crawl Logs", expanded=True)
+                with logs_expander:
+                    logs = status.get("logs", [])
+                    if logs:
+                        st.code("\n".join(logs[::-1]))
+                    else:
+                        st.text("No logs yet")
+
+    with doc_tabs[2]:
+        st.subheader("Future Documentation Sources")
+        st.markdown("""
+        Additional documentation sources will be added in future updates.
+        """)
 
 @st.cache_data
 def load_sql_template():
