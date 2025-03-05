@@ -29,8 +29,13 @@ from dotenv import load_dotenv
 from utils.utils import get_env_var, save_env_var, write_to_log
 from future_enhancements import future_enhancements_tab
 from threading import Lock
-from archon.crawl_pydantic_ai_docs import start_crawl_with_requests as start_pydantic_crawl
-from archon.crawl_pydantic_ai_docs import clear_existing_records as clear_pydantic_records
+# Import all Pydantic AI crawler functions in one place
+from archon.crawl_pydantic_ai_docs import (
+    start_crawl_with_requests as start_pydantic_crawl,
+    start_crawl_with_crawl4ai as start_pydantic_crawl4ai,
+    clear_existing_records as clear_pydantic_records,
+    start_test_crawler as start_pydantic_test_crawler
+)
 # Import all Supabase crawler functions in one place to avoid conflicts
 from archon.crawl_supabase_docs import (
     start_crawl_with_requests, 
@@ -680,19 +685,52 @@ def documentation_tab():
             if "last_update_time" not in st.session_state:
                 st.session_state.last_update_time = time.time()
             
+            # Add a slider for URL limit
+            url_limit = st.slider(
+                "Maximum URLs to crawl (Pydantic)", 
+                min_value=10, 
+                max_value=500, 
+                value=50, 
+                step=10,
+                help="Set to control how many URLs to crawl. Higher values will take longer but provide more comprehensive documentation.",
+                key="pydantic_url_limit"
+            )
+            
+            # Add a radio button to select the crawler method
+            crawler_method = st.radio(
+                "Crawler Method (Pydantic)",
+                ["Requests (Basic)", "Crawl4AI (Advanced)"],
+                help="Select the method to use for crawling. Crawl4AI provides better content extraction but requires the Crawl4AI package.",
+                key="pydantic_crawler_method"
+            )
+            
             # Create columns for the buttons
-            col1, col2 = st.columns(2)
+            col1, col2, col3 = st.columns(3)
             
             with col1:
                 # Button to start crawling
-                if st.button("Crawl Pydantic AI Docs", key="crawl_pydantic") and not (st.session_state.crawl_tracker and st.session_state.crawl_tracker.is_running):
+                is_crawling = (st.session_state.crawl_tracker and 
+                             (st.session_state.crawl_tracker.is_running))
+                
+                if st.button("Crawl Pydantic AI Docs", key="crawl_pydantic") and not is_crawling:
                     try:
                         # Define a callback function to update the session state
                         def update_progress(status):
                             st.session_state.crawl_status = status
                         
-                        # Start the crawling process in a separate thread
-                        st.session_state.crawl_tracker = start_pydantic_crawl(update_progress)
+                        # Start the crawling process based on selected method
+                        if crawler_method == "Crawl4AI (Advanced)":
+                            st.session_state.crawl_tracker = start_pydantic_crawl4ai(
+                                update_progress,
+                                url_limit=url_limit
+                            )
+                            st.info("Using Crawl4AI for enhanced content extraction")
+                        else:
+                            st.session_state.crawl_tracker = start_pydantic_crawl(
+                                update_progress,
+                                url_limit=url_limit
+                            )
+                        
                         st.session_state.crawl_status = st.session_state.crawl_tracker.get_status()
                         
                         # Force a rerun to start showing progress
@@ -705,14 +743,58 @@ def documentation_tab():
                 if st.button("Clear Pydantic AI Docs", key="clear_pydantic"):
                     with st.spinner("Clearing existing Pydantic AI docs..."):
                         try:
-                            # Run the function to clear records
-                            asyncio.run(clear_pydantic_records())
-                            st.success("✅ Successfully cleared existing Pydantic AI docs from the database.")
+                            # Create a synchronous wrapper function
+                            def sync_clear_pydantic_records():
+                                import asyncio
+                                loop = asyncio.new_event_loop()
+                                asyncio.set_event_loop(loop)
+                                result = loop.run_until_complete(clear_pydantic_records())
+                                loop.close()
+                                return result
                             
-                            # Force a rerun to update the UI
-                            st.rerun()
+                            # Run the function in a thread to avoid blocking the UI
+                            import threading
+                            result = None
+                            
+                            def run_in_thread():
+                                nonlocal result
+                                result = sync_clear_pydantic_records()
+                            
+                            thread = threading.Thread(target=run_in_thread)
+                            thread.start()
+                            thread.join()  # Wait for completion
+                            
+                            # Check if there was an error
+                            if isinstance(result, dict) and "error" in result:
+                                st.error(f"❌ Error clearing Pydantic AI docs: {result['error']}")
+                            else:
+                                st.success("✅ Successfully cleared existing Pydantic AI docs from the database.")
+                                # Force a rerun to update the UI
+                                st.rerun()
                         except Exception as e:
+                            import traceback
+                            traceback.print_exc()
                             st.error(f"❌ Error clearing Pydantic AI docs: {str(e)}")
+            
+            with col3:
+                # Button for test crawl (a single page)
+                test_button = st.button("Test Crawl (Single Page)", key="test_pydantic_crawl")
+                
+                if test_button and not is_crawling:
+                    try:
+                        # Define a callback function to update the session state
+                        def update_test_crawler_progress(status):
+                            st.session_state.crawl_status = status
+                        
+                        # Start the test crawling process in a separate thread
+                        st.session_state.crawl_tracker = start_pydantic_test_crawler(update_test_crawler_progress)
+                        st.session_state.crawl_status = st.session_state.crawl_tracker.get_status()
+                        st.session_state.last_update_time = time.time()
+                        
+                        # Force a rerun to start showing progress
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"❌ Error starting test crawl: {str(e)}")
             
             # Display crawling progress if a crawl is in progress or has completed
             if st.session_state.crawl_tracker:
@@ -739,14 +821,63 @@ def documentation_tab():
                     if status:
                         col1.metric("URLs Found", status["urls_found"])
                         col2.metric("URLs Processed", status["urls_processed"])
-                        col3.metric("Chunks Stored", status["chunks_stored"])
-                        col4.metric("Progress", f"{status['progress_percentage']:.1f}%")
+                        col3.metric("Successes", status.get("urls_succeeded", 0))
+                        col4.metric("Failures", status.get("urls_failed", 0))
+                    
+                    # Determine crawler state
+                    is_running = status.get("is_running", True)
+                    has_ended = status.get("end_time") is not None
+                    is_stopping = status.get("stop_requested", False)
+                    
+                    # Display appropriate message
+                    if is_stopping:
+                        st.warning("⏳ Crawl is stopping... Please wait.")
+                    elif not is_running and has_ended:
+                        if status.get("urls_succeeded", 0) > 0:
+                            st.success(f"✅ Crawl completed! Processed {status.get('urls_processed', 0)} URLs and stored {status.get('chunks_stored', 0)} chunks.")
+                        else:
+                            st.error("❌ Crawl completed but no documents were processed.")
+                    else:
+                        if status.get("urls_processed", 0) > 0:
+                            st.info(f"⏳ Crawling in progress... ({status.get('urls_processed', 0)}/{status.get('urls_found', 0)} URLs processed)")
+                        else:
+                            st.info("🔍 Preparing to crawl...")
+                    
+                    # Create a row of buttons for all possible actions
+                    button_cols = st.columns([1, 1, 1])
+                    
+                    # First column: Check Status button (always visible when crawler is running)
+                    with button_cols[0]:
+                        if is_running or is_stopping:
+                            if st.button("🔄 Check Status", key="check_pydantic_status"):
+                                # Manually get the latest status
+                                current_status = st.session_state.crawl_tracker.get_status()
+                                st.session_state.crawl_status = current_status
+                                st.rerun()
+                    
+                    # Second column: Stop button (only visible when crawler is running)
+                    with button_cols[1]:
+                        if is_running and not is_stopping:
+                            if st.button("⏹️ Stop Crawl", key="stop_pydantic_crawl"):
+                                if st.session_state.crawl_tracker:
+                                    st.session_state.crawl_tracker.stop()
+                                    st.session_state.crawl_status = st.session_state.crawl_tracker.get_status()
+                                    st.rerun()
+                    
+                    # Third column: Clear Status button (only visible when crawler is not running)
+                    with button_cols[2]:
+                        if not is_running and has_ended:
+                            if st.button("🗑️ Clear Status", key="clear_pydantic_status"):
+                                # Clear the crawler status
+                                st.session_state.crawl_tracker = None
+                                st.session_state.crawl_status = None
+                                st.rerun()
                     
                     # Display logs
                     if status and status["logs"]:
                         st.subheader("Crawl Logs")
                         log_text = "\n".join(status["logs"][-10:])  # Show last 10 logs
-                        st.text_area("Recent Logs", log_text, height=200, disabled=True)
+                        st.text_area("Recent Logs", log_text, height=200, disabled=True, key="pydantic_logs")
 
     with doc_tabs[1]:
         st.subheader("Supabase Documentation")
@@ -862,15 +993,26 @@ def documentation_tab():
                             
                             # Run the function in a thread to avoid blocking the UI
                             import threading
-                            thread = threading.Thread(target=sync_clear_records)
+                            result = None
+                            
+                            def run_in_thread():
+                                nonlocal result
+                                result = sync_clear_records()
+                            
+                            thread = threading.Thread(target=run_in_thread)
                             thread.start()
                             thread.join()  # Wait for completion
                             
-                            st.success("✅ Successfully cleared existing Supabase docs from the database.")
-                            
-                            # Force a rerun to update the UI
-                            st.rerun()
+                            # Check if there was an error
+                            if isinstance(result, dict) and "error" in result:
+                                st.error(f"❌ Error clearing Supabase docs: {result['error']}")
+                            else:
+                                st.success("✅ Successfully cleared existing Supabase docs from the database.")
+                                # Force a rerun to update the UI
+                                st.rerun()
                         except Exception as e:
+                            import traceback
+                            traceback.print_exc()
                             st.error(f"❌ Error clearing Supabase docs: {str(e)}")
             
             with col3:
@@ -936,7 +1078,7 @@ def documentation_tab():
                         st.info("🔍 Preparing to crawl...")
                 
                 # Create a row of buttons for all possible actions
-                button_cols = st.columns([1, 1, 2])
+                button_cols = st.columns([1, 1, 1])
                 
                 # First column: Check Status button (always visible when crawler is running)
                 with button_cols[0]:

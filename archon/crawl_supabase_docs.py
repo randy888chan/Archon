@@ -671,12 +671,32 @@ def get_supabase_docs_urls(url_limit: int = 50) -> List[str]:
 async def clear_existing_records():
     """Clear existing Supabase docs records from the database."""
     try:
+        # Check if Supabase client is properly initialized
+        if not supabase:
+            error_msg = "Supabase client is not initialized"
+            print(error_msg)
+            return {"error": error_msg}
+        
+        # Check Supabase URL and key
+        supabase_url = get_env_var("SUPABASE_URL")
+        supabase_key = get_env_var("SUPABASE_SERVICE_KEY")
+        
+        if not supabase_url or not supabase_key:
+            error_msg = "Supabase URL or service key is missing"
+            print(error_msg)
+            return {"error": error_msg}
+        
+        # Execute the delete operation
+        print(f"Deleting records with metadata->>source=supabase_docs from site_pages table")
         result = supabase.table("site_pages").delete().eq("metadata->>source", "supabase_docs").execute()
-        print("Cleared existing Supabase docs records.")
-        return True
+        print(f"Cleared existing supabase_docs records from site_pages: {result}")
+        return result
     except Exception as e:
-        print(f"Error clearing existing records: {e}")
-        return False
+        error_msg = f"Error clearing existing records: {str(e)}"
+        print(error_msg)
+        import traceback
+        traceback.print_exc()
+        return {"error": error_msg}
 
 async def main_with_requests(tracker: Optional[CrawlProgressTracker] = None, url_limit: int = 50):
     """Main function to crawl and process Supabase docs.
