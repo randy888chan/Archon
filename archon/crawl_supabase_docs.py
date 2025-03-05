@@ -214,7 +214,7 @@ async def get_title_and_summary(chunk: str, url: str) -> Dict[str, str]:
     
     try:
         response = await openai_client.chat.completions.create(
-            model="gpt-4o-mini",  # Use a specific, known OpenAI model
+            model="gpt-4o-mini",  # Use a specific, known OpenAI model - this will have to change if needing to use PRIMARY_MODEL, because anthropic doesn't support response_format
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": f"URL: {url}\n\nContent:\n{chunk[:1000]}..."}  # Send first 1000 chars for context

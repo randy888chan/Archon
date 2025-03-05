@@ -5,12 +5,11 @@ import sys
 import asyncio
 import threading
 import subprocess
-import requests
 import json
 import re
 import time
 from typing import List, Dict, Any, Optional, Callable, Tuple
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urljoin
 from dotenv import load_dotenv
 from supabase import Client, create_client
 from openai import AsyncOpenAI
@@ -361,34 +360,85 @@ async def process_and_store_document(url: str, markdown: str, tracker: Optional[
         tracker.urls_succeeded += 1
         tracker.log(f"Successfully processed {url} ({chunk_number} chunks)")
 
-def fetch_url_content(url: str) -> str:
-    """Fetch content from a URL using requests.
+async def crawl_with_crawl4ai(url: str, tracker: Optional[CrawlProgressTracker] = None) -> str:
+    """Crawl a URL using crawl4ai.
     
     Args:
-        url: The URL to fetch
+        url: The URL to crawl
+        tracker: Optional progress tracker
     
     Returns:
         str: The content as markdown
     """
-    response = requests.get(url)
-    response.raise_for_status()
+    if tracker:
+        tracker.log(f"Crawling {url} with crawl4ai")
     
-    # Convert HTML to markdown
-    markdown = html_converter.handle(response.text)
+    # Configure the browser
+    browser_config = BrowserConfig(
+        headless=True,  # Run in headless mode
+        ignore_https_errors=True,  # Ignore HTTPS errors
+        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",  # Set a user agent
+        viewport={"width": 1280, "height": 800}  # Set viewport size
+    )
     
-    return markdown
+    # Configure the crawler
+    crawler_config = CrawlerRunConfig(
+        cache_mode=CacheMode.NEVER,  # Don't use cache
+        timeout=60000,  # 60 seconds timeout
+        wait_for_selector="body",  # Wait for body element to be available
+        wait_for_timeout=2000,  # Wait 2 seconds after page load
+        extract_text=True,  # Extract text
+        extract_html=True,  # Extract HTML
+        extract_links=True,  # Extract links
+        extract_title=True,  # Extract title
+        extract_metadata=True  # Extract metadata
+    )
+    
+    # Create the crawler
+    crawler = AsyncWebCrawler(browser_config=browser_config)
+    
+    try:
+        # Crawl the URL
+        result = await crawler.run(url, config=crawler_config)
+        
+        # Extract the content
+        html_content = result.html
+        
+        # Convert HTML to markdown
+        markdown = html_converter.handle(html_content)
+        
+        # Extract metadata
+        title = result.title
+        links = result.links
+        
+        if tracker:
+            tracker.log(f"Successfully crawled {url} (title: {title}, found {len(links)} links)")
+            
+            # Add found links to tracker for informational purposes
+            if links:
+                tracker.urls_found += len(links)
+        
+        return markdown
+        
+    except Exception as e:
+        if tracker:
+            tracker.log(f"Error crawling {url}: {str(e)}")
+        raise
+    finally:
+        # Close the crawler
+        await crawler.close()
 
-async def crawl_parallel_with_requests(urls: List[str], tracker: Optional[CrawlProgressTracker] = None, max_concurrent: int = 5):
-    """Crawl multiple URLs in parallel using requests.
+async def crawl_parallel_with_crawl4ai(urls: List[str], tracker: Optional[CrawlProgressTracker] = None, max_concurrent: int = 3):
+    """Crawl multiple URLs in parallel using crawl4ai.
     
     Args:
         urls: List of URLs to crawl
         tracker: Optional progress tracker
-        max_concurrent: Maximum number of concurrent requests
+        max_concurrent: Maximum number of concurrent crawlers
     """
     if tracker:
         tracker.urls_found = len(urls)
-        tracker.log(f"Starting to crawl {len(urls)} URLs with max {max_concurrent} concurrent requests")
+        tracker.log(f"Starting to crawl {len(urls)} URLs with max {max_concurrent} concurrent crawlers")
     
     async def process_url(url: str):
         # Check if we should stop
@@ -397,10 +447,10 @@ async def crawl_parallel_with_requests(urls: List[str], tracker: Optional[CrawlP
         
         try:
             if tracker:
-                tracker.log(f"Fetching {url}")
+                tracker.log(f"Processing {url}")
             
-            # Fetch the content
-            markdown = fetch_url_content(url)
+            # Crawl the URL
+            markdown = await crawl_with_crawl4ai(url, tracker)
             
             # Process and store the document
             await process_and_store_document(url, markdown, tracker)
@@ -413,7 +463,7 @@ async def crawl_parallel_with_requests(urls: List[str], tracker: Optional[CrawlP
             if tracker:
                 tracker.urls_processed += 1
     
-    # Create a semaphore to limit concurrent requests
+    # Create a semaphore to limit concurrent crawlers
     semaphore = asyncio.Semaphore(max_concurrent)
     
     async def limited_process_url(url):
@@ -440,6 +490,74 @@ def get_example_docs_urls() -> List[str]:
         # Add more URLs as needed
     ]
 
+async def discover_urls(start_url: str, max_urls: int = 50) -> List[str]:
+    """Discover URLs by crawling a starting URL and following links.
+    
+    Args:
+        start_url: The URL to start crawling from
+        max_urls: Maximum number of URLs to discover
+    
+    Returns:
+        List[str]: List of discovered URLs
+    """
+    discovered_urls = set([start_url])
+    to_crawl = [start_url]
+    
+    # Configure the browser
+    browser_config = BrowserConfig(
+        headless=True,
+        ignore_https_errors=True,
+        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+    )
+    
+    # Configure the crawler
+    crawler_config = CrawlerRunConfig(
+        cache_mode=CacheMode.NEVER,
+        timeout=30000,
+        extract_links=True
+    )
+    
+    # Create the crawler
+    crawler = AsyncWebCrawler(browser_config=browser_config)
+    
+    try:
+        while to_crawl and len(discovered_urls) < max_urls:
+            current_url = to_crawl.pop(0)
+            
+            try:
+                # Crawl the URL
+                result = await crawler.run(current_url, config=crawler_config)
+                
+                # Extract links
+                links = result.links or []
+                
+                # Process each link
+                for link in links:
+                    # Convert relative URLs to absolute
+                    absolute_link = urljoin(current_url, link)
+                    
+                    # Check if the link is within the documentation site
+                    if absolute_link.startswith(BASE_URL) and absolute_link not in discovered_urls:
+                        # Skip URLs that are likely not documentation pages
+                        if any(skip in absolute_link for skip in ['twitter.com', 'github.com', 'facebook.com']):
+                            continue
+                        
+                        discovered_urls.add(absolute_link)
+                        to_crawl.append(absolute_link)
+                        
+                        # Break if we've reached the maximum number of URLs
+                        if len(discovered_urls) >= max_urls:
+                            break
+                
+            except Exception as e:
+                print(f"Error discovering links from {current_url}: {str(e)}")
+    
+    finally:
+        # Close the crawler
+        await crawler.close()
+    
+    return list(discovered_urls)
+
 async def clear_existing_records():
     """Clear all existing records with source='example_docs' from the site_pages table."""
     try:
@@ -450,8 +568,8 @@ async def clear_existing_records():
         print(f"Error clearing records: {e}")
         return False
 
-async def main_with_requests(tracker: Optional[CrawlProgressTracker] = None):
-    """Main function to crawl documentation using requests.
+async def main_with_crawl4ai(tracker: Optional[CrawlProgressTracker] = None):
+    """Main function to crawl documentation using crawl4ai.
     
     Args:
         tracker: Optional progress tracker
@@ -459,7 +577,7 @@ async def main_with_requests(tracker: Optional[CrawlProgressTracker] = None):
     try:
         if tracker:
             tracker.start()
-            tracker.log("Starting example documentation crawler")
+            tracker.log("Starting example documentation crawler with crawl4ai")
         
         # Clear existing records
         await clear_existing_records()
@@ -468,10 +586,30 @@ async def main_with_requests(tracker: Optional[CrawlProgressTracker] = None):
         urls = get_example_docs_urls()
         
         if tracker:
-            tracker.log(f"Found {len(urls)} URLs to crawl")
+            tracker.log(f"Found {len(urls)} initial URLs to crawl")
+        
+        # Optionally discover more URLs
+        if len(urls) > 0 and len(urls) < 10:  # If we have few initial URLs, discover more
+            if tracker:
+                tracker.log(f"Discovering additional URLs from {urls[0]}")
+            
+            try:
+                discovered_urls = await discover_urls(urls[0], max_urls=50)
+                
+                # Add new URLs to the list
+                for url in discovered_urls:
+                    if url not in urls:
+                        urls.append(url)
+                
+                if tracker:
+                    tracker.log(f"Discovered {len(discovered_urls)} URLs, total to crawl: {len(urls)}")
+            
+            except Exception as e:
+                if tracker:
+                    tracker.log(f"Error discovering URLs: {str(e)}")
         
         # Crawl the URLs
-        await crawl_parallel_with_requests(urls, tracker)
+        await crawl_parallel_with_crawl4ai(urls, tracker)
         
         if tracker:
             tracker.log("Crawling completed successfully")
@@ -485,7 +623,7 @@ async def main_with_requests(tracker: Optional[CrawlProgressTracker] = None):
             tracker.complete()
         return False
 
-def start_crawl_with_requests(progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None) -> CrawlProgressTracker:
+def start_crawl_with_crawl4ai(progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None) -> CrawlProgressTracker:
     """Start the crawling process in a separate thread.
     
     Args:
@@ -499,7 +637,7 @@ def start_crawl_with_requests(progress_callback: Optional[Callable[[Dict[str, An
     
     # Define the function to run in a separate thread
     def run_crawl():
-        asyncio.run(main_with_requests(tracker))
+        asyncio.run(main_with_crawl4ai(tracker))
     
     # Start the thread
     thread = threading.Thread(target=run_crawl)
@@ -510,6 +648,6 @@ def start_crawl_with_requests(progress_callback: Optional[Callable[[Dict[str, An
 
 # CLI execution
 if __name__ == "__main__":
-    print("Starting Example documentation crawler...")
-    asyncio.run(main_with_requests())
+    print("Starting Example documentation crawler with crawl4ai...")
+    asyncio.run(main_with_crawl4ai())
     print("Crawling complete!") 
