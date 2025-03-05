@@ -2,24 +2,29 @@ import os
 import sys
 import asyncio
 import threading
-import subprocess
 import requests
 import json
-from typing import List, Dict, Any, Optional, Callable
+import time
+import html2text
+import re
+from typing import List, Dict, Any, Optional, Callable, Set
 from xml.etree import ElementTree
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from urllib.parse import urlparse
 from dotenv import load_dotenv
-import re
-import html2text
-import time
 
 # Add the parent directory to sys.path to allow importing from the parent directory
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.utils import get_env_var
 
-from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
+# Import Crawl4AI components for version 0.5.0
+try:
+    from crawl4ai import AsyncWebCrawler, BrowserConfig
+    # CrawlerRunConfig is no longer needed in v0.5.0
+except ImportError:
+    print("Warning: crawl4ai package not found. Crawl4AI functionality will not be available.")
+
 from openai import AsyncOpenAI
 from supabase import create_client, Client
 
@@ -50,6 +55,52 @@ html_converter.ignore_links = False
 html_converter.ignore_images = False
 html_converter.ignore_tables = False
 html_converter.body_width = 0  # No wrapping
+
+def clean_markdown_content(content: str) -> str:
+    """
+    Clean markdown content by removing artifacts that might confuse an AI model.
+    Focus on preserving semantic meaning rather than visual formatting.
+    
+    Args:
+        content: The markdown content to clean
+        
+    Returns:
+        str: The cleaned markdown content
+    """
+    if not content:
+        return content
+    
+    # Remove _NUMBER patterns (e.g., _10, _23) that appear as artifacts
+    cleaned = re.sub(r'_\d+\s+', ' ', content)
+    cleaned = re.sub(r'\s+_\d+', ' ', cleaned)
+    
+    # Remove line numbers at the beginning of lines that might confuse the AI
+    # This handles patterns like "1 -- Schema" or "34 --"
+    cleaned = re.sub(r'^\s*\d+\s+', '', cleaned, flags=re.MULTILINE)
+    
+    # Remove adjacent line numbers that might confuse the model (like "15 return secret_value; 16 end; 17")
+    cleaned = re.sub(r';\s*\d+\s+', '; ', cleaned)
+    cleaned = re.sub(r'\)\s*\d+\s+', ') ', cleaned)
+    
+    # Fix common code formatting issues that might confuse the model
+    cleaned = re.sub(r'(\d+)(\s+)(select|create|insert|update|delete|alter|drop)', r'\2\3', cleaned)
+    
+    # Ensure headers are properly formatted for the AI to recognize them
+    cleaned = re.sub(r'(#+)(\w)', r'\1 \2', cleaned)
+    
+    # Preserve important semantic markers like code blocks
+    # Make sure SQL code blocks are properly delimited
+    if '$$' in cleaned and not '```sql' in cleaned:
+        cleaned = re.sub(r'\$\$', r'```sql', cleaned, count=1)
+        cleaned = re.sub(r'\$\$', r'```', cleaned, count=1)
+        # Handle any remaining $$ pairs
+        cleaned = re.sub(r'\$\$', r'```sql', cleaned, count=1)
+        cleaned = re.sub(r'\$\$', r'```', cleaned, count=1)
+    
+    # Ensure proper spacing for list items so the AI recognizes them
+    cleaned = re.sub(r'(\*|\d+\.)\s*(\w)', r'\1 \2', cleaned)
+    
+    return cleaned.strip()
 
 @dataclass
 class ProcessedChunk:
@@ -84,12 +135,16 @@ class CrawlProgressTracker:
         self.last_activity_time = time.time()
     
     def update_activity(self):
-        """Update the last activity timestamp."""
+        """Update the last activity timestamp and call progress callback."""
         self.last_activity_time = time.time()
+        
+        # Call the progress callback if provided
+        if self.progress_callback:
+            self.progress_callback(self.get_status())
     
     def log(self, message: str):
         """Add a log message and update progress."""
-        self.update_activity()
+        self.last_activity_time = time.time()
         timestamp = datetime.now().strftime("%H:%M:%S")
         log_entry = f"[{timestamp}] {message}"
         self.logs.append(log_entry)
@@ -371,6 +426,9 @@ def fetch_url_content(url: str) -> str:
         
         # Convert HTML to Markdown
         markdown = html_converter.handle(response.text)
+        
+        # Clean the markdown content to remove artifacts
+        markdown = clean_markdown_content(markdown)
         
         return markdown
     except Exception as e:
@@ -933,5 +991,341 @@ def start_test_crawler(progress_callback: Optional[Callable[[Dict[str, Any]], No
     
     return tracker
 
+async def crawl_with_crawl4ai(url: str, tracker: Optional[CrawlProgressTracker] = None, max_retries: int = 3) -> str:
+    """
+    Crawl a URL using Crawl4AI and return the content as markdown.
+    
+    Args:
+        url: The URL to crawl
+        tracker: Optional progress tracker
+        max_retries: Maximum number of retry attempts
+        
+    Returns:
+        str: The content of the page as markdown
+    """
+    if tracker:
+        tracker.log(f"Crawling {url} with Crawl4AI")
+    
+    # Configure the browser
+    browser_config = BrowserConfig(
+        headless=True,
+        ignore_https_errors=True,
+        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+        viewport_width=1280,
+        viewport_height=800
+    )
+    
+    # Implement retry logic
+    for attempt in range(1, max_retries + 1):
+        try:
+            if attempt > 1 and tracker:
+                tracker.log(f"Retry attempt {attempt}/{max_retries} for {url}")
+            
+            # Use async with context manager pattern to ensure proper initialization and cleanup
+            async with AsyncWebCrawler(config=browser_config) as crawler:
+                # Use arun method which is the correct method in v0.5.0
+                result = await crawler.arun(url)
+                
+                # Extract content based on what's available in the result
+                content = ""
+                
+                # In v0.5.0, the result has a markdown property
+                if hasattr(result, 'markdown') and result.markdown:
+                    content = result.markdown
+                    if tracker:
+                        tracker.log(f"Got markdown content from {url} - {len(content)} characters")
+                elif hasattr(result, 'html') and result.html:
+                    if tracker:
+                        tracker.log(f"Converting HTML to markdown for {url}")
+                    h = html2text.HTML2Text()
+                    h.ignore_links = False
+                    h.ignore_images = False
+                    h.ignore_tables = False
+                    h.body_width = 0  # No wrapping
+                    content = h.handle(result.html)
+                elif hasattr(result, 'text') and result.text:
+                    if tracker:
+                        tracker.log(f"Using plain text content for {url}")
+                    content = result.text
+                
+                # Clean the content to remove artifacts
+                content = clean_markdown_content(content)
+                
+                if tracker:
+                    tracker.log(f"Cleaned content from {url} - {len(content)} characters")
+                
+                return content
+            
+        except Exception as e:
+            if tracker:
+                tracker.log(f"Error crawling {url} (attempt {attempt}/{max_retries}): {str(e)}")
+            
+            # If this is the last attempt, re-raise the exception
+            if attempt == max_retries:
+                if tracker:
+                    tracker.log(f"Failed to crawl {url} after {max_retries} attempts")
+                return ""
+            
+            # Wait before retrying
+            await asyncio.sleep(2)
+    
+    # This should never be reached due to the return in the loop
+    return ""
+
+async def crawl_parallel_with_crawl4ai(urls: List[str], tracker: Optional[CrawlProgressTracker] = None, max_concurrent: int = 3):
+    """
+    Crawl multiple URLs in parallel using Crawl4AI.
+    
+    Args:
+        urls: List of URLs to crawl
+        tracker: Optional progress tracker
+        max_concurrent: Maximum number of concurrent requests
+    """
+    if tracker:
+        tracker.log(f"Starting parallel crawl with Crawl4AI for {len(urls)} URLs (max {max_concurrent} concurrent)")
+    
+    # Create a semaphore to limit concurrent requests
+    semaphore = asyncio.Semaphore(max_concurrent)
+    
+    # Keep track of processed URLs to avoid duplicates
+    processed_urls = set()
+    
+    async def process_url(url: str):
+        # Check if we should stop
+        if tracker and tracker.is_stopping:
+            tracker.log(f"Skipping {url} as crawl was stopped")
+            return
+            
+        # Skip if already processed
+        if url in processed_urls:
+            if tracker:
+                tracker.log(f"Skipping already processed URL: {url}")
+            return
+            
+        processed_urls.add(url)
+        
+        try:
+            # Get the content using Crawl4AI
+            content = await crawl_with_crawl4ai(url, tracker, max_retries=3)
+            
+            if not content:
+                tracker.log(f"No content retrieved for {url}, skipping")
+                tracker.urls_failed += 1
+                tracker.urls_processed += 1  # Still count as processed
+                tracker.update_activity()
+                return
+                
+            # Process and store the document
+            await process_and_store_document(url, content, tracker)
+            
+            # Update the tracker
+            tracker.urls_succeeded += 1
+            tracker.urls_processed += 1
+            tracker.update_activity()
+            
+        except Exception as e:
+            error_msg = f"Error processing {url}: {str(e)}"
+            print(error_msg)
+            if tracker:
+                tracker.log(error_msg)
+                tracker.urls_failed += 1
+                tracker.urls_processed += 1  # Still count as processed
+                tracker.update_activity()
+    
+    async def limited_process_url(url):
+        async with semaphore:
+            await process_url(url)
+    
+    # Process all URLs concurrently with limited concurrency
+    tasks = [limited_process_url(url) for url in urls]
+    await asyncio.gather(*tasks, return_exceptions=True)  # Use return_exceptions to prevent one failure from stopping all
+
+async def main_with_crawl4ai(tracker: Optional[CrawlProgressTracker] = None, url_limit: int = 50):
+    """
+    Main function to crawl Supabase documentation using Crawl4AI.
+    
+    Args:
+        tracker: Optional progress tracker
+        url_limit: Maximum number of URLs to crawl
+    """
+    if tracker is None:
+        tracker = CrawlProgressTracker()
+    
+    # Start the tracker
+    tracker.start()
+    tracker.log(f"Starting Supabase documentation crawl with Crawl4AI (limit: {url_limit} URLs)")
+    
+    try:
+        # Check if Crawl4AI is available
+        if 'AsyncWebCrawler' not in globals():
+            error_msg = "Crawl4AI is not available. Please install it with 'pip install crawl4ai'"
+            tracker.log(error_msg)
+            tracker.stop()
+            return
+            
+        # Verify that AsyncWebCrawler has the arun method
+        try:
+            browser_config = BrowserConfig(
+                headless=True,
+                ignore_https_errors=True
+            )
+            
+            # Use async with context manager pattern to ensure proper initialization and cleanup
+            async with AsyncWebCrawler(config=browser_config) as test_crawler:
+                if not hasattr(test_crawler, 'arun'):
+                    error_msg = "The installed version of Crawl4AI doesn't have the 'arun' method. Please update to version 0.5.0 or later."
+                    tracker.log(error_msg)
+                    tracker.stop()
+                    return
+                
+            # Continue with the rest of the function
+            
+        except Exception as e:
+            error_msg = f"Error initializing Crawl4AI: {str(e)}"
+            tracker.log(error_msg)
+            tracker.stop()
+            return
+            
+        # Clear existing records
+        tracker.log("Clearing existing Supabase documentation records...")
+        try:
+            await clear_existing_records()
+            tracker.log("Existing records cleared successfully")
+        except Exception as e:
+            error_msg = f"Error clearing existing records: {str(e)}"
+            tracker.log(error_msg)
+            # Continue despite this error
+        
+        # Get URLs to crawl
+        tracker.log(f"Fetching Supabase documentation URLs (limit: {url_limit})...")
+        try:
+            urls = get_supabase_docs_urls(url_limit)
+        except Exception as e:
+            error_msg = f"Error fetching URLs: {str(e)}"
+            tracker.log(error_msg)
+            tracker.stop()
+            return
+        
+        if not urls:
+            tracker.log("No URLs found to crawl")
+            tracker.stop()
+            return
+            
+        tracker.log(f"Found {len(urls)} URLs to crawl")
+        tracker.urls_found = len(urls)
+        
+        # Check if we should stop
+        if tracker.is_stopping:
+            tracker.log("Crawl stopped before processing started")
+            tracker.stop()
+            return
+            
+        # Process URLs in parallel
+        tracker.log(f"Starting parallel crawl of {len(urls)} URLs with Crawl4AI...")
+        try:
+            await crawl_parallel_with_crawl4ai(urls, tracker)
+        except Exception as e:
+            error_msg = f"Error during parallel crawl: {str(e)}"
+            tracker.log(error_msg)
+            # Continue to completion handling
+        
+        # Complete the crawl
+        if tracker.urls_processed == 0:
+            tracker.log("Crawling completed but no documents were successfully processed.")
+            tracker.stop()
+        else:
+            success_rate = (tracker.urls_succeeded / tracker.urls_processed) * 100 if tracker.urls_processed > 0 else 0
+            tracker.log(f"Completed crawling {tracker.urls_processed} URLs with a {success_rate:.1f}% success rate")
+            tracker.complete()
+            
+    except Exception as e:
+        error_msg = f"Error during crawl: {str(e)}"
+        print(error_msg)
+        tracker.log(error_msg)
+        tracker.stop()
+        
+    # Final status update
+    if tracker.progress_callback:
+        tracker.progress_callback(tracker.get_status())
+
+def start_crawl_with_crawl4ai(progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None, url_limit: int = 50) -> CrawlProgressTracker:
+    """
+    Start the Supabase documentation crawl with Crawl4AI in a separate thread.
+    
+    Args:
+        progress_callback: Optional callback function to report progress
+        url_limit: Maximum number of URLs to crawl
+        
+    Returns:
+        CrawlProgressTracker: The progress tracker
+    """
+    print("Starting crawler with Crawl4AI...")
+    
+    # Create a tracker with the provided callback
+    tracker = CrawlProgressTracker(progress_callback)
+    
+    # Ensure it's set to running state
+    tracker.is_running = True
+    tracker.is_stopping = False
+    
+    # Log initialization
+    tracker.log("Initializing Crawl4AI crawler...")
+    print("Tracker initialized, Crawl4AI crawler starting...")
+    
+    # Make an initial progress callback to show the tracker is running
+    if progress_callback:
+        progress_callback(tracker.get_status())
+        print("Initial progress callback sent")
+    
+    # Define the function to run in a separate thread
+    def run_crawl():
+        print("Crawler thread started")
+        # Set up the event loop for this thread
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        try:
+            print("Starting main_with_crawl4ai in thread")
+            # Run the main function in this thread's event loop
+            loop.run_until_complete(main_with_crawl4ai(tracker, url_limit))
+            print("main_with_crawl4ai completed")
+        except Exception as e:
+            print(f"Error in crawl thread: {e}")
+            if tracker:
+                tracker.log(f"Thread error: {str(e)}")
+                tracker.complete()
+        finally:
+            # Always close the loop
+            loop.close()
+            print("Crawler thread event loop closed")
+    
+    # Start the crawling process in a separate thread
+    thread = threading.Thread(target=run_crawl)
+    thread.daemon = True
+    thread.start()
+    
+    return tracker
+
 if __name__ == "__main__":
-    asyncio.run(main_with_requests()) 
+    # Verify that all required functions are defined
+    required_functions = [
+        "start_crawl_with_requests",
+        "start_crawl_with_crawl4ai",
+        "clear_existing_records",
+        "start_test_crawler"
+    ]
+    
+    # Check if all required functions are defined
+    for func_name in required_functions:
+        if func_name not in globals():
+            print(f"ERROR: Function {func_name} is not defined!")
+        else:
+            print(f"Function {func_name} is defined.")
+    
+    print("All required functions are defined and ready to use.")
+    
+    # Use Crawl4AI by default
+    asyncio.run(main_with_crawl4ai())
+    
+    # Uncomment to use requests instead
+    # asyncio.run(main_with_requests()) 

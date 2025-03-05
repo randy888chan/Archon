@@ -29,6 +29,15 @@ from dotenv import load_dotenv
 from utils.utils import get_env_var, save_env_var, write_to_log
 from future_enhancements import future_enhancements_tab
 from threading import Lock
+from archon.crawl_pydantic_ai_docs import start_crawl_with_requests as start_pydantic_crawl
+from archon.crawl_pydantic_ai_docs import clear_existing_records as clear_pydantic_records
+# Import all Supabase crawler functions in one place to avoid conflicts
+from archon.crawl_supabase_docs import (
+    start_crawl_with_requests, 
+    start_crawl_with_crawl4ai, 
+    clear_existing_records, 
+    start_test_crawler
+)
 
 # Import all the message part classes
 from pydantic_ai.messages import (
@@ -678,15 +687,12 @@ def documentation_tab():
                 # Button to start crawling
                 if st.button("Crawl Pydantic AI Docs", key="crawl_pydantic") and not (st.session_state.crawl_tracker and st.session_state.crawl_tracker.is_running):
                     try:
-                        # Import the progress tracker
-                        from archon.crawl_pydantic_ai_docs import start_crawl_with_requests
-                        
                         # Define a callback function to update the session state
                         def update_progress(status):
                             st.session_state.crawl_status = status
                         
                         # Start the crawling process in a separate thread
-                        st.session_state.crawl_tracker = start_crawl_with_requests(update_progress)
+                        st.session_state.crawl_tracker = start_pydantic_crawl(update_progress)
                         st.session_state.crawl_status = st.session_state.crawl_tracker.get_status()
                         
                         # Force a rerun to start showing progress
@@ -699,11 +705,8 @@ def documentation_tab():
                 if st.button("Clear Pydantic AI Docs", key="clear_pydantic"):
                     with st.spinner("Clearing existing Pydantic AI docs..."):
                         try:
-                            # Import the function to clear records
-                            from archon.crawl_pydantic_ai_docs import clear_existing_records
-                            
                             # Run the function to clear records
-                            asyncio.run(clear_existing_records())
+                            asyncio.run(clear_pydantic_records())
                             st.success("✅ Successfully cleared existing Pydantic AI docs from the database.")
                             
                             # Force a rerun to update the UI
@@ -750,6 +753,8 @@ def documentation_tab():
         st.markdown("""
         This section allows you to crawl and index the Supabase documentation.
         The crawler will:
+        1. Fetch documentation pages from the Supabase website
+        2. Process the content into chunks
         
         1. Fetch URLs from the Supabase sitemap
         2. Crawl each page and extract content
@@ -791,6 +796,13 @@ def documentation_tab():
                 help="Set to control how many URLs to crawl. Higher values will take longer but provide more comprehensive documentation."
             )
             
+            # Add a radio button to select the crawler method
+            crawler_method = st.radio(
+                "Crawler Method",
+                ["Requests (Basic)", "Crawl4AI (Advanced)"],
+                help="Select the method to use for crawling. Crawl4AI provides better content extraction but requires the Crawl4AI package."
+            )
+            
             with col1:
                 # Button to start crawling
                 is_crawling = (st.session_state.supabase_crawl_tracker and 
@@ -801,9 +813,6 @@ def documentation_tab():
                 
                 if crawl_button and not is_crawling:
                     try:
-                        # Import the progress tracker
-                        from archon.crawl_supabase_docs import start_crawl_with_requests
-                        
                         # DRASTICALLY SIMPLIFIED APPROACH
                         # Just a basic callback function that stores status without complex threading
                         def update_supabase_progress(status):
@@ -814,11 +823,18 @@ def documentation_tab():
                             if status.get("end_time"):
                                 st.session_state.supabase_crawl_end_time = status.get("end_time")
                         
-                        # Start the crawler
-                        st.session_state.supabase_crawl_tracker = start_crawl_with_requests(
-                            update_supabase_progress, 
-                            url_limit=url_limit
-                        )
+                        # Start the crawler based on selected method
+                        if crawler_method == "Crawl4AI (Advanced)":
+                            st.session_state.supabase_crawl_tracker = start_crawl_with_crawl4ai(
+                                update_supabase_progress, 
+                                url_limit=url_limit
+                            )
+                            st.info("Using Crawl4AI for enhanced content extraction")
+                        else:
+                            st.session_state.supabase_crawl_tracker = start_crawl_with_requests(
+                                update_supabase_progress, 
+                                url_limit=url_limit
+                            )
                         
                         # Store start time
                         st.session_state.supabase_crawl_start_time = time.time()
@@ -835,9 +851,6 @@ def documentation_tab():
                 if st.button("Clear Supabase Docs", key="clear_supabase"):
                     with st.spinner("Clearing existing Supabase docs..."):
                         try:
-                            # Import the function to clear records
-                            from archon.crawl_supabase_docs import clear_existing_records
-                            
                             # Create a synchronous wrapper function
                             def sync_clear_records():
                                 import asyncio
@@ -866,9 +879,6 @@ def documentation_tab():
                 
                 if test_button and not is_crawling:
                     try:
-                        # Import the test crawler
-                        from archon.crawl_supabase_docs import start_test_crawler
-                        
                         # Define a callback function to update the session state
                         def update_test_crawler_progress(status):
                             st.session_state.supabase_crawl_status = status
