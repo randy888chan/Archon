@@ -52,7 +52,8 @@ your_agent_coder = Agent[YourAgentDeps]()
 Create `archon/crawl_your_agent_docs.py` based on the template in `docs/agent_template/crawl_example_docs.py`:
 
 1. Implement functions to:
-   - Fetch documentation from the appropriate source
+<!-- currently using requests but need to start using crawl4ai see https://pypi.org/project/Crawl4AI/ and use crawl4ai_example_docs.py -->
+   - Fetch documentation from the appropriate source  
    - Process and chunk content
    - Generate embeddings
    - Store in Supabase with the correct source filter
