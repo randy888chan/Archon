@@ -90,6 +90,23 @@ class AgentState(TypedDict):
 
 # Scope Definition Node with Reasoner LLM
 async def define_scope_with_reasoner(state: AgentState):
+    # Check if the message is related to Supabase or vector search
+    user_message = state['latest_user_message'].lower()
+    supabase_keywords = ['supabase', 'vector search', 'vector database', 'pgvector', 'similarity search', 'embedding']
+    is_supabase_related = any(keyword in user_message for keyword in supabase_keywords)
+    
+    # Set the agent type based on the message content
+    if is_supabase_related:
+        state['agent_type'] = "Supabase Agent"
+        print(f"\n====================================================")
+        print(f"[AGENT SELECTION] Using Supabase Agent based on query content")
+        print(f"====================================================\n")
+    else:
+        state['agent_type'] = "Pydantic AI Agent"  # Default
+        print(f"\n====================================================")
+        print(f"[AGENT SELECTION] Using default Pydantic AI Agent")
+        print(f"====================================================\n")
+    
     # Get the agent type from the state
     agent_type = state.get('agent_type', 'Pydantic AI Agent')
     
@@ -196,8 +213,13 @@ async def coder_agent(state: AgentState, writer):
         if not is_openai:
             writer = get_stream_writer()
             result = await pydantic_ai_coder.run(state['latest_user_message'], deps=deps, message_history=message_history)
+            # Write the entire response at once
             writer(result.data)
         else:
+            # Use a buffer to collect chunks before writing
+            buffer = ""
+            buffer_size = 1000  # Characters to buffer before writing
+            
             async with pydantic_ai_coder.run_stream(
                 state['latest_user_message'],
                 deps=deps,
@@ -205,7 +227,15 @@ async def coder_agent(state: AgentState, writer):
             ) as result:
                 # Stream partial text as it arrives
                 async for chunk in result.stream_text(delta=True):
-                    writer(chunk)
+                    buffer += chunk
+                    # Write when buffer reaches threshold or on last chunk
+                    if len(buffer) >= buffer_size:
+                        writer(buffer)
+                        buffer = ""
+                
+                # Write any remaining content in buffer
+                if buffer:
+                    writer(buffer)
     else:  # Supabase Agent
         # Prepare dependencies for Supabase coder
         deps = SupabaseDeps(
@@ -218,8 +248,13 @@ async def coder_agent(state: AgentState, writer):
         if not is_openai:
             writer = get_stream_writer()
             result = await supabase_coder.run(state['latest_user_message'], deps=deps, message_history=message_history)
+            # Write the entire response at once
             writer(result.data)
         else:
+            # Use a buffer to collect chunks before writing
+            buffer = ""
+            buffer_size = 1000  # Characters to buffer before writing
+            
             async with supabase_coder.run_stream(
                 state['latest_user_message'],
                 deps=deps,
@@ -227,7 +262,15 @@ async def coder_agent(state: AgentState, writer):
             ) as result:
                 # Stream partial text as it arrives
                 async for chunk in result.stream_text(delta=True):
-                    writer(chunk)
+                    buffer += chunk
+                    # Write when buffer reaches threshold or on last chunk
+                    if len(buffer) >= buffer_size:
+                        writer(buffer)
+                        buffer = ""
+                
+                # Write any remaining content in buffer
+                if buffer:
+                    writer(buffer)
 
     return {"messages": [result.new_messages_json()]}
 
@@ -242,6 +285,25 @@ def get_next_user_message(state: AgentState):
 
 # Determine if the user is finished creating their AI agent or not
 async def route_user_message(state: AgentState):
+    # Get the latest user message
+    user_message = state['latest_user_message'].lower()
+    
+    # Check if the message is related to Supabase or vector search
+    supabase_keywords = ['supabase', 'vector search', 'vector database', 'pgvector', 'similarity search', 'embedding']
+    is_supabase_related = any(keyword in user_message for keyword in supabase_keywords)
+    
+    # Set the agent type based on the message content
+    if is_supabase_related:
+        state['agent_type'] = "Supabase Agent"
+        print(f"\n====================================================")
+        print(f"[AGENT SELECTION] Switching to Supabase Agent based on query content")
+        print(f"====================================================\n")
+    else:
+        state['agent_type'] = "Pydantic AI Agent"
+        print(f"\n====================================================")
+        print(f"[AGENT SELECTION] Using Pydantic AI Agent")
+        print(f"====================================================\n")
+    
     # Get the agent type from the state
     agent_type = state.get('agent_type', 'Pydantic AI Agent')
     

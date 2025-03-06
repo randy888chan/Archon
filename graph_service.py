@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from archon.archon_graph import agentic_flow
 from langgraph.types import Command
 from utils.utils import write_to_log
@@ -39,7 +39,11 @@ async def invoke_agent(request: InvokeRequest):
             }
         }
 
-        response = ""
+        # Use a list to collect response chunks more efficiently
+        response_chunks: List[str] = []
+        
+        write_to_log(f"Starting processing for thread {request.thread_id}")
+        
         if request.is_first_message:
             write_to_log(f"Processing first message for thread {request.thread_id}")
             async for msg in agentic_flow.astream(
@@ -47,7 +51,8 @@ async def invoke_agent(request: InvokeRequest):
                 config,
                 stream_mode="custom"
             ):
-                response += str(msg)
+                # Append each chunk to the list instead of concatenating strings
+                response_chunks.append(str(msg))
         else:
             write_to_log(f"Processing continuation for thread {request.thread_id}")
             async for msg in agentic_flow.astream(
@@ -55,9 +60,20 @@ async def invoke_agent(request: InvokeRequest):
                 config,
                 stream_mode="custom"
             ):
-                response += str(msg)
+                # Append each chunk to the list instead of concatenating strings
+                response_chunks.append(str(msg))
 
-        write_to_log(f"Final response for thread {request.thread_id}: {response}")
+        # Join all chunks into a single response only at the end
+        response = "".join(response_chunks)
+        
+        # Log response size for debugging
+        response_length = len(response)
+        write_to_log(f"Response size for thread {request.thread_id}: {response_length} characters")
+        
+        # Log a preview of the response
+        preview_length = min(100, response_length)
+        write_to_log(f"Response preview: {response[:preview_length]}{'...' if response_length > preview_length else ''}")
+        
         return {"response": response}
         
     except Exception as e:
