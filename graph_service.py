@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any
 from archon.archon_graph import agentic_flow
 from langgraph.types import Command
 from utils.utils import write_to_log
@@ -39,11 +39,11 @@ async def invoke_agent(request: InvokeRequest):
             }
         }
 
-        # Use a list to collect response chunks more efficiently
-        response_chunks: List[str] = []
-        
-        write_to_log(f"Starting processing for thread {request.thread_id}")
-        
+        # Maximum response size to prevent cut-offs in MCP
+        MAX_RESPONSE_SIZE = 15000  # Characters
+
+        # Simple string concatenation like in the original
+        response = ""
         if request.is_first_message:
             write_to_log(f"Processing first message for thread {request.thread_id}")
             async for msg in agentic_flow.astream(
@@ -51,8 +51,7 @@ async def invoke_agent(request: InvokeRequest):
                 config,
                 stream_mode="custom"
             ):
-                # Append each chunk to the list instead of concatenating strings
-                response_chunks.append(str(msg))
+                response += str(msg)
         else:
             write_to_log(f"Processing continuation for thread {request.thread_id}")
             async for msg in agentic_flow.astream(
@@ -60,19 +59,19 @@ async def invoke_agent(request: InvokeRequest):
                 config,
                 stream_mode="custom"
             ):
-                # Append each chunk to the list instead of concatenating strings
-                response_chunks.append(str(msg))
+                response += str(msg)
 
-        # Join all chunks into a single response only at the end
-        response = "".join(response_chunks)
-        
-        # Log response size for debugging
+        # Log only a preview of the response to avoid huge logs
         response_length = len(response)
-        write_to_log(f"Response size for thread {request.thread_id}: {response_length} characters")
+        preview = response[:100] + "..." if response_length > 100 else response
+        write_to_log(f"Response size: {response_length} chars. Preview: {preview}")
         
-        # Log a preview of the response
-        preview_length = min(100, response_length)
-        write_to_log(f"Response preview: {response[:preview_length]}{'...' if response_length > preview_length else ''}")
+        # Check if response is too large and truncate if necessary
+        if response_length > MAX_RESPONSE_SIZE:
+            truncated_response = response[:MAX_RESPONSE_SIZE]
+            truncated_response += "\n\n[Response truncated due to size limitations. Please ask for continuation.]"
+            write_to_log(f"Response truncated (original size: {response_length})")
+            return {"response": truncated_response}
         
         return {"response": response}
         

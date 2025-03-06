@@ -43,12 +43,12 @@ reasoner_llm_model = AnthropicModel(reasoner_llm_model_name, api_key=api_key) if
 
 pydantic_reasoner = Agent(  
     reasoner_llm_model,
-    system_prompt='You are an expert at coding AI agents with Pydantic AI and defining the scope for doing so.',  
+    system_prompt='You are an expert at coding AI agents with Pydantic AI and defining the scope for doing so. Provide concise, focused responses that prioritize essential information.',  
 )
 
 supabase_reasoner = Agent(  
     reasoner_llm_model,
-    system_prompt='You are an expert at building applications with Supabase and defining the scope for doing so.',  
+    system_prompt='You are an expert at building applications with Supabase and defining the scope for doing so. Provide concise, focused responses that prioritize essential information.',  
 )
 
 primary_llm_model_name = get_env_var('PRIMARY_MODEL') or 'gpt-4o-mini'
@@ -61,7 +61,7 @@ router_agent = Agent(
 
 end_conversation_agent = Agent(  
     primary_llm_model,
-    system_prompt='Your job is to end a conversation for creating an application or agent by giving instructions for how to execute it and then saying a nice goodbye to the user.',  
+    system_prompt='Your job is to end a conversation for creating an application or agent by giving brief instructions for how to execute it and then saying a nice goodbye to the user.',  
 )
 
 openai_client=None
@@ -209,33 +209,20 @@ async def coder_agent(state: AgentState, writer):
             reasoner_output=state['scope']
         )
         
-        # Run the Pydantic AI coder agent
+        # Run the Pydantic AI coder agent - simplified like original
         if not is_openai:
             writer = get_stream_writer()
             result = await pydantic_ai_coder.run(state['latest_user_message'], deps=deps, message_history=message_history)
-            # Write the entire response at once
             writer(result.data)
         else:
-            # Use a buffer to collect chunks before writing
-            buffer = ""
-            buffer_size = 1000  # Characters to buffer before writing
-            
             async with pydantic_ai_coder.run_stream(
                 state['latest_user_message'],
                 deps=deps,
                 message_history=message_history
             ) as result:
-                # Stream partial text as it arrives
+                # Stream partial text as it arrives - simple like original
                 async for chunk in result.stream_text(delta=True):
-                    buffer += chunk
-                    # Write when buffer reaches threshold or on last chunk
-                    if len(buffer) >= buffer_size:
-                        writer(buffer)
-                        buffer = ""
-                
-                # Write any remaining content in buffer
-                if buffer:
-                    writer(buffer)
+                    writer(chunk)
     else:  # Supabase Agent
         # Prepare dependencies for Supabase coder
         deps = SupabaseDeps(
@@ -244,33 +231,20 @@ async def coder_agent(state: AgentState, writer):
             reasoner_output=state['scope']
         )
         
-        # Run the Supabase coder agent
+        # Run the Supabase coder agent - simplified like original
         if not is_openai:
             writer = get_stream_writer()
             result = await supabase_coder.run(state['latest_user_message'], deps=deps, message_history=message_history)
-            # Write the entire response at once
             writer(result.data)
         else:
-            # Use a buffer to collect chunks before writing
-            buffer = ""
-            buffer_size = 1000  # Characters to buffer before writing
-            
             async with supabase_coder.run_stream(
                 state['latest_user_message'],
                 deps=deps,
                 message_history=message_history
             ) as result:
-                # Stream partial text as it arrives
+                # Stream partial text as it arrives - simple like original
                 async for chunk in result.stream_text(delta=True):
-                    buffer += chunk
-                    # Write when buffer reaches threshold or on last chunk
-                    if len(buffer) >= buffer_size:
-                        writer(buffer)
-                        buffer = ""
-                
-                # Write any remaining content in buffer
-                if buffer:
-                    writer(buffer)
+                    writer(chunk)
 
     return {"messages": [result.new_messages_json()]}
 
