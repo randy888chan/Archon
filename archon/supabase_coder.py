@@ -120,8 +120,14 @@ async def retrieve_relevant_documentation(ctx: RunContext[SupabaseDeps], user_qu
         # Generate embedding for the query
         query_embedding = await get_embedding(user_query, ctx.deps.openai_client)
         
+        # Define the source filter explicitly for Supabase docs
+        source_filter = {"source": "supabase_docs"}
+        
         # Log the database query details
-        print(f"[SUPABASE QUERY] Searching for documentation with filter: {{\"source\": \"supabase_docs\"}}")
+        print(f"\n====================================================")
+        print(f"[SUPABASE QUERY] Searching for documentation with filter: {source_filter}")
+        print(f"[SUPABASE QUERY] Query: {user_query[:100]}...")
+        print(f"====================================================\n")
         
         # Search for related documentation
         result = ctx.deps.supabase.rpc(
@@ -129,7 +135,7 @@ async def retrieve_relevant_documentation(ctx: RunContext[SupabaseDeps], user_qu
             {
                 "query_embedding": query_embedding,
                 "match_count": 5,
-                "filter": {"source": "supabase_docs"}
+                "filter": source_filter
             }
         ).execute()
         
@@ -142,7 +148,12 @@ async def retrieve_relevant_documentation(ctx: RunContext[SupabaseDeps], user_qu
         
         # Process the results
         if not result.data or len(result.data) == 0:
-            return "No relevant documentation found. Please try a different query or consult the Supabase website directly."
+            print(f"[SUPABASE RESULT] No relevant documentation found")
+            return "No relevant Supabase documentation found. Please try a different query or consult the Supabase website directly."
+        
+        # Log the found documents
+        for i, item in enumerate(result.data[:3]):  # Log first 3 for brevity
+            print(f"[SUPABASE RESULT] Document {i+1}: {item.get('title', 'No title')} - {item.get('url', 'No URL')}")
         
         # Format the results
         docs = []
@@ -160,13 +171,17 @@ async def retrieve_relevant_documentation(ctx: RunContext[SupabaseDeps], user_qu
         return "\n".join(docs)
     
     except Exception as e:
-        return f"Error retrieving documentation: {str(e)}"
+        error_msg = f"Error retrieving Supabase documentation: {str(e)}"
+        print(f"[SUPABASE ERROR] {error_msg}")
+        return error_msg
 
 async def list_documentation_pages_helper(supabase: Client) -> List[str]:
     """Helper function to list all Supabase documentation pages."""
     try:
         # Log the query
-        print(f"[SUPABASE QUERY] Getting document URLs with filter: metadata->>source=supabase_docs")
+        print(f"\n====================================================")
+        print(f"[SUPABASE DOCS] Getting document URLs with filter: metadata->>source=supabase_docs")
+        print(f"====================================================\n")
         
         # Get distinct URLs for Supabase docs
         result = supabase.table("site_pages") \
@@ -184,12 +199,21 @@ async def list_documentation_pages_helper(supabase: Client) -> List[str]:
             urls.add(item["url"])
         
         # Log the result count
-        print(f"[SUPABASE RESULT] Found {len(urls)} unique documentation URLs")
+        print(f"[SUPABASE DOCS] Found {len(urls)} unique documentation URLs")
         
-        return sorted(list(urls))
+        # Log a sample of URLs for debugging
+        url_list = sorted(list(urls))
+        for i, url in enumerate(url_list[:5]):  # Log first 5 for brevity
+            print(f"[SUPABASE DOCS] URL {i+1}: {url}")
+        
+        if len(url_list) > 5:
+            print(f"[SUPABASE DOCS] ... and {len(url_list) - 5} more URLs")
+        
+        return url_list
     
     except Exception as e:
-        print(f"Error listing documentation pages: {e}")
+        error_msg = f"Error listing Supabase documentation pages: {str(e)}"
+        print(f"[SUPABASE ERROR] {error_msg}")
         return []
 
 @supabase_coder.tool

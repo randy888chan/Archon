@@ -21,8 +21,8 @@ from pydantic_ai.messages import (
 
 # Add the parent directory to Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from archon.pydantic_ai_coder import pydantic_ai_coder, PydanticAIDeps, list_documentation_pages_helper
-from archon.supabase_coder import supabase_coder, SupabaseDeps
+from archon.pydantic_ai_coder import pydantic_ai_coder, PydanticAIDeps, list_documentation_pages_helper as pydantic_docs_helper
+from archon.supabase_coder import supabase_coder, SupabaseDeps, list_documentation_pages_helper as supabase_docs_helper
 from utils.utils import get_env_var
 
 # Load environment variables
@@ -92,19 +92,28 @@ class AgentState(TypedDict):
 async def define_scope_with_reasoner(state: AgentState):
     # Check if the message is related to Supabase or vector search
     user_message = state['latest_user_message'].lower()
-    supabase_keywords = ['supabase', 'vector search', 'vector database', 'pgvector', 'similarity search', 'embedding']
+    supabase_keywords = [
+        'supabase', 'vector search', 'vector database', 'pgvector', 
+        'similarity search', 'embedding', 'websocket', 'realtime', 
+        'postgres', 'postgresql', 'sql', 'database', 'auth', 'storage'
+    ]
+    
+    # Check if any of the keywords are in the user message
     is_supabase_related = any(keyword in user_message for keyword in supabase_keywords)
     
     # Set the agent type based on the message content
     if is_supabase_related:
+        # Force the agent type to be Supabase Agent
         state['agent_type'] = "Supabase Agent"
         print(f"\n====================================================")
         print(f"[AGENT SELECTION] Using Supabase Agent based on query content")
+        print(f"[AGENT SELECTION] Keywords found: {[k for k in supabase_keywords if k in user_message]}")
         print(f"====================================================\n")
     else:
+        # Force the agent type to be Pydantic AI Agent
         state['agent_type'] = "Pydantic AI Agent"  # Default
         print(f"\n====================================================")
-        print(f"[AGENT SELECTION] Using default Pydantic AI Agent")
+        print(f"[AGENT SELECTION] Using default Pydantic AI Agent (no Supabase keywords found)")
         print(f"====================================================\n")
     
     # Get the agent type from the state
@@ -112,7 +121,7 @@ async def define_scope_with_reasoner(state: AgentState):
     
     # Enhanced logging
     print(f"\n====================================================")
-    print(f"[AGENT SELECTION] Using agent type: {agent_type}")
+    print(f"[AGENT VERIFICATION] Agent type is set to: {agent_type}")
     print(f"====================================================\n")
     
     # First, get the documentation pages so the reasoner can decide which ones are necessary
@@ -121,22 +130,23 @@ async def define_scope_with_reasoner(state: AgentState):
     if agent_type == "Pydantic AI Agent":
         # Get Pydantic AI documentation pages
         print(f"[DOCUMENTATION] Retrieving Pydantic AI documentation pages")
-        documentation_pages = await list_documentation_pages_helper(supabase)
+        documentation_pages = await pydantic_docs_helper(supabase)
         source_filter = "pydantic_ai_docs"
         print(f"[DOCUMENTATION] Using source filter: {source_filter}")
     else:  # Supabase Agent
         # Get Supabase documentation pages
         print(f"[DOCUMENTATION] Retrieving Supabase documentation pages")
-        from archon.supabase_coder import list_documentation_pages_helper as supabase_list_docs
-        documentation_pages = await supabase_list_docs(supabase)
+        documentation_pages = await supabase_docs_helper(supabase)
         source_filter = "supabase_docs"
         print(f"[DOCUMENTATION] Using source filter: {source_filter}")
         
     documentation_pages_str = "\n".join(documentation_pages)
+    print(f"[DOCUMENTATION] Retrieved {len(documentation_pages)} documentation pages")
 
     # Select the appropriate reasoner based on agent type
     reasoner = pydantic_reasoner if agent_type == "Pydantic AI Agent" else supabase_reasoner
-    
+    print(f"[REASONER] Using {'Pydantic' if agent_type == 'Pydantic AI Agent' else 'Supabase'} reasoner")
+
     # Customize prompt based on agent type
     if agent_type == "Pydantic AI Agent":
         prompt = f"""
@@ -193,15 +203,20 @@ async def coder_agent(state: AgentState, writer):
     # Get the agent type from the state
     agent_type = state.get('agent_type', 'Pydantic AI Agent')
     
-    # Print for debugging
-    print(f"Coder using agent type: {agent_type}")
+    # Enhanced logging for debugging
+    print(f"\n====================================================")
+    print(f"[CODER SELECTION] Using coder for agent type: {agent_type}")
+    print(f"====================================================\n")
     
     # Get the message history into the format for Pydantic AI
     message_history: list[ModelMessage] = []
     for message_row in state['messages']:
         message_history.extend(ModelMessagesTypeAdapter.validate_json(message_row))
 
-    if agent_type == "Pydantic AI Agent":
+    # Explicitly check agent type to ensure correct coder is used
+    is_supabase_agent = agent_type == "Supabase Agent"
+    
+    if not is_supabase_agent:  # Pydantic AI Agent
         # Prepare dependencies for Pydantic AI coder
         deps = PydanticAIDeps(
             supabase=supabase,
@@ -209,7 +224,9 @@ async def coder_agent(state: AgentState, writer):
             reasoner_output=state['scope']
         )
         
-        # Run the Pydantic AI coder agent - simplified like original
+        print(f"[CODER EXECUTION] Running Pydantic AI coder with message: {state['latest_user_message'][:50]}...")
+        
+        # Run the Pydantic AI coder agent
         if not is_openai:
             writer = get_stream_writer()
             result = await pydantic_ai_coder.run(state['latest_user_message'], deps=deps, message_history=message_history)
@@ -220,7 +237,7 @@ async def coder_agent(state: AgentState, writer):
                 deps=deps,
                 message_history=message_history
             ) as result:
-                # Stream partial text as it arrives - simple like original
+                # Stream partial text as it arrives
                 async for chunk in result.stream_text(delta=True):
                     writer(chunk)
     else:  # Supabase Agent
@@ -231,7 +248,9 @@ async def coder_agent(state: AgentState, writer):
             reasoner_output=state['scope']
         )
         
-        # Run the Supabase coder agent - simplified like original
+        print(f"[CODER EXECUTION] Running Supabase coder with message: {state['latest_user_message'][:50]}...")
+        
+        # Run the Supabase coder agent
         if not is_openai:
             writer = get_stream_writer()
             result = await supabase_coder.run(state['latest_user_message'], deps=deps, message_history=message_history)
@@ -242,7 +261,7 @@ async def coder_agent(state: AgentState, writer):
                 deps=deps,
                 message_history=message_history
             ) as result:
-                # Stream partial text as it arrives - simple like original
+                # Stream partial text as it arrives
                 async for chunk in result.stream_text(delta=True):
                     writer(chunk)
 
@@ -263,23 +282,35 @@ async def route_user_message(state: AgentState):
     user_message = state['latest_user_message'].lower()
     
     # Check if the message is related to Supabase or vector search
-    supabase_keywords = ['supabase', 'vector search', 'vector database', 'pgvector', 'similarity search', 'embedding']
+    supabase_keywords = [
+        'supabase', 'vector search', 'vector database', 'pgvector', 
+        'similarity search', 'embedding', 'websocket', 'realtime', 
+        'postgres', 'postgresql', 'sql', 'database', 'auth', 'storage'
+    ]
+    
+    # Check if any of the keywords are in the user message
     is_supabase_related = any(keyword in user_message for keyword in supabase_keywords)
     
     # Set the agent type based on the message content
     if is_supabase_related:
+        # Force the agent type to be Supabase Agent
         state['agent_type'] = "Supabase Agent"
         print(f"\n====================================================")
         print(f"[AGENT SELECTION] Switching to Supabase Agent based on query content")
+        print(f"[AGENT SELECTION] Keywords found: {[k for k in supabase_keywords if k in user_message]}")
         print(f"====================================================\n")
     else:
+        # Force the agent type to be Pydantic AI Agent
         state['agent_type'] = "Pydantic AI Agent"
         print(f"\n====================================================")
-        print(f"[AGENT SELECTION] Using Pydantic AI Agent")
+        print(f"[AGENT SELECTION] Using Pydantic AI Agent (no Supabase keywords found)")
         print(f"====================================================\n")
     
     # Get the agent type from the state
     agent_type = state.get('agent_type', 'Pydantic AI Agent')
+    
+    # Verify the agent type is set correctly
+    print(f"[AGENT VERIFICATION] Agent type is set to: {agent_type}")
     
     # Customize prompt based on agent type
     if agent_type == "Pydantic AI Agent":

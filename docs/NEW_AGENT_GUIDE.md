@@ -61,7 +61,6 @@ Create `archon/crawl_your_agent_docs.py` based on the template in `docs/agent_te
 2. Expose key functions that will be used by the UI:
    - `start_crawl_with_requests()` - To trigger crawling
    - `clear_existing_records()` - To remove old records
-   - `get_your_agent_docs_urls()` - To list documentation URLs
 
 ## Step 3: Update Archon Graph
 

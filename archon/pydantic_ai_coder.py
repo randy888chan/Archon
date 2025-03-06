@@ -109,29 +109,37 @@ async def get_embedding(text: str, openai_client: AsyncOpenAI) -> List[float]:
 @pydantic_ai_coder.tool
 async def retrieve_relevant_documentation(ctx: RunContext[PydanticAIDeps], user_query: str) -> str:
     """
-    Retrieve relevant documentation chunks based on the query with RAG.
+    Search the Pydantic AI documentation for information relevant to the user's query.
     
     Args:
-        ctx: The context including the Supabase client and OpenAI client
-        user_query: The user's question or query
+        user_query: The user's question or request about Pydantic AI
         
     Returns:
-        A formatted string containing the top 4 most relevant documentation chunks
+        str: Relevant documentation snippets
     """
+    if not ctx.deps.supabase or not ctx.deps.openai_client:
+        return "Error: Supabase or OpenAI client not initialized."
+    
     try:
-        # Get the embedding for the query
+        # Generate embedding for the query
         query_embedding = await get_embedding(user_query, ctx.deps.openai_client)
         
-        # Log the database query details
-        print(f"[PYDANTIC QUERY] Searching for documentation with filter: {{\"source\": \"pydantic_ai_docs\"}}")
+        # Define the source filter explicitly for Pydantic AI docs
+        source_filter = {"source": "pydantic_ai_docs"}
         
-        # Query Supabase for relevant documents
+        # Log the database query details
+        print(f"\n====================================================")
+        print(f"[PYDANTIC QUERY] Searching for documentation with filter: {source_filter}")
+        print(f"[PYDANTIC QUERY] Query: {user_query[:100]}...")
+        print(f"====================================================\n")
+        
+        # Search for related documentation
         result = ctx.deps.supabase.rpc(
-            'match_site_pages',
+            "match_site_pages",
             {
-                'query_embedding': query_embedding,
-                'match_count': 4,
-                'filter': {'source': 'pydantic_ai_docs'}
+                "query_embedding": query_embedding,
+                "match_count": 5,
+                "filter": source_filter
             }
         ).execute()
         
@@ -139,55 +147,54 @@ async def retrieve_relevant_documentation(ctx: RunContext[PydanticAIDeps], user_
             print(f"[PYDANTIC ERROR] Error querying database: {result.error}")
             return f"Error querying database: {result.error}"
         
-        if not result.data:
-            print("[PYDANTIC RESULT] No relevant documentation found")
-            return "No relevant documentation found."
-            
         # Log the result count
-        print(f"[PYDANTIC RESULT] Found {len(result.data)} matching documents")
+        print(f"[PYDANTIC RESULT] Found {len(result.data if result.data else [])} matching documents")
+        
+        # Process the results
+        if not result.data or len(result.data) == 0:
+            print(f"[PYDANTIC RESULT] No relevant documentation found")
+            return "No relevant Pydantic AI documentation found. Please try a different query or consult the Pydantic AI website directly."
+        
+        # Log the found documents
+        for i, item in enumerate(result.data[:3]):  # Log first 3 for brevity
+            print(f"[PYDANTIC RESULT] Document {i+1}: {item.get('title', 'No title')} - {item.get('url', 'No URL')}")
         
         # Format the results
-        formatted_chunks = []
-        for doc in result.data:
-            chunk_text = f"""
-# {doc['title']}
+        docs = []
+        for item in result.data:
+            docs.append(f"""
+### {item['title']}
+**URL:** {item['url']}
+**Summary:** {item['summary']}
 
-{doc['content']}
-"""
-            formatted_chunks.append(chunk_text)
-            
-        # Join all chunks with a separator
-        return "\n\n---\n\n".join(formatted_chunks)
+{item['content']}
+
+---
+""")
         
+        return "\n".join(docs)
+    
     except Exception as e:
-        print(f"Error retrieving documentation: {e}")
-        return f"Error retrieving documentation: {str(e)}"
+        error_msg = f"Error retrieving Pydantic AI documentation: {str(e)}"
+        print(f"[PYDANTIC ERROR] {error_msg}")
+        return error_msg
 
 async def list_documentation_pages_helper(supabase: Client) -> List[str]:
-    """
-    Function to retrieve a list of all available Pydantic AI documentation pages.
-    This is called by the list_documentation_pages tool and also externally
-    to fetch documentation pages for the reasoner LLM.
-    
-    Returns:
-        List[str]: List of unique URLs for all documentation pages
-    """
+    """Helper function to list all Pydantic AI documentation pages."""
     try:
         # Log the query
-        print(f"[PYDANTIC QUERY] Getting document URLs with filter: metadata->>source=pydantic_ai_docs")
+        print(f"\n====================================================")
+        print(f"[PYDANTIC DOCS] Getting document URLs with filter: metadata->>source=pydantic_ai_docs")
+        print(f"====================================================\n")
         
-        # Query Supabase for unique URLs where source is pydantic_ai_docs
-        result = supabase.from_('site_pages') \
-            .select('url') \
-            .eq('metadata->>source', 'pydantic_ai_docs') \
+        # Get distinct URLs for Pydantic AI docs
+        result = supabase.table("site_pages") \
+            .select("url") \
+            .eq("metadata->>source", "pydantic_ai_docs") \
             .execute()
         
         if hasattr(result, 'error') and result.error is not None:
             print(f"[PYDANTIC ERROR] Error querying database: {result.error}")
-            return []
-            
-        if not result.data:
-            print("[PYDANTIC RESULT] No documentation pages found")
             return []
         
         # Extract unique URLs
@@ -196,13 +203,22 @@ async def list_documentation_pages_helper(supabase: Client) -> List[str]:
             urls.add(item["url"])
         
         # Log the result count
-        print(f"[PYDANTIC RESULT] Found {len(urls)} unique documentation URLs")
+        print(f"[PYDANTIC DOCS] Found {len(urls)} unique documentation URLs")
         
-        return list(urls)
+        # Log a sample of URLs for debugging
+        url_list = sorted(list(urls))
+        for i, url in enumerate(url_list[:5]):  # Log first 5 for brevity
+            print(f"[PYDANTIC DOCS] URL {i+1}: {url}")
         
+        if len(url_list) > 5:
+            print(f"[PYDANTIC DOCS] ... and {len(url_list) - 5} more URLs")
+        
+        return url_list
+    
     except Exception as e:
-        print(f"Error retrieving documentation pages: {e}")
-        return []        
+        error_msg = f"Error listing Pydantic AI documentation pages: {str(e)}"
+        print(f"[PYDANTIC ERROR] {error_msg}")
+        return []
 
 @pydantic_ai_coder.tool
 async def list_documentation_pages(ctx: RunContext[PydanticAIDeps]) -> List[str]:
