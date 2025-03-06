@@ -396,7 +396,8 @@ async def crawl_with_crawl4ai(url: str, tracker: Optional[CrawlProgressTracker] 
         ignore_https_errors=True,
         user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
         viewport_width=1280,
-        viewport_height=800
+        viewport_height=800,
+        timeout=60000  # 60 seconds timeout to prevent hanging
     )
     
     # Implement retry logic
@@ -407,39 +408,50 @@ async def crawl_with_crawl4ai(url: str, tracker: Optional[CrawlProgressTracker] 
             
             # Use async with context manager pattern to ensure proper initialization and cleanup
             async with AsyncWebCrawler(config=browser_config) as crawler:
-                # Use arun method which is the correct method in v0.5.0
-                result = await crawler.arun(url)
-                
-                # Extract content based on what's available in the result
-                content = ""
-                
-                # In v0.5.0, the result has a markdown property
-                if hasattr(result, 'markdown') and result.markdown:
-                    content = result.markdown
+                # Set a timeout for the crawl operation
+                try:
+                    # Use arun method which is the correct method in v0.5.0
+                    result = await asyncio.wait_for(crawler.arun(url), timeout=120)  # 2 minute timeout
+                    
+                    # Extract content based on what's available in the result
+                    content = ""
+                    
+                    # In v0.5.0, the result has a markdown property
+                    if hasattr(result, 'markdown') and result.markdown:
+                        content = result.markdown
+                        if tracker:
+                            tracker.log(f"Got markdown content from {url} - {len(content)} characters")
+                    elif hasattr(result, 'html') and result.html:
+                        if tracker:
+                            tracker.log(f"Converting HTML to markdown for {url}")
+                        h = html2text.HTML2Text()
+                        h.ignore_links = False
+                        h.ignore_images = False
+                        h.ignore_tables = False
+                        h.body_width = 0  # No wrapping
+                        content = h.handle(result.html)
+                    elif hasattr(result, 'text') and result.text:
+                        if tracker:
+                            tracker.log(f"Using plain text content for {url}")
+                        content = result.text
+                    
+                    # Clean the content
+                    if content:
+                        content = clean_markdown_content(content)
+                        return content
+                    else:
+                        if tracker:
+                            tracker.log(f"No content retrieved from {url}")
+                        return None
+                except asyncio.TimeoutError:
                     if tracker:
-                        tracker.log(f"Got markdown content from {url} - {len(content)} characters")
-                elif hasattr(result, 'html') and result.html:
-                    if tracker:
-                        tracker.log(f"Converting HTML to markdown for {url}")
-                    h = html2text.HTML2Text()
-                    h.ignore_links = False
-                    h.ignore_images = False
-                    h.ignore_tables = False
-                    h.body_width = 0  # No wrapping
-                    content = h.handle(result.html)
-                elif hasattr(result, 'text') and result.text:
-                    if tracker:
-                        tracker.log(f"Using plain text content for {url}")
-                    content = result.text
-                
-                # Clean the content
-                if content:
-                    content = clean_markdown_content(content)
-                    return content
-                else:
-                    if tracker:
-                        tracker.log(f"No content retrieved from {url}")
-                    return None
+                        tracker.log(f"Timeout while crawling {url}")
+                    # If this is the last attempt, return None
+                    if attempt == max_retries:
+                        return None
+                    # Wait before retrying
+                    await asyncio.sleep(2)
+                    continue
                     
         except Exception as e:
             error_msg = f"Error crawling {url} with Crawl4AI (attempt {attempt}/{max_retries}): {str(e)}"
@@ -490,38 +502,57 @@ async def crawl_parallel_with_crawl4ai(urls: List[str], tracker: Optional[CrawlP
             if tracker:
                 tracker.processed_urls.add(url)
             
-            # Get content
-            content = await crawl_with_crawl4ai(url, tracker)
-            
-            # Process the content
-            if content:
-                # Store the document
-                await process_and_store_document(url, content, tracker)
+            try:
+                # Get content
+                content = await crawl_with_crawl4ai(url, tracker)
                 
-                # Update tracker
+                # Process the content
+                if content:
+                    # Store the document
+                    await process_and_store_document(url, content, tracker)
+                    
+                    # Update tracker
+                    if tracker:
+                        tracker.urls_succeeded += 1
+                        tracker.urls_processed += 1
+                        tracker.log(f"Successfully processed: {url}")
+                else:
+                    # Update tracker for failed URLs
+                    if tracker:
+                        tracker.log(f"Failed to process: {url} - No content retrieved")
+                        tracker.urls_failed += 1
+                        tracker.urls_processed += 1
+            except Exception as e:
+                # Log the error
+                error_msg = f"Error processing URL {url}: {str(e)}"
+                print(error_msg)
                 if tracker:
-                    tracker.urls_succeeded += 1
-                    tracker.urls_processed += 1
-                    tracker.log(f"Successfully processed: {url}")
-            else:
-                # Update tracker for failed URLs
-                if tracker:
-                    tracker.log(f"Failed to process: {url} - No content retrieved")
+                    tracker.log(error_msg)
                     tracker.urls_failed += 1
                     tracker.urls_processed += 1
-            
-            # Update tracker activity
-            if tracker:
-                tracker.update_activity()
-                # Explicitly update progress
-                if tracker.progress_callback:
-                    tracker.progress_callback(tracker.get_status())
+            finally:
+                # Update tracker activity
+                if tracker:
+                    tracker.update_activity()
+                    # Explicitly update progress
+                    if tracker.progress_callback:
+                        tracker.progress_callback(tracker.get_status())
     
     # Create tasks for all URLs
-    tasks = [process_url(url) for url in urls]
+    tasks = []
+    for url in urls:
+        # Use create_task instead of directly calling the function
+        task = asyncio.create_task(process_url(url))
+        tasks.append(task)
     
-    # Wait for all tasks to complete
-    await asyncio.gather(*tasks)
+    # Wait for all tasks to complete with exception handling
+    try:
+        await asyncio.gather(*tasks, return_exceptions=True)
+    except Exception as e:
+        error_msg = f"Error in parallel crawling: {str(e)}"
+        print(error_msg)
+        if tracker:
+            tracker.log(error_msg)
 
 async def main_with_crawl4ai(tracker: Optional[CrawlProgressTracker] = None, url_limit: int = 50):
     """
@@ -903,23 +934,33 @@ async def crawl_parallel_with_requests(urls: List[str], tracker: Optional[CrawlP
                     tracker.urls_failed += 1
                     tracker.urls_processed += 1
                     tracker.log(f"Error processing {url}: {str(e)}")
-            
-            # Update tracker activity
-            if tracker:
-                tracker.update_activity()
-                # Explicitly update progress
-                if tracker.progress_callback:
-                    tracker.progress_callback(tracker.get_status())
+            finally:
+                # Update tracker activity
+                if tracker:
+                    tracker.update_activity()
+                    # Explicitly update progress
+                    if tracker.progress_callback:
+                        tracker.progress_callback(tracker.get_status())
     
     # Process all URLs in parallel with limited concurrency
     if tracker:
         tracker.log(f"Processing {len(urls)} URLs with concurrency {max_concurrent}")
     
     # Create tasks for all URLs
-    tasks = [process_url(url) for url in urls]
+    tasks = []
+    for url in urls:
+        # Use create_task instead of directly calling the function
+        task = asyncio.create_task(process_url(url))
+        tasks.append(task)
     
-    # Wait for all tasks to complete
-    await asyncio.gather(*tasks)
+    # Wait for all tasks to complete with exception handling
+    try:
+        await asyncio.gather(*tasks, return_exceptions=True)
+    except Exception as e:
+        error_msg = f"Error in parallel crawling: {str(e)}"
+        print(error_msg)
+        if tracker:
+            tracker.log(error_msg)
 
 async def main_with_requests(tracker: Optional[CrawlProgressTracker] = None, url_limit: int = 50):
     """Main function using direct HTTP requests instead of browser automation."""
