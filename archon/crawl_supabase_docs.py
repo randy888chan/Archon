@@ -1041,8 +1041,7 @@ async def crawl_with_crawl4ai(url: str, tracker: Optional[CrawlProgressTracker] 
         ignore_https_errors=True,
         user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
         viewport_width=1280,
-        viewport_height=800,
-        timeout=60000  # 60 seconds timeout to prevent hanging
+        viewport_height=800
     )
     
     # Implement retry logic
