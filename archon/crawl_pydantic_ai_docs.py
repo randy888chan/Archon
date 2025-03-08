@@ -665,7 +665,7 @@ async def test_crawler():
     tracker.start()
     
     # Test URL - use a known Pydantic AI docs page
-    test_url = "https://docs.pydantic.dev/latest/"
+    test_url = "https://ai.pydantic.dev/"
     
     # Initialize tracker with correct values
     tracker.urls_found = 1
@@ -690,7 +690,7 @@ async def test_crawler_with_tracker(tracker: CrawlProgressTracker):
     tracker.start()
     
     # Test URL
-    test_url = "https://docs.pydantic.dev/latest/"
+    test_url = "https://ai.pydantic.dev/"
     
     # Initialize tracker with correct values
     tracker.urls_found = 1
@@ -805,7 +805,7 @@ def fetch_url_content(url: str) -> str:
 
 def get_urls_to_crawl() -> List[str]:
     """Get URLs from Pydantic AI docs sitemap."""
-    sitemap_url = "https://docs.pydantic.dev/sitemap.xml"
+    sitemap_url = "https://ai.pydantic.dev/sitemap.xml"
     namespace = {'ns': 'http://www.sitemaps.org/schemas/sitemap/0.9'}
     all_urls = []
     
