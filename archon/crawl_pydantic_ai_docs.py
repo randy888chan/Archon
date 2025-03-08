@@ -852,7 +852,7 @@ def get_urls_to_crawl() -> List[str]:
         return []
 
 async def clear_existing_records():
-    """Clear all existing records with source='pydantic_docs' from the site_pages table."""
+    """Clear all existing records with source='pydantic_ai_docs' from the site_pages table."""
     try:
         # Check if Supabase client is properly initialized
         if not supabase:
@@ -870,9 +870,9 @@ async def clear_existing_records():
             return {"error": error_msg}
         
         # Execute the delete operation
-        print(f"Deleting records with metadata->>source=pydantic_docs from site_pages table")
-        result = supabase.table("site_pages").delete().eq("metadata->>source", "pydantic_docs").execute()
-        print(f"Cleared existing pydantic_docs records from site_pages: {result}")
+        print(f"Deleting records with metadata->>source=pydantic_ai_docs from site_pages table")
+        result = supabase.table("site_pages").delete().eq("metadata->>source", "pydantic_ai_docs").execute()
+        print(f"Cleared existing pydantic_ai_docs records from site_pages: {result}")
         return result
     except Exception as e:
         error_msg = f"Error clearing existing records: {str(e)}"
