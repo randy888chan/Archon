@@ -759,7 +759,7 @@ def future_enhancements_tab():
         - Integrate seamlessly with existing development workflows
         """)
         
-        st.warning("The Model Context Protocol (MCP) is an emerging standard for AI assistant integration with IDEs like Windsurf, Cursor, and Cline.")
+        st.warning("The Model Context Protocol (MCP) is an emerging standard for AI assistant integration with IDEs like Windsurf, Cursor, Cline, and Roo Code.")
     
     # Other Frameworks
     with st.expander("Other Frameworks besides Pydantic AI"):
