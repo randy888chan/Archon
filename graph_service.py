@@ -61,6 +61,7 @@ async def invoke_agent(request: InvokeRequest):
         return {"response": response}
         
     except Exception as e:
+        print(f"Exception invoking Archon for thread {request.thread_id}: {str(e)}")
         write_to_log(f"Error processing message for thread {request.thread_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 

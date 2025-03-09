@@ -5,6 +5,8 @@ import inspect
 import json
 from typing import Optional
 from dotenv import load_dotenv
+import streamlit as st
+import webbrowser
 
 # Load environment variables from .env file
 load_dotenv()
@@ -109,3 +111,23 @@ def log_node_execution(func):
             write_to_log(f"Error in node {func_name}: {str(e)}")
             raise
     return wrapper
+
+# Helper function to create a button that opens a tab in a new window
+def create_new_tab_button(label, tab_name, key=None, use_container_width=False):
+    """Create a button that opens a specified tab in a new browser window"""
+    # Create a unique key if none provided
+    if key is None:
+        key = f"new_tab_{tab_name.lower().replace(' ', '_')}"
+    
+    # Get the base URL
+    base_url = st.query_params.get("base_url", "")
+    if not base_url:
+        # If base_url is not in query params, use the default localhost URL
+        base_url = "http://localhost:8501"
+    
+    # Create the URL for the new tab
+    new_tab_url = f"{base_url}/?tab={tab_name}"
+    
+    # Create a button that will open the URL in a new tab when clicked
+    if st.button(label, key=key, use_container_width=use_container_width):
+        webbrowser.open_new_tab(new_tab_url)    

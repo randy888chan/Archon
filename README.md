@@ -101,6 +101,12 @@ After installation, follow the guided setup process in the Intro section of the 
 The Streamlit interface will guide you through each step with clear instructions and interactive elements.
 There are a good amount of steps for the setup but it goes quick!
 
+### Troubleshooting
+
+If you encounter any errors when using Archon, please first check the logs in the "Agent Service" tab.
+Logs specifically for MCP are also logged to `workbench/logs.txt` (file is automatically created) so please
+check there. The goal is for you to have a clear error message before creating a bug here in the GitHub repo
+
 ## Project Evolution
 
 ### V1: Single-Agent Foundation
