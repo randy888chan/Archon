@@ -1,7 +1,6 @@
 from __future__ import annotations
 from supabase import Client, create_client
 from typing import Literal, TypedDict
-from langgraph.types import Command
 from urllib.parse import urlparse
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
