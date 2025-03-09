@@ -16,7 +16,7 @@ import html2text
 
 # Add the parent directory to sys.path to allow importing from the parent directory
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from utils.utils import get_env_var
+from utils.utils import get_env_var, get_clients
 
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
 from openai import AsyncOpenAI
@@ -25,24 +25,10 @@ from supabase import create_client, Client
 load_dotenv()
 
 # Initialize OpenAI and Supabase clients
+openai_client, supabase = get_clients()
 
-base_url = get_env_var('BASE_URL') or 'https://api.openai.com/v1'
-api_key = get_env_var('LLM_API_KEY') or 'no-llm-api-key-provided'
-is_ollama = "localhost" in base_url.lower()
-
+# Define the embedding model for embedding the documentation for RAG
 embedding_model = get_env_var('EMBEDDING_MODEL') or 'text-embedding-3-small'
-
-openai_client=None
-
-if is_ollama:
-    openai_client = AsyncOpenAI(base_url=base_url,api_key=api_key)
-else:
-    openai_client = AsyncOpenAI(api_key=get_env_var("OPENAI_API_KEY"))
-
-supabase: Client = create_client(
-    get_env_var("SUPABASE_URL"),
-    get_env_var("SUPABASE_SERVICE_KEY")
-)
 
 # Initialize HTML to Markdown converter
 html_converter = html2text.HTML2Text()
@@ -211,7 +197,7 @@ async def get_embedding(text: str) -> List[float]:
     """Get embedding vector from OpenAI."""
     try:
         response = await openai_client.embeddings.create(
-            model= embedding_model,
+            model=embedding_model,
             input=text
         )
         return response.data[0].embedding
@@ -418,7 +404,7 @@ def get_pydantic_ai_docs_urls() -> List[str]:
         print(f"Error fetching sitemap: {e}")
         return []
 
-async def clear_existing_records():
+def clear_existing_records():
     """Clear all existing records with source='pydantic_ai_docs' from the site_pages table."""
     try:
         result = supabase.table("site_pages").delete().eq("metadata->>source", "pydantic_ai_docs").execute()
@@ -442,7 +428,7 @@ async def main_with_requests(tracker: Optional[CrawlProgressTracker] = None):
             tracker.log("Clearing existing Pydantic AI docs records...")
         else:
             print("Clearing existing Pydantic AI docs records...")
-        await clear_existing_records()
+        clear_existing_records()
         if tracker:
             tracker.log("Existing records cleared")
         else:

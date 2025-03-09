@@ -1,12 +1,18 @@
-import os
+from supabase import Client, create_client
+from openai import AsyncOpenAI
+from dotenv import load_dotenv
 from datetime import datetime
 from functools import wraps
-import inspect
-import json
 from typing import Optional
-from dotenv import load_dotenv
 import streamlit as st
 import webbrowser
+import importlib
+import inspect
+import json
+import sys
+import os
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Load environment variables from .env file
 load_dotenv()
@@ -93,6 +99,31 @@ def save_env_var(var_name: str, value: str) -> bool:
         write_to_log(f"Error writing to env_vars.json: {str(e)}")
         return False
 
+def get_clients():
+    openai_client = None
+    base_url = get_env_var('BASE_URL') or 'https://api.openai.com/v1'
+    api_key = get_env_var('LLM_API_KEY') or 'no-llm-api-key-provided'
+    is_ollama = any(kw in base_url.lower() for kw in ["localhost", "host.docker.internal", "ollama"])
+
+    if is_ollama:
+        openai_client = AsyncOpenAI(base_url=base_url,api_key=api_key)
+    elif get_env_var("OPENAI_API_KEY"):
+        openai_client = AsyncOpenAI(api_key=get_env_var("OPENAI_API_KEY"))
+    else:
+        openai_client = None
+
+    supabase = None
+    supabase_url = get_env_var("SUPABASE_URL")
+    supabase_key = get_env_var("SUPABASE_SERVICE_KEY")
+    if supabase_url and get_env_var("SUPABASE_SERVICE_KEY"):
+        try:
+            supabase: Client = Client(supabase_url, supabase_key)
+        except Exception as e:
+            print(f"Failed to initialize Supabase: {e}")
+            write_to_log(f"Failed to initialize Supabase: {e}")
+
+    return openai_client, supabase      
+
 def log_node_execution(func):
     """Decorator to log the start and end of graph node execution.
     
@@ -130,4 +161,22 @@ def create_new_tab_button(label, tab_name, key=None, use_container_width=False):
     
     # Create a button that will open the URL in a new tab when clicked
     if st.button(label, key=key, use_container_width=use_container_width):
-        webbrowser.open_new_tab(new_tab_url)    
+        webbrowser.open_new_tab(new_tab_url)
+
+# Function to reload the archon_graph module
+def reload_archon_graph():
+    """Reload the archon_graph module to apply new environment variables"""
+    try:
+        # First reload pydantic_ai_coder
+        import archon.pydantic_ai_coder
+        importlib.reload(archon.pydantic_ai_coder)
+        
+        # Then reload archon_graph which imports pydantic_ai_coder
+        import archon.archon_graph
+        importlib.reload(archon.archon_graph)
+        
+        st.success("Successfully reloaded Archon modules with new environment variables!")
+        return True
+    except Exception as e:
+        st.error(f"Error reloading Archon modules: {str(e)}")
+        return False        

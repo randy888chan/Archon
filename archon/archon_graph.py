@@ -22,7 +22,7 @@ from pydantic_ai.messages import (
 # Add the parent directory to Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from archon.pydantic_ai_coder import pydantic_ai_coder, PydanticAIDeps, list_documentation_pages_helper
-from utils.utils import get_env_var
+from utils.utils import get_env_var, get_clients
 
 # Load environment variables
 load_dotenv()
@@ -58,22 +58,8 @@ end_conversation_agent = Agent(
     system_prompt='Your job is to end a conversation for creating an AI agent by giving instructions for how to execute the agent and they saying a nice goodbye to the user.',  
 )
 
-openai_client=None
-
-if is_ollama:
-    openai_client = AsyncOpenAI(base_url=base_url,api_key=api_key)
-elif get_env_var("OPENAI_API_KEY"):
-    openai_client = AsyncOpenAI(api_key=get_env_var("OPENAI_API_KEY"))
-else:
-    openai_client = None
-
-if get_env_var("SUPABASE_URL"):
-    supabase: Client = Client(
-        get_env_var("SUPABASE_URL"),
-        get_env_var("SUPABASE_SERVICE_KEY")
-    )
-else:
-    supabase = None
+# Initialize clients
+openai_client, supabase = get_clients()
 
 # Define state schema
 class AgentState(TypedDict):
