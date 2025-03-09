@@ -194,7 +194,7 @@ The Docker implementation consists of two containers:
    - Implements the Model Context Protocol for AI IDE integration
    - Built from the mcp/Dockerfile
    - Communicates with the main container's Graph Service
-   - Provides a standardized interface for AI IDEs like Windsurf, Cursor, and Cline
+   - Provides a standardized interface for AI IDEs like Windsurf, Cursor, Cline, and Roo Code
 
 When running with Docker, the `run_docker.py` script automates building and starting both containers with the proper configuration.
 
