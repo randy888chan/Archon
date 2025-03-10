@@ -29,7 +29,7 @@ def get_supabase_sql_editor_url(supabase_url):
     except Exception:
         return "https://supabase.com/dashboard"
 
-def show_manual_sql_instructions(sql, recreate=False):
+def show_manual_sql_instructions(sql, vector_dim, recreate=False):
     """Show instructions for manually executing SQL in Supabase"""
     st.info("### Manual SQL Execution Instructions")
     
@@ -45,7 +45,7 @@ def show_manual_sql_instructions(sql, recreate=False):
     
     if recreate:
         st.markdown("**Step 3:** Copy and execute the following SQL:")
-        drop_sql = "DROP TABLE IF EXISTS site_pages CASCADE;"
+        drop_sql = f"DROP FUNCTION IF EXISTS match_site_pages(vector({vector_dim}), int, jsonb);\nDROP TABLE IF EXISTS site_pages CASCADE;"
         st.code(drop_sql, language="sql")
         
         st.markdown("**Step 4:** Then copy and execute this SQL:")
@@ -146,7 +146,7 @@ def database_tab(supabase):
     # Create table button
     if not table_exists:
         if st.button("Get Instructions for Creating Site Pages Table"):
-            show_manual_sql_instructions(sql)
+            show_manual_sql_instructions(sql, vector_dim)
     else:
         # Option to recreate the table or clear data
         col1, col2 = st.columns(2)
@@ -154,7 +154,7 @@ def database_tab(supabase):
         with col1:
             st.warning("⚠️ Recreating will delete all existing data.")
             if st.button("Get Instructions for Recreating Site Pages Table"):
-                show_manual_sql_instructions(sql, recreate=True)
+                show_manual_sql_instructions(sql, vector_dim, recreate=True)
         
         with col2:
             if table_has_data:

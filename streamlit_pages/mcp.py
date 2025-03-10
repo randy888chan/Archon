@@ -8,7 +8,7 @@ def generate_mcp_config(ide_type):
     Generate MCP configuration for the selected IDE type.
     """
     # Get the absolute path to the current directory
-    base_path = os.path.abspath(os.path.dirname(__file__))
+    base_path = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
     
     # Determine the correct python path based on the OS
     if platform.system() == "Windows":
