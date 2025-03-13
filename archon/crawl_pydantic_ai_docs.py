@@ -19,13 +19,11 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.utils import get_env_var, get_clients
 
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
-from openai import AsyncOpenAI
-from supabase import create_client, Client
 
 load_dotenv()
 
-# Initialize OpenAI and Supabase clients
-openai_client, supabase = get_clients()
+# Initialize embedding and Supabase clients
+embedding_client, supabase = get_clients()
 
 # Define the embedding model for embedding the documentation for RAG
 embedding_model = get_env_var('EMBEDDING_MODEL') or 'text-embedding-3-small'
@@ -180,7 +178,7 @@ async def get_title_and_summary(chunk: str, url: str) -> Dict[str, str]:
     Keep both title and summary concise but informative."""
     
     try:
-        response = await openai_client.chat.completions.create(
+        response = await embedding_client.chat.completions.create(
             model=get_env_var("PRIMARY_MODEL") or "gpt-4o-mini",
             messages=[
                 {"role": "system", "content": system_prompt},
@@ -196,7 +194,7 @@ async def get_title_and_summary(chunk: str, url: str) -> Dict[str, str]:
 async def get_embedding(text: str) -> List[float]:
     """Get embedding vector from OpenAI."""
     try:
-        response = await openai_client.embeddings.create(
+        response = await embedding_client.embeddings.create(
             model=embedding_model,
             input=text
         )

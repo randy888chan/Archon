@@ -30,12 +30,12 @@ load_dotenv()
 # Configure logfire to suppress warnings (optional)
 logfire.configure(send_to_logfire='never')
 
+provider = get_env_var('LLM_PROVIDER') or 'OpenAI'
 base_url = get_env_var('BASE_URL') or 'https://api.openai.com/v1'
 api_key = get_env_var('LLM_API_KEY') or 'no-llm-api-key-provided'
 
-is_ollama = "localhost" in base_url.lower()
-is_anthropic = "anthropic" in base_url.lower()
-is_openai = "openai" in base_url.lower()
+is_anthropic = provider == "Anthropic"
+is_openai = provider == "OpenAI"
 
 reasoner_llm_model_name = get_env_var('REASONER_MODEL') or 'o3-mini'
 reasoner_llm_model = AnthropicModel(reasoner_llm_model_name, api_key=api_key) if is_anthropic else OpenAIModel(reasoner_llm_model_name, base_url=base_url, api_key=api_key)
@@ -59,7 +59,7 @@ end_conversation_agent = Agent(
 )
 
 # Initialize clients
-openai_client, supabase = get_clients()
+embedding_client, supabase = get_clients()
 
 # Define state schema
 class AgentState(TypedDict):
@@ -109,7 +109,7 @@ async def coder_agent(state: AgentState, writer):
     # Prepare dependencies
     deps = PydanticAIDeps(
         supabase=supabase,
-        openai_client=openai_client,
+        embedding_client=embedding_client,
         reasoner_output=state['scope']
     )
 

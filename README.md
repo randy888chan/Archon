@@ -11,6 +11,8 @@
 
 </div>
 
+> **🔄 IMPORTANT UPDATE (March 13th)**: The environment variables system has been completely overhauled to be more intuitive with separate sections for LLM and Embedding providers. You will need to reset your environment variables in the UI. The new system makes it much easier to switch between different providers and manage profiles as well!
+
 Archon is the world's first **"Agenteer"**, an AI agent designed to autonomously build, refine, and optimize other AI agents. 
 
 It serves both as a practical tool for developers and as an educational framework demonstrating the evolution of agentic systems.
@@ -91,7 +93,7 @@ streamlit run streamlit_ui.py
 ### Setup Process
 
 After installation, follow the guided setup process in the Intro section of the Streamlit UI:
-- **Environment**: Configure your API keys and model settings
+- **Environment**: Configure your API keys and model settings - all stored in `workbench/env_vars.json`
 - **Database**: Set up your Supabase vector database
 - **Documentation**: Crawl and index the Pydantic AI documentation
 - **Agent Service**: Start the agent service for generating agents
@@ -180,7 +182,12 @@ check there. The goal is for you to have a clear error message before creating a
 - `utils/`: Utility functions and database setup
   - `utils.py`: Shared utility functions
   - `site_pages.sql`: Database setup commands
+
+### Workbench
+- `workbench/`: Created at runtime, files specific to your environment
   - `env_vars.json`: Environment variables defined in the UI are stored here (included in .gitignore, file is created automatically)
+  - `logs.txt`: Low level logs for all Archon processes go here
+  - `scope.md`: The detailed scope document created by the reasoner model at the start of each Archon execution
 
 ## Deployment Options
 - **Docker Containers**: Run Archon in isolated containers with all dependencies included

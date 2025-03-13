@@ -7,14 +7,9 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.utils import create_new_tab_button
 
 def intro_tab():
-    """Display the introduction and setup guide for Archon"""
-    # Display the banner image
-    st.image("public/Archon.png", use_container_width=True)
-    
+    """Display the introduction and setup guide for Archon"""    
     # Welcome message
     st.markdown("""
-    # Welcome to Archon!
-    
     Archon is an AI meta-agent designed to autonomously build, refine, and optimize other AI agents.
     
     It serves both as a practical tool for developers and as an educational framework demonstrating the evolution of agentic systems.
@@ -22,6 +17,11 @@ def intro_tab():
     all the way to a full agentic workflow using LangGraph that can build other AI agents with any framework.
     
     Through its iterative development, Archon showcases the power of planning, feedback loops, and domain-specific knowledge in creating robust AI agents.
+    """)
+    
+    # Environment variables update notice
+    st.warning("""
+    **🔄 IMPORTANT UPDATE (March 13th)**: The environment variables system has been completely overhauled to be more intuitive with separate sections for LLM and Embedding providers. You will need to reset your environment variables in the UI. The new system makes it much easier to switch between different providers and manage profiles as well!
     """)
     
     # Setup guide with expandable sections

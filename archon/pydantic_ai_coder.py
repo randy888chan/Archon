@@ -22,14 +22,12 @@ from utils.utils import get_env_var
 
 load_dotenv()
 
+provider = get_env_var('LLM_PROVIDER') or 'OpenAI'
 llm = get_env_var('PRIMARY_MODEL') or 'gpt-4o-mini'
 base_url = get_env_var('BASE_URL') or 'https://api.openai.com/v1'
 api_key = get_env_var('LLM_API_KEY') or 'no-llm-api-key-provided'
 
-is_ollama = "localhost" in base_url.lower()
-is_anthropic = "anthropic" in base_url.lower()
-
-model = AnthropicModel(llm, api_key=api_key) if is_anthropic else OpenAIModel(llm, base_url=base_url, api_key=api_key)
+model = AnthropicModel(llm, api_key=api_key) if provider == "Anthropic" else OpenAIModel(llm, base_url=base_url, api_key=api_key)
 embedding_model = get_env_var('EMBEDDING_MODEL') or 'text-embedding-3-small'
 
 logfire.configure(send_to_logfire='if-token-present')
@@ -37,7 +35,7 @@ logfire.configure(send_to_logfire='if-token-present')
 @dataclass
 class PydanticAIDeps:
     supabase: Client
-    openai_client: AsyncOpenAI
+    embedding_client: AsyncOpenAI
     reasoner_output: str
 
 system_prompt = """
@@ -272,10 +270,10 @@ def add_reasoner_output(ctx: RunContext[str]) -> str:
     # Add this in to get some crazy tool calling:
     # You must get ALL documentation pages listed in the scope.
 
-async def get_embedding(text: str, openai_client: AsyncOpenAI) -> List[float]:
+async def get_embedding(text: str, embedding_client: AsyncOpenAI) -> List[float]:
     """Get embedding vector from OpenAI."""
     try:
-        response = await openai_client.embeddings.create(
+        response = await embedding_client.embeddings.create(
             model=embedding_model,
             input=text
         )
@@ -298,7 +296,7 @@ async def retrieve_relevant_documentation(ctx: RunContext[PydanticAIDeps], user_
     """
     try:
         # Get the embedding for the query
-        query_embedding = await get_embedding(user_query, ctx.deps.openai_client)
+        query_embedding = await get_embedding(user_query, ctx.deps.embedding_client)
         
         # Query Supabase for relevant documents
         result = ctx.deps.supabase.rpc(
