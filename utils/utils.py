@@ -368,6 +368,10 @@ def reload_archon_graph(show_reload_success=True):
         # Then reload archon_graph which imports pydantic_ai_coder
         import archon.archon_graph
         importlib.reload(archon.archon_graph)
+
+        # Then reload the crawler
+        import archon.crawl_pydantic_ai_docs
+        importlib.reload(archon.crawl_pydantic_ai_docs)        
         
         if show_reload_success:
             st.success("Successfully reloaded Archon modules with new environment variables!")

@@ -5,12 +5,14 @@ import threading
 import subprocess
 import requests
 import json
+import time
 from typing import List, Dict, Any, Optional, Callable
 from xml.etree import ElementTree
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 from dotenv import load_dotenv
+from openai import AsyncOpenAI
 import re
 import html2text
 
@@ -386,6 +388,8 @@ async def crawl_parallel_with_requests(urls: List[str], tracker: Optional[CrawlP
                     # Ensure UI gets updated
                     if tracker.progress_callback:
                         tracker.progress_callback(tracker.get_status())
+
+        time.sleep(2)
     
     # Process all URLs in parallel with limited concurrency
     if tracker:
