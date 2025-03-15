@@ -48,14 +48,24 @@ jobs:
 
   build-docker:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.11', '3.12', '3.13']
+        include:
+          - python-version: '3.13'
+            experimental: true
+      fail-fast: false
+
+    # Test on newer Python versions
+    continue-on-error: ${{ matrix.experimental || false }}
     steps:
       - name: Checkout code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
-      - name: Set up Python
+      - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38
         with:
-          python-version: '3.11'
+          python-version: ${{ matrix.python-version }}
 
       - name: Modify run_docker.py for CI environment
         run: |
