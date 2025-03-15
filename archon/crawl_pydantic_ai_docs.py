@@ -28,6 +28,20 @@ embedding_client, supabase = get_clients()
 # Define the embedding model for embedding the documentation for RAG
 embedding_model = get_env_var('EMBEDDING_MODEL') or 'text-embedding-3-small'
 
+# LLM client setup
+llm_client = None
+base_url = get_env_var('BASE_URL') or 'https://api.openai.com/v1'
+api_key = get_env_var('LLM_API_KEY') or 'no-api-key-provided'
+provider = get_env_var('LLM_PROVIDER') or 'OpenAI'
+
+# Setup OpenAI client for LLM
+if provider == "Ollama":
+    if api_key == "NOT_REQUIRED":
+        api_key = "ollama"  # Use a dummy key for Ollama
+    llm_client = AsyncOpenAI(base_url=base_url, api_key=api_key)
+else:
+    llm_client = AsyncOpenAI(base_url=base_url, api_key=api_key)
+
 # Initialize HTML to Markdown converter
 html_converter = html2text.HTML2Text()
 html_converter.ignore_links = False
@@ -178,7 +192,7 @@ async def get_title_and_summary(chunk: str, url: str) -> Dict[str, str]:
     Keep both title and summary concise but informative."""
     
     try:
-        response = await embedding_client.chat.completions.create(
+        response = await llm_client.chat.completions.create(
             model=get_env_var("PRIMARY_MODEL") or "gpt-4o-mini",
             messages=[
                 {"role": "system", "content": system_prompt},
