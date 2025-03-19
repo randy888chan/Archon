@@ -90,6 +90,25 @@ streamlit run streamlit_ui.py
 
 4. Access the Streamlit UI at http://localhost:8501.
 
+### Setup Process
+
+After installation, follow the guided setup process in the Intro section of the Streamlit UI:
+- **Environment**: Configure your API keys and model settings - all stored in `workbench/env_vars.json`
+- **Database**: Set up your Supabase vector database
+- **Documentation**: Crawl and index the Pydantic AI documentation
+- **Agent Service**: Start the agent service for generating agents
+- **Chat**: Interact with Archon to create AI agents
+- **MCP** (optional): Configure integration with AI IDEs
+
+The Streamlit interface will guide you through each step with clear instructions and interactive elements.
+There are a good amount of steps for the setup but it goes quick!
+
+### Troubleshooting
+
+If you encounter any errors when using Archon, please first check the logs in the "Agent Service" tab.
+Logs specifically for MCP are also logged to `workbench/logs.txt` (file is automatically created) so please
+check there. The goal is for you to have a clear error message before creating a bug here in the GitHub repo
+
 ### Updating Archon
 
 #### Option 1: Docker
@@ -125,25 +144,6 @@ streamlit run streamlit_ui.py
 ```
 
 This ensures you're always running the most recent version of Archon with all the latest features and bug fixes.
-
-### Setup Process
-
-After installation, follow the guided setup process in the Intro section of the Streamlit UI:
-- **Environment**: Configure your API keys and model settings - all stored in `workbench/env_vars.json`
-- **Database**: Set up your Supabase vector database
-- **Documentation**: Crawl and index the Pydantic AI documentation
-- **Agent Service**: Start the agent service for generating agents
-- **Chat**: Interact with Archon to create AI agents
-- **MCP** (optional): Configure integration with AI IDEs
-
-The Streamlit interface will guide you through each step with clear instructions and interactive elements.
-There are a good amount of steps for the setup but it goes quick!
-
-### Troubleshooting
-
-If you encounter any errors when using Archon, please first check the logs in the "Agent Service" tab.
-Logs specifically for MCP are also logged to `workbench/logs.txt` (file is automatically created) so please
-check there. The goal is for you to have a clear error message before creating a bug here in the GitHub repo
 
 ## Project Evolution
 
