@@ -31,6 +31,12 @@ def environment_tab():
         
         if selected_profile != current_profile:
             if set_current_profile(selected_profile):
+                # Clear provider session state variables to force them to reload from the new profile
+                if "llm_provider" in st.session_state:
+                    del st.session_state.llm_provider
+                if "embedding_provider" in st.session_state:
+                    del st.session_state.embedding_provider
+                
                 st.success(f"Switched to profile: {selected_profile}, reloading...")
                 reload_archon_graph(show_reload_success=False)
                 st.rerun()
@@ -56,6 +62,12 @@ def environment_tab():
                 st.error(f"Profile '{new_profile_name}' already exists.")
             else:
                 if create_profile(new_profile_name):
+                    # Clear provider session state variables for the new profile
+                    if "llm_provider" in st.session_state:
+                        del st.session_state.llm_provider
+                    if "embedding_provider" in st.session_state:
+                        del st.session_state.embedding_provider
+                        
                     st.success(f"Created profile: {new_profile_name}")
                     st.rerun()
                 else:
@@ -65,6 +77,12 @@ def environment_tab():
     if selected_profile != "default" and selected_profile == current_profile:
         if st.button("Delete Current Profile", key="delete_profile"):
             if delete_profile(selected_profile):
+                # Clear provider session state variables to force them to reload from the default profile
+                if "llm_provider" in st.session_state:
+                    del st.session_state.llm_provider
+                if "embedding_provider" in st.session_state:
+                    del st.session_state.embedding_provider
+                
                 st.success(f"Deleted profile: {selected_profile}, reloading...")
                 reload_archon_graph(show_reload_success=False)
                 st.rerun()
