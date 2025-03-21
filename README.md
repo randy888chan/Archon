@@ -1,6 +1,6 @@
 # Archon - AI Agent Builder
 
-<img src="public/Archon.png" alt="Archon Logo" />
+<img src="public/Archon.jpg" alt="Archon Logo" />
 
 <div align="center" style="margin-top: 20px;margin-bottom: 30px">
 
