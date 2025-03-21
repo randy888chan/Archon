@@ -47,7 +47,7 @@ async def main():
 
     # Add sidebar navigation
     with st.sidebar:
-        st.image("public/ArchonLightGrey.png", width=1000)
+        st.image("public/Archon.jpeg", width=1000)
         
         # Navigation options with vertical buttons
         st.write("### Navigation")
