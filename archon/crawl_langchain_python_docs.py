@@ -420,10 +420,12 @@ def get_langchain_python_docs_urls() -> List[str]:
         print(f"Error fetching sitemap: {e}")
         return []
 
-def clear_existing_records():
+def clear_existing_records(supabase_client = None):
     """Clear all existing records with source='langchain_python_docs' from the site_pages table."""
     try:
-        result = supabase.table("site_pages").delete().eq("metadata->>source", "langchain_python_docs").execute()
+        # Use passed client if provided, otherwise use global supabase
+        client = supabase_client if supabase_client is not None else supabase
+        result = client.table("site_pages").delete().eq("metadata->>source", "langchain_python_docs").execute()
         print("Cleared existing langchain_python_docs records from site_pages")
         return result
     except Exception as e:
@@ -444,7 +446,7 @@ async def main_with_requests(tracker: Optional[CrawlProgressTracker] = None):
             tracker.log("Clearing existing LangChain Python docs records...")
         else:
             print("Clearing existing LangChain Python docs records...")
-        clear_existing_records()
+        clear_existing_records(supabase)  # Pass the supabase client explicitly
         if tracker:
             tracker.log("Existing records cleared")
         else:
@@ -493,6 +495,7 @@ def start_crawl_with_requests(progress_callback: Optional[Callable[[Dict[str, An
     
     def run_crawl():
         try:
+            # Use the global supabase client here
             asyncio.run(main_with_requests(tracker))
         except Exception as e:
             print(f"Error in crawl thread: {e}")
