@@ -59,39 +59,45 @@ def add_reasoner_output(ctx: RunContext[str]) -> str:
     """
 
 @pydantic_ai_coder.tool
-async def retrieve_relevant_documentation(ctx: RunContext[PydanticAIDeps], user_query: str) -> str:
+async def retrieve_relevant_documentation(ctx: RunContext[PydanticAIDeps], user_query: str, source_id: str = "pydantic_ai_docs") -> str:
     """
     Retrieve relevant documentation chunks based on the query with RAG.
     
     Args:
         ctx: The context including the Supabase client and OpenAI client
         user_query: The user's question or query
+        source_id: The documentation source ID (defaults to "pydantic_ai_docs")
         
     Returns:
         A formatted string containing the top 4 most relevant documentation chunks
     """
-    return await retrieve_relevant_documentation_tool(ctx.deps.supabase, ctx.deps.embedding_client, user_query)
+    return await retrieve_relevant_documentation_tool(ctx.deps.supabase, ctx.deps.embedding_client, user_query, source_id)
 
 @pydantic_ai_coder.tool
-async def list_documentation_pages(ctx: RunContext[PydanticAIDeps]) -> List[str]:
+async def list_documentation_pages(ctx: RunContext[PydanticAIDeps], source_id: str = "pydantic_ai_docs") -> List[str]:
     """
-    Retrieve a list of all available Pydantic AI documentation pages.
+    Retrieve a list of all available documentation pages for a specific source.
     
+    Args:
+        ctx: The context including the Supabase client
+        source_id: The documentation source ID (defaults to "pydantic_ai_docs")
+        
     Returns:
-        List[str]: List of unique URLs for all documentation pages
+        List[str]: List of unique URLs for all documentation pages from the specified source
     """
-    return await list_documentation_pages_tool(ctx.deps.supabase)
+    return await list_documentation_pages_tool(ctx.deps.supabase, source_id)
 
 @pydantic_ai_coder.tool
-async def get_page_content(ctx: RunContext[PydanticAIDeps], url: str) -> str:
+async def get_page_content(ctx: RunContext[PydanticAIDeps], url: str, source_id: str = "pydantic_ai_docs") -> str:
     """
     Retrieve the full content of a specific documentation page by combining all its chunks.
     
     Args:
         ctx: The context including the Supabase client
         url: The URL of the page to retrieve
+        source_id: The documentation source ID (defaults to "pydantic_ai_docs")
         
     Returns:
         str: The complete page content with all chunks combined in order
     """
-    return await get_page_content_tool(ctx.deps.supabase, url)
+    return await get_page_content_tool(ctx.deps.supabase, url, source_id)
