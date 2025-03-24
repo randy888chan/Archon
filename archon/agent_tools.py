@@ -21,7 +21,7 @@ async def get_embedding(text: str, embedding_client: AsyncOpenAI) -> List[float]
         print(f"Error getting embedding: {e}")
         return [0] * 1536  # Return zero vector on error
 
-async def retrieve_relevant_documentation_tool(supabase: Client, embedding_client: AsyncOpenAI, user_query: str) -> str:
+async def retrieve_relevant_documentation_tool(supabase: Client, embedding_client: AsyncOpenAI, user_query: str, source_id: str = "pydantic_ai_docs") -> str:
     try:
         # Get the embedding for the query
         query_embedding = await get_embedding(user_query, embedding_client)
@@ -32,7 +32,7 @@ async def retrieve_relevant_documentation_tool(supabase: Client, embedding_clien
             {
                 'query_embedding': query_embedding,
                 'match_count': 4,
-                'filter': {'source': 'pydantic_ai_docs'}
+                'filter': {'source': source_id}
             }
         ).execute()
         
@@ -56,20 +56,24 @@ async def retrieve_relevant_documentation_tool(supabase: Client, embedding_clien
         print(f"Error retrieving documentation: {e}")
         return f"Error retrieving documentation: {str(e)}" 
 
-async def list_documentation_pages_tool(supabase: Client) -> List[str]:
+async def list_documentation_pages_tool(supabase: Client, source_id: str = "pydantic_ai_docs") -> List[str]:
     """
-    Function to retrieve a list of all available Pydantic AI documentation pages.
+    Function to retrieve a list of available documentation pages.
     This is called by the list_documentation_pages tool and also externally
     to fetch documentation pages for the reasoner LLM.
+    
+    Args:
+        supabase: The Supabase client
+        source_id: The documentation source ID (defaults to "pydantic_ai_docs")
     
     Returns:
         List[str]: List of unique URLs for all documentation pages
     """
     try:
-        # Query Supabase for unique URLs where source is pydantic_ai_docs
+        # Query Supabase for unique URLs where source matches the source_id
         result = supabase.from_('site_pages') \
             .select('url') \
-            .eq('metadata->>source', 'pydantic_ai_docs') \
+            .eq('metadata->>source', source_id) \
             .execute()
         
         if not result.data:
@@ -83,13 +87,14 @@ async def list_documentation_pages_tool(supabase: Client) -> List[str]:
         print(f"Error retrieving documentation pages: {e}")
         return []
 
-async def get_page_content_tool(supabase: Client, url: str) -> str:
+async def get_page_content_tool(supabase: Client, url: str, source_id: str = "pydantic_ai_docs") -> str:
     """
     Retrieve the full content of a specific documentation page by combining all its chunks.
     
     Args:
-        ctx: The context including the Supabase client
+        supabase: The Supabase client
         url: The URL of the page to retrieve
+        source_id: The documentation source ID (defaults to "pydantic_ai_docs")
         
     Returns:
         str: The complete page content with all chunks combined in order
@@ -99,7 +104,7 @@ async def get_page_content_tool(supabase: Client, url: str) -> str:
         result = supabase.from_('site_pages') \
             .select('title, content, chunk_number') \
             .eq('url', url) \
-            .eq('metadata->>source', 'pydantic_ai_docs') \
+            .eq('metadata->>source', source_id) \
             .order('chunk_number') \
             .execute()
         
