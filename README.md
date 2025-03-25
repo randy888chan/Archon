@@ -1,3 +1,6 @@
+**Acknowledgments**
+This project uses the ArchonX repository coleam00 https://github.com/coleam00/Archon We thank him for making this valuable resource available to the community.
+
 # Archon - AI Agent Builder
 
 <img src="public/Archon.png" alt="Archon Logo" />
