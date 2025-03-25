@@ -1,53 +1,15 @@
 import streamlit as st
-import uuid
-import asyncio
 import time
-import os
 import sys
-from typing import Dict, List, Optional, Tuple, Any
+import os
+import re
 
-# Add the project root to the Python path
-ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-sys.path.insert(0, ROOT_DIR)
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from archon.documentation_crawler import DocumentationSource, DocumentationCrawler, registry, get_sitemap_urls
+from utils.utils import get_env_var, create_new_tab_button
 
-# Try to import optional dependencies, but don't error if they're not available
-# The documentation_crawler.py module has fallbacks for these
-try:
-    import html2text
-    html2text_available = True
-except ImportError:
-    html2text_available = False
-
-try:
-    from bs4 import BeautifulSoup
-    bs4_available = True
-except ImportError:
-    bs4_available = False
-
-try:
-    from lxml import etree
-    lxml_available = True
-except ImportError:
-    lxml_available = False
-
-# Import documentation crawler modules with error handling
-try:
-    from archon.documentation_crawler import DocumentationSource, DocumentationCrawler, CrawlProgressTracker, get_sitemap_urls
-    # Import the registry directly as an already instantiated object
-    from archon.documentation_crawler import registry
-except ImportError as e:
-    st.error(f"Error importing from documentation_crawler: {e}")
-
-from utils.utils import get_clients, get_env_var, create_new_tab_button
-
-def documentation_tab(supabase):
-    """
-    Documentation tab for crawling and searching documentation.
-    """
-    if not supabase:
-        st.warning("Supabase is not configured. Please add your Supabase credentials in the Environment tab.")
-        return
-
+def documentation_tab(supabase_client):
+    """Display the documentation interface"""
     st.header("Documentation")
     
     # Check if the database is configured
@@ -59,157 +21,154 @@ def documentation_tab(supabase):
         create_new_tab_button("Go to Environment Section", "Environment", key="goto_env_from_docs")
         return
     
-    # Create tabs for existing sources and for adding new sources
-    existing_tabs, add_source_tab = st.tabs(["Existing Sources", "Add New Source"])
+    # Get all registered sources
+    all_sources = registry.get_all_sources()
     
-    with existing_tabs:
-        # Get all registered sources
-        all_sources = registry.get_all_sources()
-        
-        if not all_sources:
-            st.warning("No documentation sources registered. Add one in the 'Add New Source' tab.")
-        else:
-            # Create tabs for each source
-            source_tabs = st.tabs([source.name for source in all_sources])
+    # Create tabs dynamically for all sources + an "Add Source" tab
+    source_tabs = st.tabs([source.name for source in all_sources] + ["Add Source"])
+    
+    # Loop through each source and display its tab content
+    for idx, (source, tab) in enumerate(zip(all_sources, source_tabs[:-1])):
+        source_id = source.id
+        with tab:
+            # Initialize session state for this source if needed
+            if f"crawl_tracker_{source_id}" not in st.session_state:
+                st.session_state[f"crawl_tracker_{source_id}"] = None
+            if f"crawl_status_{source_id}" not in st.session_state:
+                st.session_state[f"crawl_status_{source_id}"] = None
+            if f"last_update_time_{source_id}" not in st.session_state:
+                st.session_state[f"last_update_time_{source_id}"] = time.time()
             
-            # Initialize session state
-            for source in all_sources:
-                source_id = source.id
-                if f"crawl_progress_{source_id}" not in st.session_state:
-                    st.session_state[f"crawl_progress_{source_id}"] = None
-                if f"crawl_status_{source_id}" not in st.session_state:
-                    st.session_state[f"crawl_status_{source_id}"] = "idle"
-                if f"crawl_logs_{source_id}" not in st.session_state:
-                    st.session_state[f"crawl_logs_{source_id}"] = []
-                if f"clear_status_{source_id}" not in st.session_state:
-                    st.session_state[f"clear_status_{source_id}"] = "idle"
+            # Display source info
+            st.subheader(f"{source.name} Documentation")
+            st.markdown(source.description)
             
-            # Display content for each source
-            for idx, (source, tab) in enumerate(zip(all_sources, source_tabs)):
-                source_id = source.id
-                with tab:
-                    st.subheader(f"{source.name} Documentation")
-                    st.write(source.description)
-                    
-                    # Metrics row with counts
+            # Create columns for the buttons
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                # Button to start crawling
+                if st.button(f"Crawl {source.name}", key=f"crawl_{source_id}") and not (st.session_state[f"crawl_tracker_{source_id}"] and st.session_state[f"crawl_tracker_{source_id}"].is_running):
                     try:
-                        # Count indexed docs - FIX: Use metadata->>source instead of source column
-                        count_result = supabase.table("site_pages").select("*", count="exact").eq("metadata->>source", source_id).execute()
-                        indexed_count = count_result.count
+                        # Define a callback function to update the session state
+                        def update_progress(status):
+                            st.session_state[f"crawl_status_{source_id}"] = status
+                        
+                        # Get a crawler for this source
+                        crawler = DocumentationCrawler(source)
+                        
+                        # Start the crawling process in a separate thread
+                        st.session_state[f"crawl_tracker_{source_id}"] = crawler.start_crawler(update_progress)
+                        st.session_state[f"crawl_status_{source_id}"] = st.session_state[f"crawl_tracker_{source_id}"].get_status()
+                        
+                        # Force a rerun to start showing progress
+                        st.rerun()
                     except Exception as e:
-                        st.error(f"Error counting indexed docs: {str(e)}")
-                        indexed_count = 0
-                    
-                    st.write(f"**Indexed Documents**: {indexed_count}")
-                    
-                    # Buttons for crawling and clearing
-                    col1, col2, col3 = st.columns(3)
-                    
-                    with col1:
-                        # Start crawl button
-                        start_crawl = st.button(f"Start Crawling {source.name}", key=f"start_crawl_{source_id}")
-                        if start_crawl:
-                            if st.session_state[f"crawl_status_{source_id}"] == "running":
-                                st.warning("Crawl already in progress.")
-                            else:
-                                st.session_state[f"crawl_status_{source_id}"] = "running"
-                                st.session_state[f"crawl_logs_{source_id}"] = []
-                                
-                                # Initialize crawler
-                                crawler = DocumentationCrawler(
-                                    source=source,
-                                )
-                                
-                                # Start the crawl in a separate thread
-                                tracker = crawler.start_crawler()
-                                st.session_state[f"crawl_progress_{source_id}"] = tracker
-                    
-                    with col2:
-                        # Clear existing button
-                        clear_existing = st.button(f"Clear Existing {source.name}", key=f"clear_{source_id}")
-                        if clear_existing:
-                            if st.session_state[f"clear_status_{source_id}"] == "running":
-                                st.warning("Clear operation already in progress.")
-                            else:
-                                st.session_state[f"clear_status_{source_id}"] = "running"
-                                try:
-                                    # Create a crawler with the source and clear records
-                                    crawler = DocumentationCrawler(source=source)
-                                    crawler.clear_existing_records()
-                                    st.session_state[f"clear_status_{source_id}"] = "completed"
-                                except Exception as e:
-                                    st.error(f"Error clearing records: {str(e)}")
-                                    st.session_state[f"clear_status_{source_id}"] = "error"
-                    
-                    with col3:
-                        # View sample button if documents are indexed
-                        if indexed_count > 0:
-                            view_sample = st.button(f"View Sample {source.name}", key=f"view_{source_id}")
-                            if view_sample:
-                                try:
-                                    # FIX: Use metadata->>source instead of source column
-                                    sample_data = supabase.table("site_pages").select("*").eq("metadata->>source", source_id).limit(5).execute()
-                                    sample_rows = sample_data.data
-                                    st.json(sample_rows)
-                                except Exception as e:
-                                    st.error(f"Error fetching sample data: {str(e)}")
-                    
-                    # Display crawl status and progress
-                    if st.session_state[f"crawl_status_{source_id}"] == "running":
-                        tracker = st.session_state[f"crawl_progress_{source_id}"]
-                        if tracker:
-                            # Display progress metrics
-                            metrics_col1, metrics_col2, metrics_col3, metrics_col4 = st.columns(4)
-                            status = tracker.get_status()
-                            metrics_col1.metric("URLs Found", status["urls_found"])
-                            metrics_col2.metric("Processed", status["urls_processed"])
-                            metrics_col3.metric("Succeeded", status["urls_succeeded"])
-                            metrics_col4.metric("Failed", status["urls_failed"])
-                            
-                            # Display progress bar
-                            if status["urls_found"] > 0:
-                                progress = status["urls_processed"] / status["urls_found"]
-                                st.progress(progress)
-                            
-                            # Display logs
-                            if status["logs"]:
-                                st.session_state[f"crawl_logs_{source_id}"] = status["logs"][-10:]  # Keep last 10 logs
-                                
-                            with st.expander("Logs", expanded=True):
-                                for log in st.session_state[f"crawl_logs_{source_id}"]:
-                                    st.text(log)
-                            
-                            # Check if crawl is completed
-                            if not status["is_running"]:
-                                st.success(f"Crawl completed! Processed {status['urls_processed']} URLs with {status['urls_succeeded']} successes and {status['urls_failed']} errors.")
-                                st.session_state[f"crawl_status_{source_id}"] = "completed"
-                            else:
-                                st.rerun()
-                    
-                    # Display clear status
-                    if st.session_state[f"clear_status_{source_id}"] == "completed":
-                        st.success(f"Successfully cleared existing {source.name} documentation.")
-                        st.session_state[f"clear_status_{source_id}"] = "idle"  # Reset status
-                    elif st.session_state[f"clear_status_{source_id}"] == "error":
-                        st.error(f"Error clearing {source.name} documentation.")
-                        st.session_state[f"clear_status_{source_id}"] = "idle"  # Reset status
-    
-    # Tab for adding a new source
-    with add_source_tab:
-        st.subheader("Add a New Documentation Source")
-        st.write("Enter the details for a new documentation source to crawl.")
-        
-        with st.form("add_source_form"):
-            # Source ID (auto-generated but shown to user)
-            source_id = str(uuid.uuid4())[:8]
-            st.text_input("Source ID (auto-generated)", source_id, disabled=True)
+                        st.error(f"❌ Error starting crawl: {str(e)}")
             
+            with col2:
+                # Button to clear existing docs
+                if st.button(f"Clear {source.name}", key=f"clear_{source_id}"):
+                    with st.spinner(f"Clearing existing {source.name}..."):
+                        try:
+                            # Get a crawler for this source and clear records
+                            crawler = DocumentationCrawler(source)
+                            crawler.clear_existing_records()
+                            st.success(f"✅ Successfully cleared existing {source.name} from the database.")
+                            
+                            # Force a rerun to update the UI
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"❌ Error clearing {source.name}: {str(e)}")
+            
+            # Display crawling progress if a crawl is in progress or has completed
+            if st.session_state[f"crawl_tracker_{source_id}"]:
+                # Create a container for the progress information
+                progress_container = st.container()
+                
+                with progress_container:
+                    # Get the latest status
+                    current_time = time.time()
+                    # Update status every second
+                    if current_time - st.session_state[f"last_update_time_{source_id}"] >= 1:
+                        st.session_state[f"crawl_status_{source_id}"] = st.session_state[f"crawl_tracker_{source_id}"].get_status()
+                        st.session_state[f"last_update_time_{source_id}"] = current_time
+                    
+                    status = st.session_state[f"crawl_status_{source_id}"]
+                    
+                    # Display a progress bar
+                    if status and status["urls_found"] > 0:
+                        progress = status["urls_processed"] / status["urls_found"]
+                        st.progress(progress)
+                    
+                    # Display status metrics
+                    col1, col2, col3, col4, col5 = st.columns(5)
+                    if status:
+                        col1.metric("URLs Found", status["urls_found"])
+                        col2.metric("URLs Processed", status["urls_processed"])
+                        col3.metric("Successful", status["urls_succeeded"])
+                        col4.metric("Failed", status["urls_failed"])
+                        col5.metric("Chunks Stored", status.get("chunks_stored", 0))
+                    else:
+                        col1.metric("URLs Found", 0)
+                        col2.metric("URLs Processed", 0)
+                        col3.metric("Successful", 0)
+                        col4.metric("Failed", 0)
+                        col5.metric("Chunks Stored", 0)
+                    
+                    # Display logs in an expander
+                    with st.expander("Crawling Logs", expanded=True):
+                        if status and "logs" in status:
+                            logs_text = "\n".join(status["logs"][-20:])  # Show last 20 logs
+                            st.code(logs_text)
+                        else:
+                            st.code("No logs available yet...")
+                    
+                    # Show completion message
+                    if status and not status["is_running"] and status["end_time"]:
+                        if status["urls_failed"] == 0:
+                            st.success(f"✅ Crawling process for {source.name} completed successfully!")
+                        else:
+                            st.warning(f"⚠️ Crawling process for {source.name} completed with {status['urls_failed']} failed URLs.")
+                
+                # Auto-refresh while crawling is in progress
+                if not status or status["is_running"]:
+                    st.rerun()
+            
+            # Display database statistics
+            st.subheader("Database Statistics")
+            try:            
+                # Query the count of docs for this source
+                result = supabase_client.table("site_pages").select("count", count="exact").eq("metadata->>source", source_id).execute()
+                count = result.count if hasattr(result, "count") else 0
+                
+                # Display the count
+                st.metric(f"{source.name} Chunks", count)
+                
+                # Add a button to view the data
+                if count > 0 and st.button(f"View Indexed Data", key=f"view_{source_id}"):
+                    # Query a sample of the data
+                    sample_data = supabase_client.table("site_pages").select("url,title,summary,chunk_number").eq("metadata->>source", source_id).limit(10).execute()
+                    
+                    # Display the sample data
+                    st.dataframe(sample_data.data)
+                    st.info("Showing up to 10 sample records. The database contains more records.")
+            except Exception as e:
+                st.error(f"Error querying database: {str(e)}")
+    
+    # "Add Source" tab for adding new sources
+    with source_tabs[-1]:
+        st.subheader("Add a New Documentation Source")
+        st.markdown("Enter information about a new documentation source to add it to the registry.")
+        
+        # Form for adding a new source
+        with st.form("add_source_form"):
             # Source name
             source_name = st.text_input("Source Name", placeholder="e.g., FastAPI Docs")
             
             # Source description
             source_description = st.text_area("Source Description", 
-                                            placeholder="e.g., FastAPI is a modern, fast web framework for building APIs with Python.")
+                                  placeholder="e.g., FastAPI is a modern, fast web framework for building APIs with Python.")
             
             # Sitemap URL
             sitemap_url = st.text_input("Sitemap URL", placeholder="e.g., https://fastapi.tiangolo.com/sitemap.xml")
@@ -221,59 +180,36 @@ def documentation_tab(supabase):
                 if not source_name or not sitemap_url:
                     st.error("Source name and sitemap URL are required!")
                 else:
-                    # Test the sitemap URL
-                    try:
-                        # Create a function to get URLs from the sitemap
-                        def url_fetcher():
-                            return get_sitemap_urls(sitemap_url)
-                        
-                        # Test fetching some URLs
-                        urls = url_fetcher()
-                        if not urls:
-                            st.error(f"Could not fetch any URLs from the sitemap at {sitemap_url}")
-                        else:
-                            # Register the new source
-                            new_source = DocumentationSource(
-                                id=source_id,
-                                name=source_name,
-                                description=source_description or f"{source_name} documentation",
-                                url_fetcher=url_fetcher,
-                                sitemap_url=sitemap_url
-                            )
+                    # Create a source ID from the name
+                    source_id = re.sub(r'[^a-z0-9_]', '_', source_name.lower())
+                    
+                    # Check if the ID is already used
+                    if any(s.id == source_id for s in all_sources):
+                        st.error(f"A source with ID '{source_id}' already exists. Please use a different name.")
+                    else:
+                        try:
+                            # Test fetching URLs from the sitemap
+                            urls = get_sitemap_urls(sitemap_url)
                             
-                            # Add to registry
-                            registry.register(new_source)
-                            
-                            st.success(f"Successfully added {source_name} as a new documentation source!")
-                            st.info("Refresh the page to see the new source in the 'Existing Sources' tab.")
-                    except Exception as e:
-                        st.error(f"Error testing sitemap URL: {str(e)}")
-
-    # Section on how to add new sources programmatically
-    with st.expander("How to add documentation sources programmatically"):
-        st.write("""
-        You can also add new documentation sources by editing the `documentation_crawler.py` file.
-        Here's an example of how to add a new source:
-        
-        ```python
-        from archon.documentation_crawler import DocumentationSource, registry
-
-        def get_my_docs_urls():
-            # Function to fetch URLs from your documentation sitemap
-            # Example:
-            from archon.documentation_crawler import get_sitemap_urls
-            return get_sitemap_urls("https://mydocs.example.com/sitemap.xml")
-            
-        # Create and register the source
-        my_docs_source = DocumentationSource(
-            id="my-docs",
-            name="My Documentation",
-            description="Description of my documentation",
-            url_fetcher=get_my_docs_urls,
-            sitemap_url="https://mydocs.example.com/sitemap.xml"
-        )
-        
-        # Register the source
-        registry.register(my_docs_source)
-        ```
-        """)
+                            if not urls:
+                                st.error(f"Could not fetch any URLs from the sitemap at {sitemap_url}")
+                            else:
+                                # Create a new source
+                                new_source = DocumentationSource(
+                                    id=source_id,
+                                    name=source_name,
+                                    description=source_description or f"{source_name} documentation",
+                                    url_fetcher=lambda sitemap=sitemap_url: get_sitemap_urls(sitemap),
+                                    sitemap_url=sitemap_url
+                                )
+                                
+                                # Register the source
+                                registry.register(new_source)
+                                
+                                st.success(f"Successfully added {source_name} as a new documentation source!")
+                                st.info("Refresh the page to see the new source in the documentation tabs.")
+                                
+                                if st.button("Refresh Now"):
+                                    st.rerun()
+                        except Exception as e:
+                            st.error(f"Error adding source: {str(e)}")
