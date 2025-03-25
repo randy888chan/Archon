@@ -11,7 +11,7 @@
 
 </div>
 
-> **🔄 IMPORTANT UPDATE (March 20th)**: Archon now uses a multi-agent workflow with specialized refiner agents for autonomous prompt, tools, and agent definition improvements. The primary coding agent still creates the initial
+> **🔄 IMPORTANT UPDATE (March 20th)**: Archon now uses a multi-agent workflow with specialized refiner agents for autonomous prompt, tookls, and agent definition improvements. The primary coding agent still creates the initial
 agent by itself, but then you can say 'refine' or something along those lines as a follow up prompt to kick
 off the specialized agents in parallel.
 
