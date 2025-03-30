@@ -19,6 +19,13 @@ try:
     from archon.llms_txt.vector_db.embedding_manager import OpenAIEmbeddingGenerator
     from archon.llms_txt.vector_db.query_manager import HierarchicalQueryManager
     from archon.llms_txt.utils.env_loader import EnvironmentLoader # Used implicitly by managers
+    
+    # Phase 5 Components (Retrieval System)
+    from archon.llms_txt.retrieval.retrieval_manager import RetrievalManager
+    from archon.llms_txt.retrieval.query_processor import QueryProcessor
+    from archon.llms_txt.retrieval.ranking import HierarchicalRanker
+    from archon.llms_txt.retrieval.response_builder import ResponseBuilder
+
 
 except ImportError as e:
     print(f"Error importing required Archon components: {e}")
@@ -425,6 +432,10 @@ def main():
         "--context-depth", "-d", type=int, default=2,
         help="Context depth for hierarchical search test query (default: 2)."
     )
+    parser.add_argument(
+        "--test-query",
+        help="Optional test query to run using the full RetrievalManager after processing."
+    )
 
     args = parser.parse_args()
 
@@ -502,6 +513,44 @@ def main():
         except Exception as e:
             print(f"\nError running test query: {e}")
             # Optionally re-raise or exit differently on query failure
+            # sys.exit(1)
+
+    # --- Run Full Retrieval Test Query (Optional - Phase 5 Integration) ---
+    if args.test_query:
+        print(f"\n--- Running Full Retrieval Test Query ---")
+        print(f"Test Query: '{args.test_query}'")
+
+        try:
+            # Instantiate retrieval components (using placeholders as needed)
+            print("Initializing retrieval components...")
+            query_processor = QueryProcessor()
+            # Assuming HierarchicalRanker doesn't need complex init for this test
+            ranker = HierarchicalRanker()
+            response_builder = ResponseBuilder()
+            # Use None for search_client as it's not needed for this basic integration test
+            retrieval_manager = RetrievalManager(
+                search_client=None, # Placeholder
+                query_processor=query_processor,
+                ranker=ranker,
+                response_builder=response_builder
+            )
+            print("Retrieval components initialized.")
+
+            # Execute the retrieval process
+            print("Executing retrieval...")
+            retrieval_results = retrieval_manager.retrieve(args.test_query)
+
+            # Print the results (basic output)
+            print("\n--- Retrieval Results ---")
+            if retrieval_results:
+                # Basic print - adjust formatting as needed based on actual results structure
+                print(json.dumps(retrieval_results, indent=2))
+            else:
+                print("(No results returned from retrieval manager)")
+
+        except Exception as e:
+            print(f"\nError running full retrieval test query: {e}")
+            # Optionally re-raise or exit differently
             # sys.exit(1)
 
 if __name__ == "__main__":
