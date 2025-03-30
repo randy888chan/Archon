@@ -222,13 +222,21 @@ def process_document(file_path: str, document_id: Optional[str] = None) -> Optio
         try:
             # Use pattern matching, adjust max_results as needed (e.g., 10)
             # Ensure path_pattern is treated as a string for the f-string
-            target_nodes = db.find_nodes_by_path(path_pattern=f"%{str(path_pattern)}%", max_results=10)
-            if target_nodes: # Only store if results are found
-                 fuzzy_path_to_nodes_map[path_pattern] = target_nodes
+            target_nodes_raw = db.find_nodes_by_path(path_pattern=f"%{str(path_pattern)}%", max_results=10)
+
+            # FIX: Filter results to include only nodes from the current document
+            if target_nodes_raw:
+                filtered_target_nodes = [
+                    node for node in target_nodes_raw
+                    if node.get("document_id") == effective_document_id
+                ]
+                if filtered_target_nodes: # Only store if results remain after filtering
+                    fuzzy_path_to_nodes_map[path_pattern] = filtered_target_nodes
+
         except Exception as e_fuzzy:
             print(f"Error during fuzzy lookup for path pattern '{path_pattern}': {e_fuzzy}")
             fuzzy_lookup_errors += 1
-    print(f"Batch fuzzy lookups complete. Found nodes for {len(fuzzy_path_to_nodes_map)} paths. Errors: {fuzzy_lookup_errors}.")
+    print(f"Batch fuzzy lookups complete. Found nodes for {len(fuzzy_path_to_nodes_map)} paths (after filtering). Errors: {fuzzy_lookup_errors}.")
 
     # --- Phase 4: Generate Embeddings ---
     try:
@@ -361,10 +369,11 @@ def process_document(file_path: str, document_id: Optional[str] = None) -> Optio
 
             # Check if this path needed fuzzy lookup and if results were found
             if path_key_str in fuzzy_path_to_nodes_map:
-                target_nodes = fuzzy_path_to_nodes_map[path_key_str]
+                target_nodes = fuzzy_path_to_nodes_map[path_key_str] # These are already filtered
                 for target_node in target_nodes:
                     target_db_id = target_node.get("id")
-                    if target_db_id and target_db_id != source_db_id:
+                    # Ensure target_db_id exists in the current map (redundant check, but safe)
+                    if target_db_id and target_db_id in original_id_to_db_id_map.values() and target_db_id != source_db_id:
                         ref_pair = (source_db_id, target_db_id)
                         if ref_pair not in inserted_reference_pairs:
                             reference_data = {
