@@ -1,3 +1,4 @@
+import uuid
 import re
 import json # Although not directly used in the provided snippets, it might be useful for debugging/output
 
@@ -126,6 +127,7 @@ class HierarchicalChunker:
         metadata["content_type"] = chunk_type # Override with the determined chunk type
 
         return {
+            "id": uuid.uuid4().hex, # Add unique ID
             "content": node.get("content", ""),
             "title": node.get("title"), # Title of the specific node/header
             "type": chunk_type,
