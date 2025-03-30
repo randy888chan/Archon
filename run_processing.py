@@ -3,7 +3,7 @@ import json
 import argparse
 import sys
 from pathlib import Path
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Set, Tuple
 
 # --- Import Pipeline Components ---
 try:
@@ -124,10 +124,13 @@ def process_document(file_path: str, document_id: Optional[str] = None) -> Optio
         print(f"Error during Phase 3 (Metadata Enrichment): {e}")
         return None
 
-    # --- Phase 4: Prepare Nodes for Database ---
-    print("Phase 4: Preparing nodes for database insertion...")
-    db_nodes_to_insert = []
-    original_id_to_chunk_map = {} # Map original chunk ID to the full chunk data
+    # --- Phase 4: Prepare Nodes & Pre-process References ---
+    print("Phase 4: Preparing nodes and pre-processing references...")
+    db_nodes_to_insert: List[Dict[str, Any]] = []
+    original_id_to_chunk_map: Dict[Any, Dict[str, Any]] = {} # Map original chunk ID to the full chunk data
+    path_to_original_id_map: Dict[str, Any] = {} # NEW: Map exact path to original ID
+    exact_resolved_references: List[Tuple[Any, Any]] = [] # NEW: List of (source_orig_id, target_orig_id)
+    paths_needing_fuzzy_lookup: Set[str] = set() # NEW: Set of paths needing DB lookup
 
     for chunk in enriched_chunks:
         # Validate essential fields from previous phases
@@ -176,9 +179,64 @@ def process_document(file_path: str, document_id: Optional[str] = None) -> Optio
         }
         db_nodes_to_insert.append(node_data)
 
+        # --- Build path_to_original_id_map ---
+        if path_str != "Unknown Path" and original_id:
+             path_to_original_id_map[path_str] = original_id
+
     if not db_nodes_to_insert:
          print("No valid nodes prepared for database insertion.")
          return effective_document_id # Return ID even if no nodes inserted
+
+    # --- Resolve Exact References & Identify Fuzzy Paths ---
+    print("Phase 4: Resolving exact references and identifying fuzzy paths...")
+    for original_id, chunk_data in original_id_to_chunk_map.items():
+        source_original_id = original_id
+        related_sections = chunk_data.get("metadata", {}).get("related_sections", [])
+        for related_path_item in related_sections: # Renamed variable
+            # FIX: Ensure the key used for lookup is always a string
+            if isinstance(related_path_item, list):
+                path_key_str = " > ".join(map(str, related_path_item))
+            elif isinstance(related_path_item, str):
+                path_key_str = related_path_item
+            else:
+                # Handle unexpected types if necessary, e.g., skip or log warning
+                print(f"Warning: Skipping unexpected type in related_sections: {type(related_path_item)}")
+                continue
+
+            target_original_id = path_to_original_id_map.get(path_key_str)
+            if target_original_id:
+                # Found exact match
+                if source_original_id != target_original_id: # Avoid self-references
+                     exact_resolved_references.append((source_original_id, target_original_id))
+            else:
+                # No exact match, need fuzzy lookup (use the string key)
+                paths_needing_fuzzy_lookup.add(path_key_str)
+    print(f"Found {len(exact_resolved_references)} exact references.")
+    print(f"Identified {len(paths_needing_fuzzy_lookup)} unique paths requiring fuzzy lookup.")
+
+    # --- Phase 4: Batch Fuzzy Lookups ---
+    print("Phase 4: Performing batch fuzzy lookups...")
+    fuzzy_path_to_nodes_map: Dict[str, List[Dict[str, Any]]] = {}
+    fuzzy_lookup_errors = 0
+    for path_pattern in paths_needing_fuzzy_lookup: # path_pattern is now guaranteed to be a string
+        try:
+            # Use pattern matching, adjust max_results as needed (e.g., 10)
+            # Ensure path_pattern is treated as a string for the f-string
+            target_nodes_raw = db.find_nodes_by_path(path_pattern=f"%{str(path_pattern)}%", max_results=10)
+
+            # FIX: Filter results to include only nodes from the current document
+            if target_nodes_raw:
+                filtered_target_nodes = [
+                    node for node in target_nodes_raw
+                    if node.get("document_id") == effective_document_id
+                ]
+                if filtered_target_nodes: # Only store if results remain after filtering
+                    fuzzy_path_to_nodes_map[path_pattern] = filtered_target_nodes
+
+        except Exception as e_fuzzy:
+            print(f"Error during fuzzy lookup for path pattern '{path_pattern}': {e_fuzzy}")
+            fuzzy_lookup_errors += 1
+    print(f"Batch fuzzy lookups complete. Found nodes for {len(fuzzy_path_to_nodes_map)} paths (after filtering). Errors: {fuzzy_lookup_errors}.")
 
     # --- Phase 4: Generate Embeddings ---
     try:
@@ -197,7 +255,7 @@ def process_document(file_path: str, document_id: Optional[str] = None) -> Optio
 
     # --- Phase 4: Insert Nodes into Database ---
     print(f"Phase 4: Inserting {len(db_nodes_with_embeddings)} nodes into database...")
-    original_id_to_db_id_map = {} # Map original chunk ID to the new database ID
+    original_id_to_db_id_map: Dict[Any, int] = {} # Map original chunk ID to the new database ID
     inserted_count = 0
     failed_count = 0
 
@@ -244,21 +302,20 @@ def process_document(file_path: str, document_id: Optional[str] = None) -> Optio
          print("Error: No nodes were successfully inserted into the database.")
          return None # Fail if nothing could be inserted
 
-    # --- Phase 4: Create Relationships (Parent Links & References) ---
-    print("Phase 4: Creating relationships (parent links and references)...")
+    # --- Phase 4: Create Relationships (Optimized) ---
+    print("Phase 4: Creating relationships (Optimized - Parent Links & References)...")
     parent_links_set = 0
     references_created = 0
     parent_link_errors = 0
     reference_errors = 0
+    inserted_reference_pairs: Set[Tuple[int, int]] = set() # Track (source_db_id, target_db_id)
 
-    for original_id, chunk_data in original_id_to_chunk_map.items():
-        # Check if this chunk was successfully inserted
-        if original_id not in original_id_to_db_id_map:
-            continue # Skip if the source node wasn't inserted
+    # 1. Set Parent Links (Iterate through inserted nodes)
+    print("Setting parent links...")
+    for original_id, db_id in original_id_to_db_id_map.items():
+        chunk_data = original_id_to_chunk_map.get(original_id)
+        if not chunk_data: continue # Should not happen if maps are consistent
 
-        db_id = original_id_to_db_id_map[original_id]
-
-        # 1. Set Parent Link
         original_parent_id = chunk_data.get("metadata", {}).get("parent_id")
         if original_parent_id and original_parent_id in original_id_to_db_id_map:
             db_parent_id = original_id_to_db_id_map[original_parent_id]
@@ -269,39 +326,72 @@ def process_document(file_path: str, document_id: Optional[str] = None) -> Optio
             except Exception as e:
                 print(f"Error setting parent link for node {db_id} (parent: {db_parent_id}): {e}")
                 parent_link_errors += 1
-        # else: Handle cases where parent wasn't inserted or doesn't exist?
 
-        # 2. Create Cross-References (if any were identified in Phase 3)
+    # 2. Create References (Combined Pass)
+    print("Creating cross-references (exact and fuzzy)...")
+    # Process Exact Matches
+    for source_orig_id, target_orig_id in exact_resolved_references:
+        source_db_id = original_id_to_db_id_map.get(source_orig_id)
+        target_db_id = original_id_to_db_id_map.get(target_orig_id)
+
+        if source_db_id and target_db_id and source_db_id != target_db_id:
+            ref_pair = (source_db_id, target_db_id)
+            if ref_pair not in inserted_reference_pairs:
+                reference_data = {
+                    "source_node_id": source_db_id,
+                    "target_node_id": target_db_id,
+                    "reference_type": "related_section_exact", # Mark as exact
+                    "strength": 0.9 # Higher strength for exact?
+                }
+                try:
+                    db.insert_reference(reference_data)
+                    references_created += 1
+                    inserted_reference_pairs.add(ref_pair)
+                except Exception as e_ref:
+                    print(f"Failed to insert exact reference from {source_db_id} to {target_db_id}: {e_ref}")
+                    reference_errors += 1
+
+    # Process Fuzzy Matches
+    for original_id, chunk_data in original_id_to_chunk_map.items():
+        source_db_id = original_id_to_db_id_map.get(original_id)
+        if not source_db_id: continue # Skip if source node wasn't inserted
+
         related_sections = chunk_data.get("metadata", {}).get("related_sections", [])
-        for related_path in related_sections:
-            # Find potential target nodes by path
-            # This might be slow if done per-reference; consider batching lookups if possible
-            try:
-                target_nodes = db.find_nodes_by_path(path_pattern=f"%{related_path}%", max_results=5) # Use pattern matching
+        for related_path_item in related_sections: # Renamed variable
+            # FIX: Ensure the key used for lookup is always a string
+            if isinstance(related_path_item, list):
+                path_key_str = " > ".join(map(str, related_path_item))
+            elif isinstance(related_path_item, str):
+                path_key_str = related_path_item
+            else:
+                # Already handled during the exact match phase, but double-check
+                continue
+
+            # Check if this path needed fuzzy lookup and if results were found
+            if path_key_str in fuzzy_path_to_nodes_map:
+                target_nodes = fuzzy_path_to_nodes_map[path_key_str] # These are already filtered
                 for target_node in target_nodes:
                     target_db_id = target_node.get("id")
-                    if not target_db_id or target_db_id == db_id: # Avoid self-references here
-                        continue
+                    # Ensure target_db_id exists in the current map (redundant check, but safe)
+                    if target_db_id and target_db_id in original_id_to_db_id_map.values() and target_db_id != source_db_id:
+                        ref_pair = (source_db_id, target_db_id)
+                        if ref_pair not in inserted_reference_pairs:
+                            reference_data = {
+                                "source_node_id": source_db_id,
+                                "target_node_id": target_db_id,
+                                "reference_type": "related_section_fuzzy", # Mark as fuzzy
+                                "strength": 0.7 # Lower strength for fuzzy?
+                            }
+                            try:
+                                db.insert_reference(reference_data)
+                                references_created += 1
+                                inserted_reference_pairs.add(ref_pair)
+                            except Exception as e_ref:
+                                # Avoid double counting errors if exact failed? No, this is a separate attempt.
+                                print(f"Failed to insert fuzzy reference from {source_db_id} to {target_db_id} (path: {path_key_str}): {e_ref}")
+                                reference_errors += 1
 
-                    # Create the reference link
-                    reference_data = {
-                        "source_node_id": db_id,
-                        "target_node_id": target_db_id,
-                        "reference_type": "related_section", # Be specific
-                        "strength": 0.8 # Example strength
-                    }
-                    try:
-                        db.insert_reference(reference_data)
-                        references_created += 1
-                        # Optionally create reverse link? Depends on schema/needs
-                    except Exception as e_ref:
-                        # Catch specific reference insertion error
-                        print(f"Failed to insert reference from {db_id} to {target_db_id} (path: {related_path}): {e_ref}")
-                        reference_errors += 1
-            except Exception as e_path:
-                 print(f"Error finding nodes by path '{related_path}' for references: {e_path}")
-                 reference_errors += 1 # Count error if path lookup fails
-
+    # Updated final print statement
     print(f"Phase 4: Relationship creation complete. Parent links set: {parent_links_set} (Errors: {parent_link_errors}). References created: {references_created} (Errors: {reference_errors}).")
 
     # --- Processing Complete ---
