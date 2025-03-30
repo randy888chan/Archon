@@ -218,17 +218,24 @@ class SupabaseManager:
             response = self.client.rpc(
                 "find_nodes_by_path",
                 {
-                    "p_path_pattern": path_pattern, # Match param name in SQL function
-                    "p_max_results": max_results # Match param name in SQL function
+                    "path_pattern": path_pattern, # Corrected param name based on error hint
+                    "max_results": max_results  # Corrected param name based on error hint
                 }
             ).execute()
 
+            # Check for data first. If data exists, return it.
             if response.data:
                 return response.data
+            # If no data, check if there was an explicit error attribute (might not exist on success)
+            # Supabase client >= 2.0 uses model_dump() for error details if available
+            elif hasattr(response, 'model_dump') and response.model_dump().get('error'):
+                 error_details = response.model_dump().get('error')
+                 print(f"Path search RPC error for pattern '{path_pattern}': {error_details}")
+                 return []
+            # If no data and no explicit error, assume success with empty results
             else:
-                if response.error:
-                    print(f"Path search RPC error for pattern '{path_pattern}': {response.error}")
-                return []
+                 # print(f"Path search RPC for pattern '{path_pattern}' succeeded but returned no results.") # Optional: Log success/no data
+                 return []
         except Exception as e:
             print(f"Exception during path search RPC call for pattern '{path_pattern}': {e}")
             return []
@@ -274,3 +281,41 @@ class SupabaseManager:
 
          except Exception as e:
              print(f"Exception updating parent for node {node_id}: {e}")
+
+    def delete_nodes_by_document_id(self, document_id: str) -> int:
+        """Deletes all nodes associated with a specific document_id.
+
+        Args:
+            document_id: The identifier of the document whose nodes should be deleted.
+
+        Returns:
+            The number of nodes deleted.
+
+        Raises:
+            Exception: If the delete operation fails.
+        """
+        if not document_id:
+            print("Warning: Attempted to delete nodes with empty document_id. Skipping.")
+            return 0
+
+        try:
+            # The Supabase client's delete().execute() returns the deleted records
+            response = self.client.table("hierarchical_nodes") \
+                .delete() \
+                .eq("document_id", document_id) \
+                .execute()
+
+            # Check for errors in the response
+            if hasattr(response, 'error') and response.error:
+                error_message = f"Failed to delete nodes for document_id '{document_id}'. Response error: {response.error}"
+                print(error_message)
+                raise Exception(error_message)
+
+            # If successful, response.data contains the list of deleted records
+            deleted_count = len(response.data) if response.data else 0
+            return deleted_count
+
+        except Exception as e:
+            # Catch potential exceptions during the API call or response processing
+            print(f"Exception during node deletion for document_id '{document_id}': {e}")
+            raise # Re-raise the exception to signal failure
