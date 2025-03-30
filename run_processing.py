@@ -192,15 +192,25 @@ def process_document(file_path: str, document_id: Optional[str] = None) -> Optio
     for original_id, chunk_data in original_id_to_chunk_map.items():
         source_original_id = original_id
         related_sections = chunk_data.get("metadata", {}).get("related_sections", [])
-        for related_path in related_sections:
-            target_original_id = path_to_original_id_map.get(related_path)
+        for related_path_item in related_sections: # Renamed variable
+            # FIX: Ensure the key used for lookup is always a string
+            if isinstance(related_path_item, list):
+                path_key_str = " > ".join(map(str, related_path_item))
+            elif isinstance(related_path_item, str):
+                path_key_str = related_path_item
+            else:
+                # Handle unexpected types if necessary, e.g., skip or log warning
+                print(f"Warning: Skipping unexpected type in related_sections: {type(related_path_item)}")
+                continue
+
+            target_original_id = path_to_original_id_map.get(path_key_str)
             if target_original_id:
                 # Found exact match
                 if source_original_id != target_original_id: # Avoid self-references
                      exact_resolved_references.append((source_original_id, target_original_id))
             else:
-                # No exact match, need fuzzy lookup
-                paths_needing_fuzzy_lookup.add(related_path)
+                # No exact match, need fuzzy lookup (use the string key)
+                paths_needing_fuzzy_lookup.add(path_key_str)
     print(f"Found {len(exact_resolved_references)} exact references.")
     print(f"Identified {len(paths_needing_fuzzy_lookup)} unique paths requiring fuzzy lookup.")
 
@@ -208,10 +218,11 @@ def process_document(file_path: str, document_id: Optional[str] = None) -> Optio
     print("Phase 4: Performing batch fuzzy lookups...")
     fuzzy_path_to_nodes_map: Dict[str, List[Dict[str, Any]]] = {}
     fuzzy_lookup_errors = 0
-    for path_pattern in paths_needing_fuzzy_lookup:
+    for path_pattern in paths_needing_fuzzy_lookup: # path_pattern is now guaranteed to be a string
         try:
             # Use pattern matching, adjust max_results as needed (e.g., 10)
-            target_nodes = db.find_nodes_by_path(path_pattern=f"%{path_pattern}%", max_results=10)
+            # Ensure path_pattern is treated as a string for the f-string
+            target_nodes = db.find_nodes_by_path(path_pattern=f"%{str(path_pattern)}%", max_results=10)
             if target_nodes: # Only store if results are found
                  fuzzy_path_to_nodes_map[path_pattern] = target_nodes
         except Exception as e_fuzzy:
@@ -338,10 +349,19 @@ def process_document(file_path: str, document_id: Optional[str] = None) -> Optio
         if not source_db_id: continue # Skip if source node wasn't inserted
 
         related_sections = chunk_data.get("metadata", {}).get("related_sections", [])
-        for related_path in related_sections:
+        for related_path_item in related_sections: # Renamed variable
+            # FIX: Ensure the key used for lookup is always a string
+            if isinstance(related_path_item, list):
+                path_key_str = " > ".join(map(str, related_path_item))
+            elif isinstance(related_path_item, str):
+                path_key_str = related_path_item
+            else:
+                # Already handled during the exact match phase, but double-check
+                continue
+
             # Check if this path needed fuzzy lookup and if results were found
-            if related_path in fuzzy_path_to_nodes_map:
-                target_nodes = fuzzy_path_to_nodes_map[related_path]
+            if path_key_str in fuzzy_path_to_nodes_map:
+                target_nodes = fuzzy_path_to_nodes_map[path_key_str]
                 for target_node in target_nodes:
                     target_db_id = target_node.get("id")
                     if target_db_id and target_db_id != source_db_id:
@@ -359,7 +379,7 @@ def process_document(file_path: str, document_id: Optional[str] = None) -> Optio
                                 inserted_reference_pairs.add(ref_pair)
                             except Exception as e_ref:
                                 # Avoid double counting errors if exact failed? No, this is a separate attempt.
-                                print(f"Failed to insert fuzzy reference from {source_db_id} to {target_db_id} (path: {related_path}): {e_ref}")
+                                print(f"Failed to insert fuzzy reference from {source_db_id} to {target_db_id} (path: {path_key_str}): {e_ref}")
                                 reference_errors += 1
 
     # Updated final print statement
