@@ -13,10 +13,10 @@ This document summarizes the changes made to integrate the `llms_txt` hierarchic
 ## 2. Documentation Processing UI (`streamlit_pages/documentation.py`)
 
 - **New Tab:** Added a new tab titled "Framework Docs (llms.txt)" to the documentation section.
-- **Framework Selection:** Included a dropdown (`st.selectbox`) for users to select predefined `llms.txt` documentation files:
-  - Pydantic AI (`docs/anthropic-llms.txt`)
-  - LangGraph (`docs/langgraph-llms-full.txt`)
-  - CrewAI (`docs/crewai-llms-full.txt`)
+- **Framework Selection:** Included a dropdown (`st.selectbox`) for users to select predefined `llms.txt` documentation sources (local paths or URLs):
+  - Pydantic AI (`https://ai.pydantic.dev/llms.txt`)
+  - LangGraph (`https://langchain-ai.github.io/langgraph/llms-full.txt`)
+  - CrewAI (`https://docs.crewai.com/llms-full.txt`)
 - **Processing Trigger:** Added a button ("Process Selected Framework Docs") that:
   - Checks if `DOCS_RETRIEVAL_TABLE` is set to `hierarchical_nodes`.
   - Executes the `run_processing.py` script via `subprocess` with the selected file path.
