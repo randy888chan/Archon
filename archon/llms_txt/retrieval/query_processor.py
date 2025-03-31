@@ -1,4 +1,5 @@
 import re
+from archon.llms_txt.vector_db.embedding_manager import OpenAIEmbeddingGenerator
 from typing import Any, Dict, List, Optional, Tuple
 
 class QueryProcessor:
@@ -7,15 +8,16 @@ class QueryProcessor:
     and prepare them for retrieval.
     """
 
-    def __init__(self, config: Optional[Dict[str, Any]] = None):
+    def __init__(self):
         """
-        Initializes the QueryProcessor.
-        Args:
-            config (Optional[Dict[str, Any]]): Configuration dictionary.
-                                                (Placeholder for future use)
+        Initializes the QueryProcessor and the embedding generator.
         """
-        self.config = config or {}
-        # TODO: Initialize embedding models or other resources based on config
+        try:
+            self.embedder = OpenAIEmbeddingGenerator()
+            print("QueryProcessor: OpenAIEmbeddingGenerator initialized.")
+        except Exception as e:
+            print(f"Error initializing OpenAIEmbeddingGenerator in QueryProcessor: {e}")
+            self.embedder = None # Handle initialization failure
 
     def extract_contextual_info(self, query: str) -> Dict[str, Any]:
         """
@@ -55,17 +57,28 @@ class QueryProcessor:
 
     def generate_embeddings(self, query: str) -> List[float]:
         """
-        Generates embeddings for the given query. (Placeholder)
+        Generates embeddings for the given query using the initialized embedder.
 
         Args:
             query (str): The user query.
 
         Returns:
             List[float]: The generated embedding vector.
+
+        Raises:
+            ValueError: If the embedder was not initialized successfully.
+            Exception: If embedding generation fails.
         """
-        # TODO: Implement embedding generation using a specific model
-        print(f"INFO: Embedding generation for query: '{query}' (Not implemented)")
-        return [] # Placeholder
+        if self.embedder is None:
+            raise ValueError("Embedder not initialized. Cannot generate embeddings.")
+
+        try:
+            embedding = self.embedder.generate_embedding(query)
+            return embedding
+        except Exception as e:
+            print(f"Error generating embedding for query '{query}': {e}")
+            # Depending on desired behavior, could return empty list or re-raise
+            raise Exception(f"Embedding generation failed: {e}") from e
 
     def create_hybrid_queries(self, query: str) -> List[str]:
         """
@@ -84,29 +97,33 @@ class QueryProcessor:
 
     def process_query(self, query: str) -> Dict[str, Any]:
         """
-        Orchestrates the query processing steps.
+        Orchestrates the query processing steps: path detection and embedding generation.
 
         Args:
             query (str): The raw user query.
 
         Returns:
             Dict[str, Any]: A dictionary containing the processed query information,
-                            including original query, context, path detection,
-                            embeddings (placeholder), and hybrid variations (placeholder).
+                            including original query, path detection result, and embedding.
+                            Returns None for embedding if generation fails.
         """
-        is_path_query = self.detect_path_query(query)
-        contextual_info = self.extract_contextual_info(query)
-        embeddings = self.generate_embeddings(query) # Placeholder call
-        hybrid_queries = self.create_hybrid_queries(query) # Placeholder call
+        is_path = self.detect_path_query(query)
+        embedding_vector = None # Default to None
+        try:
+            embedding_vector = self.generate_embeddings(query)
+        except ValueError as ve: # Handle embedder initialization error
+             print(f"Processing query failed: {ve}")
+             # Decide how to handle this - maybe return partial data or raise
+        except Exception as e: # Handle embedding generation error
+            print(f"Error generating embeddings during query processing: {e}")
+            # Embedding vector remains None
 
-        processed_data = {
+        return {
             "original_query": query,
-            "is_path_query": is_path_query,
-            "context": contextual_info,
-            "embeddings": embeddings,
-            "hybrid_queries": hybrid_queries,
+            "embedding": embedding_vector,
+            "is_path_query": is_path,
+            # Add other processed info later (e.g., extracted context)
         }
-        return processed_data
 
 # Example Usage (Optional - for testing during development)
 if __name__ == '__main__':
