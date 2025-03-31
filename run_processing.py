@@ -527,9 +527,11 @@ def main():
             # Assuming HierarchicalRanker doesn't need complex init for this test
             ranker = HierarchicalRanker()
             response_builder = ResponseBuilder()
-            # Use None for search_client as it's not needed for this basic integration test
+            # Instantiate SupabaseManager to provide access to the stored data
+            # Note: RetrievalManager._perform_search needs to be implemented to use this client
+            db_client = SupabaseManager() # Use the existing DB manager
             retrieval_manager = RetrievalManager(
-                search_client=None, # Placeholder
+                search_client=db_client, # Pass the actual DB client
                 query_processor=query_processor,
                 ranker=ranker,
                 response_builder=response_builder
