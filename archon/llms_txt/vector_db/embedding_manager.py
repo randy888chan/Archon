@@ -93,41 +93,57 @@ class OpenAIEmbeddingGenerator:
             APIError: If the OpenAI API call fails.
             Exception: For other unexpected errors.
         """
-        # Handle empty input list
         if not texts:
             return []
 
-        # Replace any empty strings with a placeholder or handle them
-        # Option 1: Replace with a space (minimal impact)
+        # Replace any empty strings with a single space
         processed_texts = [text if text else " " for text in texts]
-        # Option 2: Filter out empty strings (might cause index mismatch if not handled carefully later)
-        # non_empty_texts = [text for text in texts if text]
-        # if not non_empty_texts: return [] # All were empty
 
-        try:
-            # OpenAI API handles batching internally
-            response = self.client.embeddings.create(
-                model=self.embedding_model,
-                input=processed_texts, # Use processed texts
-                encoding_format="float"
-            )
+        all_embeddings = []
+        batch_size = 2000  # OpenAI limit is often 2048, use 2000 for safety
 
-            # Check response structure and extract embeddings
-            if response.data and len(response.data) == len(processed_texts):
-                 embeddings = [item.embedding for item in response.data]
-                 # Ensure all items actually have an embedding
-                 if not all(embeddings):
-                     raise ValueError("Invalid response received from OpenAI API: Missing embedding data in batch.")
-                 return embeddings
-            else:
-                 raise ValueError(f"Invalid response received from OpenAI API: Mismatch in batch size or missing data. Expected {len(processed_texts)}, got {len(response.data) if response.data else 0}.")
+        for i in range(0, len(processed_texts), batch_size):
+            batch = processed_texts[i:i + batch_size]
+            batch_index_info = f"(Indices {i} to {i + len(batch) - 1})" # For logging
 
-        except APIError as e:
-            print(f"OpenAI API error generating batch embeddings: {e}")
-            raise # Re-raise the specific API error
-        except Exception as e:
-            print(f"Unexpected error generating batch embeddings: {e}")
-            raise # Re-raise other exceptions
+            try:
+                print(f"Generating embeddings for batch {batch_index_info} of size {len(batch)}...") # Added print statement
+                response = self.client.embeddings.create(
+                    model=self.embedding_model,
+                    input=batch,
+                    encoding_format="float"
+                )
+
+                if response.data and len(response.data) == len(batch):
+                    batch_embeddings = [item.embedding for item in response.data]
+                    if not all(batch_embeddings):
+                         # Log which batch failed if possible
+                        print(f"Warning: Missing embedding data in response for batch {batch_index_info}.")
+                        # Handle missing embeddings - Option: fill with zero vectors of correct dimension
+                        # For now, we'll raise an error as before, but the error is now batch-specific.
+                        raise ValueError(f"Invalid response received from OpenAI API: Missing embedding data in batch {batch_index_info}.")
+                    all_embeddings.extend(batch_embeddings)
+                    print(f"Successfully processed batch {batch_index_info}.") # Added success print
+                else:
+                    raise ValueError(f"Invalid response received from OpenAI API for batch {batch_index_info}: Mismatch in batch size or missing data. Expected {len(batch)}, got {len(response.data) if response.data else 0}.")
+
+            except APIError as e:
+                print(f"OpenAI API error generating embeddings for batch {batch_index_info}: {e}")
+                # Option 1: Re-raise immediately, stopping the process
+                raise
+                # Option 2: Log error and continue, potentially skipping this batch (results in incomplete data)
+                # print(f"Skipping batch {batch_index_info} due to API error.")
+                # continue # This would require careful handling of indices later
+            except Exception as e:
+                print(f"Unexpected error generating embeddings for batch {batch_index_info}: {e}")
+                raise # Re-raise other exceptions
+
+        # Final check: Ensure the number of embeddings matches the number of processed texts
+        if len(all_embeddings) != len(processed_texts):
+             print(f"Warning: Final embedding count ({len(all_embeddings)}) does not match input text count ({len(processed_texts)}). Some batches may have failed.")
+             # Depending on error handling strategy above, this might indicate partial failure.
+
+        return all_embeddings
 
     def generate_node_embeddings(self, nodes: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Generate embeddings for hierarchical nodes and add them to the node dictionaries.
