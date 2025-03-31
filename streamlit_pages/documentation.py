@@ -2,17 +2,18 @@ import streamlit as st
 import time
 import sys
 import os
+import subprocess
+from pathlib import Path
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from archon.crawl_pydantic_ai_docs import start_crawl_with_requests, clear_existing_records
-from utils.utils import get_env_var, create_new_tab_button
-
+from utils.utils import get_env_var, create_new_tab_button, write_to_log
 def documentation_tab(supabase_client):
     """Display the documentation interface"""
     st.header("Documentation")
     
     # Create tabs for different documentation sources
-    doc_tabs = st.tabs(["Pydantic AI Docs", "Future Sources"])
+    doc_tabs = st.tabs(["Pydantic AI Docs", "Framework Docs (llms.txt)", "Future Sources"])
     
     with doc_tabs[0]:
         st.subheader("Pydantic AI Documentation")
@@ -154,5 +155,153 @@ def documentation_tab(supabase_client):
         except Exception as e:
             st.error(f"Error querying database: {str(e)}")
     
-    with doc_tabs[1]:
+    with doc_tabs[1]: # Framework Docs (llms.txt) Tab
+        st.subheader("Framework Documentation (llms.txt)")
+        st.markdown("""
+        Process pre-formatted `llms.txt` files containing documentation for various frameworks.
+        This process parses the file, chunks the content hierarchically, generates embeddings,
+        and stores the data in the `hierarchical_nodes` table in the database.
+
+        **Note:** Ensure the 'Hierarchical Nodes' table is selected in the Database configuration tab before processing.
+        """)
+
+        # Check if the database is configured
+        supabase_url = get_env_var("SUPABASE_URL")
+        supabase_key = get_env_var("SUPABASE_SERVICE_KEY")
+
+        if not supabase_url or not supabase_key:
+            st.warning("⚠️ Supabase is not configured. Please set up your environment variables first.")
+            create_new_tab_button("Go to Environment Section", "Environment", key="goto_env_from_llms_docs")
+        else:
+            # Framework Selection
+            framework_options = {
+                "--- Select a framework ---": None,
+                "Pydantic AI (ai.pydantic.dev)": "docs/anthropic-llms.txt",
+                "LangGraph (langchain-ai.github.io)": "docs/langgraph-llms-full.txt",
+                "CrewAI (docs.crewai.com)": "docs/crewai-llms-full.txt"
+            }
+            selected_framework_display = st.selectbox(
+                "Select Framework Documentation (llms.txt):",
+                options=list(framework_options.keys()),
+                key="llms_framework_select"
+            )
+            selected_framework_file = framework_options[selected_framework_display]
+
+            # TODO for file uploader
+            # TODO: Add st.file_uploader to allow users to upload their own llms.txt file.
+            st.info("Support for uploading custom llms.txt files coming soon!")
+
+            # Processing Button
+            if st.button("Process Selected Framework Docs", key="process_llms_docs"):
+                if not selected_framework_file:
+                    st.warning("Please select a framework documentation file to process.")
+                else:
+                    # Check if the correct table is selected in config
+                    docs_retrieval_table = get_env_var("DOCS_RETRIEVAL_TABLE")
+                    if docs_retrieval_table != "hierarchical_nodes":
+                        st.warning(f"⚠️ Incorrect table selected for documentation processing. Expected 'hierarchical_nodes' but found '{docs_retrieval_table}'. Please select 'Hierarchical Nodes' in the Database configuration tab to process llms.txt files.")
+                    else:
+                        st.session_state.llms_processing_output = None # Clear previous output
+                        st.session_state.llms_processing_error = None
+                        st.session_state.llms_processing_complete = False
+
+                        script_path = "run_processing.py"
+                        file_arg = selected_framework_file
+                        command = [sys.executable, script_path, "--file", file_arg]
+
+                        process_placeholder = st.empty()
+                        with process_placeholder.status("Processing documentation...", expanded=True) as status:
+                            try:
+                                st.write(f"Running command: `{' '.join(command)}`")
+                                # Use subprocess.run for simplicity here, consider Popen for streaming if needed later
+                                result = subprocess.run(
+                                    command,
+                                    capture_output=True,
+                                    text=True,
+                                    check=False, # Don't raise exception on non-zero exit code
+                                    encoding='utf-8',
+                                    errors='replace' # Handle potential encoding errors
+                                )
+
+                                st.session_state.llms_processing_output = result.stdout
+                                st.session_state.llms_processing_error = result.stderr
+
+                                if result.returncode == 0:
+                                    status.update(label="Processing complete!", state="complete", expanded=False)
+                                    st.session_state.llms_processing_complete = True
+                                    write_to_log(f"Successfully processed {file_arg}.")
+                                else:
+                                    status.update(label="Processing failed!", state="error", expanded=True)
+                                    st.session_state.llms_processing_complete = True
+                                    write_to_log(f"Error processing {file_arg}. Return code: {result.returncode}")
+
+                            except FileNotFoundError:
+                                status.update(label="Error: Script not found!", state="error", expanded=True)
+                                st.session_state.llms_processing_error = f"Error: The script '{script_path}' was not found. Make sure it's in the correct location."
+                                st.session_state.llms_processing_complete = True
+                                write_to_log(f"Error running processing script: FileNotFoundError - {script_path}")
+                            except Exception as e:
+                                status.update(label="An unexpected error occurred!", state="error", expanded=True)
+                                st.session_state.llms_processing_error = f"An unexpected error occurred: {str(e)}"
+                                st.session_state.llms_processing_complete = True
+                                write_to_log(f"Unexpected error processing {file_arg}: {e}")
+
+                        # Rerun to display results outside the status context
+                        st.rerun()
+
+            # Display processing results
+            if st.session_state.get("llms_processing_complete"):
+                st.subheader("Processing Results")
+                if st.session_state.get("llms_processing_output"):
+                    st.text_area("Output Log:", st.session_state.llms_processing_output, height=300, key="llms_output_area")
+                if st.session_state.get("llms_processing_error"):
+                    st.error("Errors occurred during processing:")
+                    st.code(st.session_state.llms_processing_error, language='bash')
+                elif st.session_state.get("llms_processing_output"): # Check if output exists even if no error
+                     st.success("✅ Processing finished.") # Simple success if no stderr
+
+            # Database Statistics for hierarchical_nodes
+            st.subheader("Database Statistics (`hierarchical_nodes`)")
+            try:
+                # Query total count
+                total_result = supabase_client.table("hierarchical_nodes").select("count", count="exact").execute()
+                total_count = total_result.count if hasattr(total_result, "count") else 0
+                st.metric("Total Hierarchical Nodes", total_count)
+
+                # Query counts per document_id
+                if total_count > 0:
+                     # Fetch distinct document_ids first
+                    doc_ids_result = supabase_client.table("hierarchical_nodes").select("document_id", count="exact").execute()
+
+                    if doc_ids_result.data:
+                        st.write("Node Counts per Framework:")
+                        counts_data = {}
+                        # Query count for each document_id (might be slow for many docs, consider alternative if needed)
+                        # Supabase python client doesn't directly support GROUP BY with count yet in a simple way.
+                        # Fetching all document_ids and counting might be inefficient for very large datasets.
+                        # A more performant approach might involve a custom RPC function in Supabase.
+                        # For now, fetching distinct IDs and then counting seems feasible for a few frameworks.
+
+                        # Let's fetch a sample of document_ids and their counts for display
+                        # This is still not ideal, a GROUP BY would be better.
+                        # Fetching all data just to count is bad. Let's just show total for now.
+                        # TODO: Implement a more efficient way to get counts per document_id (e.g., RPC function)
+                        st.info("Displaying counts per framework requires a database function (RPC) for efficiency. Showing total count for now.")
+
+                        # Example of how it *could* look if counts were available:
+                        # counts_per_doc = {'doc1': 150, 'doc2': 300} # Placeholder
+                        # st.dataframe(counts_per_doc)
+
+
+                        # Add a button to view sample data
+                        if st.button("View Sample Hierarchical Data", key="view_hierarchical_data"):
+                            sample_data = supabase_client.table("hierarchical_nodes").select("id, document_id, node_type, title, path, level").limit(10).execute()
+                            st.dataframe(sample_data.data)
+                            st.info("Showing up to 10 sample records.")
+
+            except Exception as e:
+                st.error(f"Error querying hierarchical_nodes table: {str(e)}")
+                write_to_log(f"Error querying hierarchical_nodes table: {str(e)}")
+
+    with doc_tabs[2]: # Future Sources Tab (original content moved here)
         st.info("Additional documentation sources will be available in future updates.")
