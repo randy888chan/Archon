@@ -11,3 +11,4 @@ docs
 .env.temp
 .env.test
 env_vars.json
+.roomodes
