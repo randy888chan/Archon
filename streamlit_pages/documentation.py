@@ -273,6 +273,28 @@ def documentation_tab(supabase_client):
                         # Use a unique key for the status context if needed, or rely on rerun clearing it
                         with process_placeholder.status(f"Processing uploaded file: {st.session_state.uploaded_file_original_name}...", expanded=True) as status:
                             try:
+                                # --- START MODIFICATION: Pass Environment ---
+                                current_env = os.environ.copy()
+                                llm_provider = get_env_var("LLM_PROVIDER", "openai")
+                                current_env["LLM_PROVIDER"] = llm_provider
+                                current_env["EMBEDDING_MODEL"] = get_env_var("EMBEDDING_MODEL", "")
+                                current_env["LLM_API_KEY"] = get_env_var("LLM_API_KEY", "")
+
+                                if llm_provider.lower() != "openai":
+                                     current_env["LLM_BASE_URL"] = get_env_var("LLM_BASE_URL", "")
+                                elif "LLM_BASE_URL" in current_env:
+                                     del current_env["LLM_BASE_URL"]
+
+                                current_env["SUPABASE_URL"] = get_env_var("SUPABASE_URL", "")
+                                current_env["SUPABASE_SERVICE_KEY"] = get_env_var("SUPABASE_SERVICE_KEY", "")
+                                current_env["DOCS_RETRIEVAL_TABLE"] = get_env_var("DOCS_RETRIEVAL_TABLE", "")
+
+                                status.write(f"Using Embedding Model: {current_env.get('EMBEDDING_MODEL', 'N/A')}")
+                                status.write(f"Using LLM Provider: {current_env.get('LLM_PROVIDER', 'N/A')}")
+                                if "LLM_BASE_URL" in current_env:
+                                     status.write(f"Using Base URL: {current_env.get('LLM_BASE_URL')}")
+                                # --- END MODIFICATION ---
+
                                 status.write(f"Running command: `{' '.join(command)}`")
                                 result = subprocess.run(
                                     command,
@@ -280,7 +302,8 @@ def documentation_tab(supabase_client):
                                     text=True,
                                     check=False, # Handle non-zero exit codes manually
                                     encoding='utf-8',
-                                    errors='replace' # Handle potential encoding issues in output
+                                    errors='replace', # Handle potential encoding issues in output
+                                    env=current_env # Pass the modified environment
                                 )
 
                                 # Store output/error in session state for display later
@@ -403,15 +426,38 @@ def documentation_tab(supabase_client):
                     if command and persistent_file_path:
                         with process_placeholder.status("Processing documentation...", expanded=True) as status:
                             try:
-                                st.write(f"Running command: `{' '.join(command)}`")
-                                # Use subprocess.run
+                                # --- START MODIFICATION: Pass Environment ---
+                                current_env = os.environ.copy()
+                                llm_provider = get_env_var("LLM_PROVIDER", "openai")
+                                current_env["LLM_PROVIDER"] = llm_provider
+                                current_env["EMBEDDING_MODEL"] = get_env_var("EMBEDDING_MODEL", "")
+                                current_env["LLM_API_KEY"] = get_env_var("LLM_API_KEY", "")
+
+                                if llm_provider.lower() != "openai":
+                                     current_env["LLM_BASE_URL"] = get_env_var("LLM_BASE_URL", "")
+                                elif "LLM_BASE_URL" in current_env:
+                                     del current_env["LLM_BASE_URL"]
+
+                                current_env["SUPABASE_URL"] = get_env_var("SUPABASE_URL", "")
+                                current_env["SUPABASE_SERVICE_KEY"] = get_env_var("SUPABASE_SERVICE_KEY", "")
+                                current_env["DOCS_RETRIEVAL_TABLE"] = get_env_var("DOCS_RETRIEVAL_TABLE", "")
+
+                                status.write(f"Using Embedding Model: {current_env.get('EMBEDDING_MODEL', 'N/A')}")
+                                status.write(f"Using LLM Provider: {current_env.get('LLM_PROVIDER', 'N/A')}")
+                                if "LLM_BASE_URL" in current_env:
+                                     status.write(f"Using Base URL: {current_env.get('LLM_BASE_URL')}")
+                                # --- END MODIFICATION ---
+
+                                status.write(f"Running command: `{' '.join(command)}`")
+                                # Use subprocess.run with the modified environment
                                 result = subprocess.run(
                                     command,
                                     capture_output=True,
                                     text=True,
                                     check=False, # Don't raise exception on non-zero exit code
                                     encoding='utf-8',
-                                    errors='replace' # Handle potential encoding errors
+                                    errors='replace', # Handle potential encoding errors
+                                    env=current_env # Pass the modified environment
                                 )
 
                                 st.session_state.llms_processing_output = result.stdout
