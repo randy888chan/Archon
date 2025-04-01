@@ -275,15 +275,22 @@ def documentation_tab(supabase_client):
                             try:
                                 # --- START MODIFICATION: Pass Environment ---
                                 current_env = os.environ.copy()
-                                llm_provider = get_env_var("LLM_PROVIDER", "openai")
-                                current_env["LLM_PROVIDER"] = llm_provider
+                                llm_provider = get_env_var("LLM_PROVIDER", "openai") # Get provider, default to openai
+
+                                # Ensure llm_provider is treated as a string for comparison, defaulting to 'openai' if None
+                                provider_check = llm_provider if llm_provider else "openai"
+
                                 current_env["EMBEDDING_MODEL"] = get_env_var("EMBEDDING_MODEL", "")
                                 current_env["LLM_API_KEY"] = get_env_var("LLM_API_KEY", "")
 
-                                if llm_provider.lower() != "openai":
+                                if provider_check.lower() != "openai":
                                      current_env["LLM_BASE_URL"] = get_env_var("LLM_BASE_URL", "")
                                 elif "LLM_BASE_URL" in current_env:
+                                     # Ensure base_url is removed if provider is openai and it exists in inherited env
                                      del current_env["LLM_BASE_URL"]
+
+                                # Also ensure the actual value passed in the env is not None
+                                current_env["LLM_PROVIDER"] = provider_check
 
                                 current_env["SUPABASE_URL"] = get_env_var("SUPABASE_URL", "")
                                 current_env["SUPABASE_SERVICE_KEY"] = get_env_var("SUPABASE_SERVICE_KEY", "")
@@ -428,15 +435,22 @@ def documentation_tab(supabase_client):
                             try:
                                 # --- START MODIFICATION: Pass Environment ---
                                 current_env = os.environ.copy()
-                                llm_provider = get_env_var("LLM_PROVIDER", "openai")
-                                current_env["LLM_PROVIDER"] = llm_provider
+                                llm_provider = get_env_var("LLM_PROVIDER", "openai") # Get provider, default to openai
+
+                                # Ensure llm_provider is treated as a string for comparison, defaulting to 'openai' if None
+                                provider_check = llm_provider if llm_provider else "openai"
+
                                 current_env["EMBEDDING_MODEL"] = get_env_var("EMBEDDING_MODEL", "")
                                 current_env["LLM_API_KEY"] = get_env_var("LLM_API_KEY", "")
 
-                                if llm_provider.lower() != "openai":
+                                if provider_check.lower() != "openai":
                                      current_env["LLM_BASE_URL"] = get_env_var("LLM_BASE_URL", "")
                                 elif "LLM_BASE_URL" in current_env:
+                                     # Ensure base_url is removed if provider is openai and it exists in inherited env
                                      del current_env["LLM_BASE_URL"]
+
+                                # Also ensure the actual value passed in the env is not None
+                                current_env["LLM_PROVIDER"] = provider_check
 
                                 current_env["SUPABASE_URL"] = get_env_var("SUPABASE_URL", "")
                                 current_env["SUPABASE_SERVICE_KEY"] = get_env_var("SUPABASE_SERVICE_KEY", "")
