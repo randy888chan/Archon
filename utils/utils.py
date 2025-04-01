@@ -390,7 +390,7 @@ def get_clients():
     
     # Setup OpenAI client for LLM
     #if provider == "Ollama" or provider == "LMStudio":
-    if [provider.value for provider in LocalLLMProvider]:
+    if provider in [p.value for p in LocalLLMProvider]:
         if api_key == "NOT_REQUIRED":
             api_key = "ollama"  # Use a dummy key for Ollama
         embedding_client = AsyncOpenAI(base_url=base_url, api_key=api_key)
