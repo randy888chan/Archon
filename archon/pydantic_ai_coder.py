@@ -13,8 +13,9 @@ from pydantic import BaseModel
 from pydantic_ai import Agent, ModelRetry, RunContext
 from pydantic_ai.models.anthropic import AnthropicModel
 from pydantic_ai.models.openai import OpenAIModel
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI # Keep for now if needed elsewhere, though likely removable later
 from supabase import Client
+from archon.llms_txt.vector_db.embedding_manager import EmbeddingManager # Import EmbeddingManager
 
 # Add the parent directory to sys.path to allow importing from the parent directory
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -40,7 +41,7 @@ logfire.configure(send_to_logfire='if-token-present')
 @dataclass
 class PydanticAIDeps:
     supabase: Client
-    embedding_client: AsyncOpenAI
+    embedding_manager: EmbeddingManager # Replace embedding_client with embedding_manager
     reasoner_output: str
 
 pydantic_ai_coder = Agent(
@@ -70,7 +71,7 @@ async def retrieve_relevant_documentation(ctx: RunContext[PydanticAIDeps], user_
     Returns:
         A formatted string containing the top 4 most relevant documentation chunks
     """
-    return await retrieve_relevant_documentation_tool(ctx.deps.supabase, ctx.deps.embedding_client, user_query)
+    return await retrieve_relevant_documentation_tool(ctx.deps.supabase, ctx.deps.embedding_manager, user_query) # Use embedding_manager
 
 @pydantic_ai_coder.tool
 async def list_documentation_pages(ctx: RunContext[PydanticAIDeps]) -> List[str]:

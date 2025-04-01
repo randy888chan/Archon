@@ -63,7 +63,7 @@ async def retrieve_relevant_documentation(ctx: RunContext[ToolsRefinerDeps], que
     Returns:
         A formatted string containing the top 4 most relevant documentation chunks
     """
-    return await retrieve_relevant_documentation_tool(ctx.deps.supabase, ctx.deps.embedding_client, query)
+    return await retrieve_relevant_documentation_tool(ctx.deps.supabase, ctx.deps.embedding_manager, query) # Use embedding_manager
 
 @tools_refiner_agent.tool
 async def list_documentation_pages(ctx: RunContext[ToolsRefinerDeps]) -> List[str]:

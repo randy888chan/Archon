@@ -29,9 +29,16 @@ class EmbeddingManager:
         self.provider = self.config.get("EMBEDDING_PROVIDER", "OpenAI").lower() # Default to OpenAI
         self.client = None
         self.embedding_model = None
-        self.embedding_dim = None # Store embedding dimension
+        # Read dimension from config, default to None if not found
+        self.embedding_dim = self.config.get("EMBEDDING_DIMENSION")
+        if self.embedding_dim:
+            try:
+                self.embedding_dim = int(self.embedding_dim)
+            except ValueError:
+                print(f"Warning: Invalid EMBEDDING_DIMENSION value '{self.embedding_dim}'. Must be an integer. Ignoring.")
+                self.embedding_dim = None
+        # else: # No need for else if only print was removed
 
-        print(f"Selected embedding provider: {self.provider}")
 
         if self.provider == "ollama":
             if OllamaEmbeddings is None:
@@ -52,17 +59,14 @@ class EmbeddingManager:
                     model=self.embedding_model
                 )
                 # Note: OllamaEmbeddings doesn't expose dimension easily, may need to infer or hardcode common values
-                print(f"Ollama client initialized successfully. Model: {self.embedding_model}, Base URL: {ollama_base_url or 'Default'}")
-                # Attempt a dummy embedding to get dimension (or use common defaults)
-                try:
-                    dummy_embedding = self.client.embed_query("test")
-                    self.embedding_dim = len(dummy_embedding)
-                    print(f"Inferred Ollama embedding dimension: {self.embedding_dim}")
-                except Exception as e:
-                    print(f"Warning: Could not determine Ollama embedding dimension via test query: {e}. Falling back to default.")
-                    # Fallback based on common Ollama model dimensions if needed
-                    self.embedding_dim = 768 # Common default, adjust if necessary
-
+                # Only infer dimension if not provided in config
+                if self.embedding_dim is None:
+                    try:
+                        dummy_embedding = self.client.embed_query("test")
+                        self.embedding_dim = len(dummy_embedding)
+                    except Exception as e:
+                        print(f"Warning: Could not determine Ollama embedding dimension via test query: {e}. Using fallback dimension 768.")
+                        self.embedding_dim = 768 # Fallback if inference fails and not configured
             except Exception as e:
                 print(f"Error initializing Ollama client: {e}")
                 raise
@@ -85,16 +89,16 @@ class EmbeddingManager:
                     api_key=openai_api_key,
                     base_url=openai_base_url # Pass base_url only if it exists
                 )
-                print(f"OpenAI client initialized successfully. Model: {self.embedding_model}, Base URL: {openai_base_url or 'Default'}")
-                # Infer dimension from model name (common OpenAI models)
-                if "1536" in self.embedding_model or "small" in self.embedding_model or "large" in self.embedding_model or "3" in self.embedding_model:
-                     self.embedding_dim = 1536
-                elif "ada" in self.embedding_model: # Older model
-                     self.embedding_dim = 1024
-                else:
-                     self.embedding_dim = 768 # Fallback/other models
-                print(f"Inferred OpenAI embedding dimension: {self.embedding_dim}")
-
+                # Only infer dimension if not provided in config
+                if self.embedding_dim is None:
+                    if "ada-002" in self.embedding_model or "3-small" in self.embedding_model or "3-large" in self.embedding_model:
+                         self.embedding_dim = 1536
+                    elif "ada-001" in self.embedding_model: # Older model? Check specific name
+                         self.embedding_dim = 1024
+                    else:
+                         # Default fallback if model name doesn't match common patterns
+                         self.embedding_dim = 1536 # Defaulting to common OpenAI dimension
+                         print(f"Warning: Could not infer dimension for model '{self.embedding_model}'. Using fallback: {self.embedding_dim}")
             except Exception as e:
                 print(f"Error initializing OpenAI client: {e}")
                 raise
@@ -119,10 +123,10 @@ class EmbeddingManager:
         """
         if not text:
              print("Warning: Attempting to generate embedding for empty text. Returning zero vector.")
-             # Use the stored dimension
+             # Use the stored dimension, ensure it's set
              if self.embedding_dim is None:
-                 print("Error: Embedding dimension not determined during initialization.")
-                 # Fallback dimension if not set
+                 # This should ideally not happen if initialization worked
+                 print("Error: Embedding dimension not determined. Using fallback 768.")
                  return [0.0] * 768
              return [0.0] * self.embedding_dim
 
@@ -185,7 +189,6 @@ class EmbeddingManager:
                 batch = processed_texts[i:i + batch_size]
                 batch_index_info = f"(Indices {i} to {i + len(batch) - 1})"
                 try:
-                    print(f"Generating OpenAI embeddings for batch {batch_index_info} of size {len(batch)}...")
                     response = self.client.embeddings.create(
                         model=self.embedding_model,
                         input=batch,
@@ -197,7 +200,6 @@ class EmbeddingManager:
                             print(f"Warning: Missing embedding data in OpenAI response for batch {batch_index_info}.")
                             raise ValueError(f"Invalid response from OpenAI API: Missing embedding data in batch {batch_index_info}.")
                         all_embeddings.extend(batch_embeddings)
-                        print(f"Successfully processed OpenAI batch {batch_index_info}.")
                     else:
                         raise ValueError(f"Invalid response from OpenAI API for batch {batch_index_info}: Mismatch in batch size or missing data. Expected {len(batch)}, got {len(response.data) if response.data else 0}.")
                 except APIError as e:
@@ -210,13 +212,11 @@ class EmbeddingManager:
         elif self.provider == "ollama":
             # Ollama's embed_documents handles batching internally (usually)
             try:
-                print(f"Generating Ollama embeddings for {len(processed_texts)} texts...")
                 all_embeddings = self.client.embed_documents(processed_texts)
                 if len(all_embeddings) != len(processed_texts):
                      raise ValueError(f"Ollama API response length mismatch. Expected {len(processed_texts)}, got {len(all_embeddings)}.")
                 if not all(e is not None for e in all_embeddings): # Check for None embeddings
                      raise ValueError("Ollama API returned None for one or more embeddings.")
-                print(f"Successfully generated Ollama embeddings for {len(processed_texts)} texts.")
             except Exception as e:
                 # More detailed error logging
                 print(f"Error generating Ollama embeddings: Type={type(e).__name__}, Message={e}")
