@@ -157,6 +157,7 @@ class SupabaseManager:
         # Remove None values from params as RPC might expect missing keys vs null values
         params = {k: v for k, v in params.items() if v is not None}
 
+        print(f"DEBUG: Calling match_hierarchical_nodes with params: {json.dumps(params, indent=2, default=lambda x: '<embedding vector>')}") # Log params, hiding embedding for brevity
         try:
             # Call the RPC function
             response = self.client.rpc(
