@@ -12,24 +12,35 @@ from utils.utils import get_env_var
 
 # Imports for hierarchical retrieval
 try:
-    # from archon.llms_txt.retrieval.query_processor import QueryProcessor # Handled by EmbeddingManager now
-    # from archon.llms_txt.retrieval.ranking import HierarchicalRanker
-    # from archon.llms_txt.retrieval.response_builder import ResponseBuilder
-    # from archon.llms_txt.retrieval.retrieval_manager import RetrievalManager
+    from archon.llms_txt.retrieval.query_processor import QueryProcessor
+    # from archon.llms_txt.retrieval.ranking import HierarchicalRanker # Not needed for direct search
+    # from archon.llms_txt.retrieval.response_builder import ResponseBuilder # Not needed for direct search
+    # from archon.llms_txt.retrieval.retrieval_manager import RetrievalManager # Not needed for direct search
     from archon.llms_txt.vector_db.supabase_manager import SupabaseManager
-    from archon.llms_txt.vector_db.embedding_manager import EmbeddingManager # Import EmbeddingManager
     HIERARCHICAL_IMPORTS_AVAILABLE = True
 except ImportError as e:
     print(f"Warning: Failed to import hierarchical retrieval components: {e}. Hierarchical retrieval disabled.")
     HIERARCHICAL_IMPORTS_AVAILABLE = False
     # Define dummy classes if imports fail to prevent NameErrors later
-    class QueryProcessor: pass # Keep dummy for now if needed elsewhere
+    class QueryProcessor: pass
     class SupabaseManager: pass
-    class EmbeddingManager: pass # Add dummy for EmbeddingManager
 
-# Remove the old get_embedding function and embedding_model global variable
 
-async def retrieve_relevant_documentation_tool(supabase: Client, embedding_manager: EmbeddingManager, user_query: str) -> str: # Changed embedding_client to embedding_manager
+embedding_model = get_env_var('EMBEDDING_MODEL') or 'text-embedding-3-small'
+
+async def get_embedding(text: str, embedding_client: AsyncOpenAI) -> List[float]:
+    """Get embedding vector from OpenAI."""
+    try:
+        response = await embedding_client.embeddings.create(
+            model=embedding_model,
+            input=text
+        )
+        return response.data[0].embedding
+    except Exception as e:
+        print(f"Error getting embedding: {e}")
+        return [0] * 1536  # Return zero vector on error
+
+async def retrieve_relevant_documentation_tool(supabase: Client, embedding_client: AsyncOpenAI, user_query: str) -> str:
     """
     Retrieve relevant documentation chunks based on the query.
     Conditionally uses either standard RAG from 'site_pages' or hierarchical RAG
@@ -47,11 +58,14 @@ async def retrieve_relevant_documentation_tool(supabase: Client, embedding_manag
             try:
                 # 1. Initialize Hierarchical Components
                 # SupabaseManager handles its own env loading and client creation
-                db_manager = SupabaseManager() # Assumes SupabaseManager uses its own env loader correctly
+                db_manager = SupabaseManager()
+                # QueryProcessor handles its own env loading and embedder creation
+                # We need to ensure QueryProcessor uses the *same* embedding client/model
+                # Let's reuse the existing get_embedding function for simplicity and consistency
+                # query_processor = QueryProcessor(embedding_client=embedding_client) # Pass existing client
 
-                # 2. Process Query to get Embedding using EmbeddingManager
-                print(f"DEBUG: Generating embedding for query '{user_query}' using {embedding_manager.provider} provider.")
-                query_embedding = embedding_manager.generate_embedding(user_query) # Use manager's method
+                # 2. Process Query to get Embedding
+                query_embedding = await get_embedding(user_query, embedding_client)
 
                 if not query_embedding or len(query_embedding) < 10: # Basic check
                     return "Error: Failed to generate embedding for hierarchical search."
@@ -94,9 +108,8 @@ async def retrieve_relevant_documentation_tool(supabase: Client, embedding_manag
 
         else: # Default to 'site_pages'
             print(f"--- Performing Standard Retrieval ('site_pages') for: '{user_query}' ---")
-            # Get the embedding for the query using EmbeddingManager
-            print(f"DEBUG: Generating embedding for query '{user_query}' using {embedding_manager.provider} provider.")
-            query_embedding = embedding_manager.generate_embedding(user_query) # Use manager's method
+            # Get the embedding for the query
+            query_embedding = await get_embedding(user_query, embedding_client)
 
             # Query Supabase for relevant documents using the existing RPC
             result = supabase.rpc(

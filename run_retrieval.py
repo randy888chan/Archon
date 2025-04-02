@@ -18,7 +18,7 @@ try:
     from archon.llms_txt.retrieval.response_builder import ResponseBuilder
     from archon.llms_txt.retrieval.retrieval_manager import RetrievalManager
     from archon.llms_txt.vector_db.supabase_manager import SupabaseManager
-    # EnvironmentLoader is used implicitly by SupabaseManager and EmbeddingManager (in QueryProcessor)
+    # EnvironmentLoader is used implicitly by SupabaseManager and OpenAIEmbeddingGenerator (in QueryProcessor)
     # No need to explicitly import if components handle their own loading
     # from archon.llms_txt.utils.env_loader import EnvironmentLoader
 except ImportError as e:

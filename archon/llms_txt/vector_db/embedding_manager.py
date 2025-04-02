@@ -1,115 +1,46 @@
 from typing import Dict, List, Any, Optional # Added Optional
 import os # Added os
-# Ensure necessary libraries are installed: pip install openai langchain-community
+# Ensure openai library is installed: pip install openai
 try:
-    from openai import OpenAI, APIError
+    from openai import OpenAI, APIError # Added APIError for specific exception handling
 except ImportError:
-    # Allow running without OpenAI if Ollama is the provider
-    OpenAI = None
-    APIError = None # Define APIError as None if openai isn't installed
-    print("Warning: OpenAI library not found. OpenAI provider will not be available.")
-
-try:
-    from langchain_ollama.embeddings import OllamaEmbeddings
-except ImportError:
-    OllamaEmbeddings = None
-    print("Warning: langchain-community library not found. Ollama provider will not be available.")
+    raise ImportError("OpenAI library not found. Please install it using: pip install openai")
 
 # Corrected import path assuming vector_db is sibling to utils
 from ..utils.env_loader import EnvironmentLoader
 
-class EmbeddingManager:
-    """Manages embedding generation using configured provider (OpenAI or Ollama)."""
+class OpenAIEmbeddingGenerator:
+    """Generate embeddings using OpenAI's API"""
 
     def __init__(self, env_loader: Optional[EnvironmentLoader] = None):
-        """Initialize the embedding client based on configuration."""
+        """Initialize the OpenAI API client"""
+        # Allow passing an existing env_loader or create a new one
         self.env_loader = env_loader or EnvironmentLoader(env_file_path="../../workbench/env_vars.json") # Adjusted path
-        self.config = self.env_loader.config # Access the config directly
+        self.openai_config = self.env_loader.get_openai_config()
 
-        self.provider = self.config.get("EMBEDDING_PROVIDER", "OpenAI").lower() # Default to OpenAI
-        self.client = None
-        self.embedding_model = None
-        # Read dimension from config, default to None if not found
-        self.embedding_dim = self.config.get("EMBEDDING_DIMENSION")
-        if self.embedding_dim:
-            try:
-                self.embedding_dim = int(self.embedding_dim)
-            except ValueError:
-                print(f"Warning: Invalid EMBEDDING_DIMENSION value '{self.embedding_dim}'. Must be an integer. Ignoring.")
-                self.embedding_dim = None
-        # else: # No need for else if only print was removed
+        # Validate required config
+        if not self.openai_config.get("api_key"):
+            raise ValueError("OpenAI API Key ('LLM_API_KEY') is missing in configuration.")
+        if not self.openai_config.get("embedding_model"):
+             raise ValueError("OpenAI Embedding Model ('EMBEDDING_MODEL') is missing in configuration.")
 
+        # Initialize OpenAI client
+        try:
+            self.client = OpenAI(
+                api_key=self.openai_config["api_key"],
+                # Pass base_url only if it exists in the config
+                base_url=self.openai_config.get("base_url")
+            )
+            print("OpenAI client initialized successfully.")
+        except Exception as e:
+            print(f"Error initializing OpenAI client: {e}")
+            raise
 
-        if self.provider == "ollama":
-            if OllamaEmbeddings is None:
-                raise ImportError("Ollama provider selected, but langchain-community library is not installed.")
-
-            ollama_base_url = self.config.get("EMBEDDING_BASE_URL")
-            self.embedding_model = self.config.get("EMBEDDING_MODEL")
-
-            if not self.embedding_model:
-                raise ValueError("Ollama Embedding Model ('EMBEDDING_MODEL') is missing in configuration.")
-            if not ollama_base_url:
-                 print("Warning: Ollama Base URL ('EMBEDDING_BASE_URL') not found, using default.")
-                 # OllamaEmbeddings might have a default, or handle None
-
-            try:
-                self.client = OllamaEmbeddings(
-                    base_url=ollama_base_url,
-                    model=self.embedding_model
-                )
-                # Note: OllamaEmbeddings doesn't expose dimension easily, may need to infer or hardcode common values
-                # Only infer dimension if not provided in config
-                if self.embedding_dim is None:
-                    try:
-                        dummy_embedding = self.client.embed_query("test")
-                        self.embedding_dim = len(dummy_embedding)
-                    except Exception as e:
-                        print(f"Warning: Could not determine Ollama embedding dimension via test query: {e}. Using fallback dimension 768.")
-                        self.embedding_dim = 768 # Fallback if inference fails and not configured
-            except Exception as e:
-                print(f"Error initializing Ollama client: {e}")
-                raise
-
-        elif self.provider == "openai":
-            if OpenAI is None:
-                raise ImportError("OpenAI provider selected, but openai library is not installed.")
-
-            openai_api_key = self.config.get("EMBEDDING_API_KEY") or self.config.get("LLM_API_KEY") # Try embedding-specific key first
-            openai_base_url = self.config.get("EMBEDDING_BASE_URL") or self.config.get("BASE_URL") # Try embedding-specific URL first
-            self.embedding_model = self.config.get("EMBEDDING_MODEL")
-
-            if not openai_api_key:
-                raise ValueError("OpenAI API Key ('LLM_API_KEY') is missing in configuration.")
-            if not self.embedding_model:
-                raise ValueError("OpenAI Embedding Model ('EMBEDDING_MODEL') is missing in configuration.")
-
-            try:
-                self.client = OpenAI(
-                    api_key=openai_api_key,
-                    base_url=openai_base_url # Pass base_url only if it exists
-                )
-                # Only infer dimension if not provided in config
-                if self.embedding_dim is None:
-                    if "ada-002" in self.embedding_model or "3-small" in self.embedding_model or "3-large" in self.embedding_model:
-                         self.embedding_dim = 1536
-                    elif "ada-001" in self.embedding_model: # Older model? Check specific name
-                         self.embedding_dim = 1024
-                    else:
-                         # Default fallback if model name doesn't match common patterns
-                         self.embedding_dim = 1536 # Defaulting to common OpenAI dimension
-                         print(f"Warning: Could not infer dimension for model '{self.embedding_model}'. Using fallback: {self.embedding_dim}")
-            except Exception as e:
-                print(f"Error initializing OpenAI client: {e}")
-                raise
-        else:
-            raise ValueError(f"Unsupported embedding provider: {self.provider}. Choose 'OpenAI' or 'Ollama'.")
-
-        if not self.client:
-             raise RuntimeError("Embedding client failed to initialize.")
+        self.embedding_model = self.openai_config["embedding_model"]
+        print(f"Using OpenAI embedding model: {self.embedding_model}")
 
     def generate_embedding(self, text: str) -> List[float]:
-        """Generate an embedding for a single text string using the configured provider.
+        """Generate an embedding for a single text string.
 
         Args:
             text: Text to generate embedding for.
@@ -118,51 +49,39 @@ class EmbeddingManager:
             List of floats representing the embedding vector.
 
         Raises:
-            ValueError: If the input text is invalid.
-            Exception: If the API call to the provider fails or other errors occur.
+            APIError: If the OpenAI API call fails.
+            Exception: For other unexpected errors.
         """
         if not text:
              print("Warning: Attempting to generate embedding for empty text. Returning zero vector.")
-             # Use the stored dimension, ensure it's set
-             if self.embedding_dim is None:
-                 # This should ideally not happen if initialization worked
-                 print("Error: Embedding dimension not determined. Using fallback 768.")
-                 return [0.0] * 768
-             return [0.0] * self.embedding_dim
+             # Determine embedding dimension based on model (common case: 1536 for text-embedding-3-small)
+             # This is a simplification; ideally, fetch dimension from model info if possible.
+             # For now, assume 1536 if model name suggests it.
+             dim = 1536 if "1536" in self.embedding_model or "small" in self.embedding_model or "large" in self.embedding_model else 768 # Default fallback
+             return [0.0] * dim
 
         try:
-            if self.provider == "openai":
-                if APIError is None: # Check if OpenAI client could be initialized
-                     raise RuntimeError("OpenAI client not available.")
-                response = self.client.embeddings.create(
-                    model=self.embedding_model,
-                    input=text,
-                    encoding_format="float"
-                )
-                if response.data and len(response.data) > 0 and response.data[0].embedding:
-                    return response.data[0].embedding
-                else:
-                    raise ValueError("Invalid response received from OpenAI API: No embedding data found.")
-            elif self.provider == "ollama":
-                embedding = self.client.embed_query(text)
-                if embedding and isinstance(embedding, list):
-                     return embedding
-                else:
-                     raise ValueError("Invalid response received from Ollama API: No embedding data found.")
-            else:
-                # This case should ideally not be reached due to __init__ validation
-                raise RuntimeError(f"Invalid provider '{self.provider}' encountered during embedding generation.")
+            response = self.client.embeddings.create(
+                model=self.embedding_model,
+                input=text,
+                encoding_format="float" # Explicitly request float format
+            )
 
-        except APIError as e: # Specific to OpenAI
+            # Check if response data is valid and contains embeddings
+            if response.data and len(response.data) > 0 and response.data[0].embedding:
+                 return response.data[0].embedding
+            else:
+                 raise ValueError("Invalid response received from OpenAI API: No embedding data found.")
+
+        except APIError as e:
             print(f"OpenAI API error generating single embedding: {e}")
             raise # Re-raise the specific API error
         except Exception as e:
-            # Catch general exceptions which might come from Ollama or other issues
-            print(f"Error generating single embedding with {self.provider.upper()} provider: {e}")
+            print(f"Unexpected error generating single embedding: {e}")
             raise # Re-raise other exceptions
 
     def generate_embeddings(self, texts: List[str]) -> List[List[float]]:
-        """Generate embeddings for a list of text strings using the configured provider.
+        """Generate embeddings for a list of text strings (handles batching).
 
         Args:
             texts: List of texts to generate embeddings for.
@@ -171,8 +90,8 @@ class EmbeddingManager:
             List of embedding vectors (list of lists of floats). Returns empty list if input is empty.
 
         Raises:
-            ValueError: If the input texts are invalid or API response is malformed.
-            Exception: If the API call to the provider fails or other errors occur.
+            APIError: If the OpenAI API call fails.
+            Exception: For other unexpected errors.
         """
         if not texts:
             return []
@@ -181,51 +100,43 @@ class EmbeddingManager:
         processed_texts = [text if text else " " for text in texts]
 
         all_embeddings = []
+        batch_size = 2000  # OpenAI limit is often 2048, use 2000 for safety
 
-        if self.provider == "openai":
-            if APIError is None: raise RuntimeError("OpenAI client not available.")
-            batch_size = 2000  # OpenAI batch size limit
-            for i in range(0, len(processed_texts), batch_size):
-                batch = processed_texts[i:i + batch_size]
-                batch_index_info = f"(Indices {i} to {i + len(batch) - 1})"
-                try:
-                    response = self.client.embeddings.create(
-                        model=self.embedding_model,
-                        input=batch,
-                        encoding_format="float"
-                    )
-                    if response.data and len(response.data) == len(batch):
-                        batch_embeddings = [item.embedding for item in response.data]
-                        if not all(e is not None for e in batch_embeddings): # Check for None embeddings
-                            print(f"Warning: Missing embedding data in OpenAI response for batch {batch_index_info}.")
-                            raise ValueError(f"Invalid response from OpenAI API: Missing embedding data in batch {batch_index_info}.")
-                        all_embeddings.extend(batch_embeddings)
-                    else:
-                        raise ValueError(f"Invalid response from OpenAI API for batch {batch_index_info}: Mismatch in batch size or missing data. Expected {len(batch)}, got {len(response.data) if response.data else 0}.")
-                except APIError as e:
-                    print(f"OpenAI API error generating embeddings for batch {batch_index_info}: {e}")
-                    raise
-                except Exception as e:
-                    print(f"Unexpected error generating OpenAI embeddings for batch {batch_index_info}: {e}")
-                    raise
+        for i in range(0, len(processed_texts), batch_size):
+            batch = processed_texts[i:i + batch_size]
+            batch_index_info = f"(Indices {i} to {i + len(batch) - 1})" # For logging
 
-        elif self.provider == "ollama":
-            # Ollama's embed_documents handles batching internally (usually)
             try:
-                all_embeddings = self.client.embed_documents(processed_texts)
-                if len(all_embeddings) != len(processed_texts):
-                     raise ValueError(f"Ollama API response length mismatch. Expected {len(processed_texts)}, got {len(all_embeddings)}.")
-                if not all(e is not None for e in all_embeddings): # Check for None embeddings
-                     raise ValueError("Ollama API returned None for one or more embeddings.")
-            except Exception as e:
-                # More detailed error logging
-                print(f"Error generating Ollama embeddings: Type={type(e).__name__}, Message={e}")
-                # Optionally print traceback if needed:
-                # import traceback
-                # traceback.print_exc()
+                print(f"Generating embeddings for batch {batch_index_info} of size {len(batch)}...") # Added print statement
+                response = self.client.embeddings.create(
+                    model=self.embedding_model,
+                    input=batch,
+                    encoding_format="float"
+                )
+
+                if response.data and len(response.data) == len(batch):
+                    batch_embeddings = [item.embedding for item in response.data]
+                    if not all(batch_embeddings):
+                         # Log which batch failed if possible
+                        print(f"Warning: Missing embedding data in response for batch {batch_index_info}.")
+                        # Handle missing embeddings - Option: fill with zero vectors of correct dimension
+                        # For now, we'll raise an error as before, but the error is now batch-specific.
+                        raise ValueError(f"Invalid response received from OpenAI API: Missing embedding data in batch {batch_index_info}.")
+                    all_embeddings.extend(batch_embeddings)
+                    print(f"Successfully processed batch {batch_index_info}.") # Added success print
+                else:
+                    raise ValueError(f"Invalid response received from OpenAI API for batch {batch_index_info}: Mismatch in batch size or missing data. Expected {len(batch)}, got {len(response.data) if response.data else 0}.")
+
+            except APIError as e:
+                print(f"OpenAI API error generating embeddings for batch {batch_index_info}: {e}")
+                # Option 1: Re-raise immediately, stopping the process
                 raise
-        else:
-             raise RuntimeError(f"Invalid provider '{self.provider}' encountered during batch embedding generation.")
+                # Option 2: Log error and continue, potentially skipping this batch (results in incomplete data)
+                # print(f"Skipping batch {batch_index_info} due to API error.")
+                # continue # This would require careful handling of indices later
+            except Exception as e:
+                print(f"Unexpected error generating embeddings for batch {batch_index_info}: {e}")
+                raise # Re-raise other exceptions
 
         # Final check: Ensure the number of embeddings matches the number of processed texts
         if len(all_embeddings) != len(processed_texts):
@@ -271,7 +182,7 @@ class EmbeddingManager:
              try:
                  embeddings = self.generate_embeddings(texts_to_embed)
              except Exception as e:
-                 print(f"Error generating batch embeddings for nodes using {self.provider.upper()}: {e}. Proceeding without embeddings for affected nodes.")
+                 print(f"Error generating batch embeddings for nodes: {e}. Proceeding without embeddings for affected nodes.")
                  # In case of error, embeddings list will be empty or incomplete
 
         # Add embeddings back to the corresponding nodes

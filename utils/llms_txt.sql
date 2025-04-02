@@ -18,7 +18,7 @@ CREATE TABLE hierarchical_nodes (
     section_type VARCHAR,               -- e.g. "API documentation", "Concepts", etc.
     content_type VARCHAR,               -- e.g. "link_list", "descriptive_text", "code_example"
     document_position FLOAT,            -- Normalized position in document (0-1)
-    embedding VECTOR(768),             -- Dimension for nomic-embed-text
+    embedding VECTOR(1536),             -- Same dimension as your current embeddings
     created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, now()) NOT NULL,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, now()) NOT NULL,
     metadata JSONB NOT NULL DEFAULT '{}'::JSONB  -- Additional metadata
@@ -60,7 +60,7 @@ CREATE INDEX idx_hierarchical_references_type ON hierarchical_references(referen
 
 -- 4. Create vector search function for hierarchical nodes
 CREATE OR REPLACE FUNCTION match_hierarchical_nodes (
-    query_embedding VECTOR(768),
+    query_embedding VECTOR(1536),
     match_count INT DEFAULT 10,
     filter JSONB DEFAULT '{}'::JSONB,
     section_filter VARCHAR DEFAULT NULL,

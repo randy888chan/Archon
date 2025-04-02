@@ -1,5 +1,5 @@
 import re
-from archon.llms_txt.vector_db.embedding_manager import EmbeddingManager
+from archon.llms_txt.vector_db.embedding_manager import OpenAIEmbeddingGenerator
 from typing import Any, Dict, List, Optional, Tuple
 
 class QueryProcessor:
@@ -13,10 +13,10 @@ class QueryProcessor:
         Initializes the QueryProcessor and the embedding generator.
         """
         try:
-            self.embedder = EmbeddingManager()
-            print("QueryProcessor: EmbeddingManager initialized.")
+            self.embedder = OpenAIEmbeddingGenerator()
+            print("QueryProcessor: OpenAIEmbeddingGenerator initialized.")
         except Exception as e:
-            print(f"Error initializing EmbeddingManager in QueryProcessor: {e}")
+            print(f"Error initializing OpenAIEmbeddingGenerator in QueryProcessor: {e}")
             self.embedder = None # Handle initialization failure
 
     def extract_contextual_info(self, query: str) -> Dict[str, Any]:

@@ -16,7 +16,7 @@ try:
     # Phase 4 Components & Utilities
     # Assuming these files exist based on previous main.py imports
     from archon.llms_txt.vector_db.supabase_manager import SupabaseManager
-    from archon.llms_txt.vector_db.embedding_manager import EmbeddingManager
+    from archon.llms_txt.vector_db.embedding_manager import OpenAIEmbeddingGenerator
     from archon.llms_txt.vector_db.query_manager import HierarchicalQueryManager
     from archon.llms_txt.utils.env_loader import EnvironmentLoader # Used implicitly by managers
     
@@ -73,7 +73,7 @@ def process_document(file_path: str, document_id: Optional[str] = None) -> Optio
         chunker = HierarchicalChunker()
         enricher = MetadataEnricher()
         db = SupabaseManager() # Uses default env loader path (workbench/env_vars.json relative to root)
-        embedder = EmbeddingManager() # Uses default env loader path
+        embedder = OpenAIEmbeddingGenerator() # Uses default env loader path
         print("Components initialized successfully.")
         # Perform a quick check of DB connection if desired
         # db._check_tables() # Optional: Check tables exist before proceeding
@@ -285,7 +285,7 @@ def process_document(file_path: str, document_id: Optional[str] = None) -> Optio
 
         # Only insert nodes for which embedding was successful (or if allowing nodes without embeddings)
         if not node.get("metadata", {}).get("embedding_generated", False):
-             # print(f"Skipping insertion for node {original_id} because embedding generation failed.") # Commented out to reduce noise
+             print(f"Skipping insertion for node {original_id} because embedding generation failed.")
              failed_count += 1
              continue
              # OR: If allowing nodes without embeddings, remove the check but handle potential DB constraints

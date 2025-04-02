@@ -2,7 +2,7 @@ from typing import Dict, List, Any, Optional, Tuple
 
 # Corrected import paths assuming query_manager is in vector_db directory
 from .supabase_manager import SupabaseManager
-from .embedding_manager import EmbeddingManager
+from .embedding_manager import OpenAIEmbeddingGenerator
 # Import EnvironmentLoader to allow creating default managers if not provided
 from ..utils.env_loader import EnvironmentLoader
 
@@ -12,7 +12,7 @@ class HierarchicalQueryManager:
     def __init__(
         self,
         supabase_manager: Optional[SupabaseManager] = None,
-        embedding_generator: Optional[EmbeddingManager] = None,
+        embedding_generator: Optional[OpenAIEmbeddingGenerator] = None,
         env_loader: Optional[EnvironmentLoader] = None # Allow passing env_loader
     ):
         """Initialize with database and embedding managers.
@@ -26,7 +26,7 @@ class HierarchicalQueryManager:
 
         # Use provided managers or instantiate them using the env_loader
         self.db = supabase_manager or SupabaseManager(env_loader=_env_loader)
-        self.embedder = embedding_generator or EmbeddingManager(env_loader=_env_loader)
+        self.embedder = embedding_generator or OpenAIEmbeddingGenerator(env_loader=_env_loader)
         print("HierarchicalQueryManager initialized.")
 
     def search(
