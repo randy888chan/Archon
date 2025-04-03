@@ -19,7 +19,8 @@ load_dotenv()
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(current_dir)
-workbench_dir = os.path.join(parent_dir, "workbench")
+workbench_dir = "/app/archon/workbench"
+env_file_path = os.path.join(workbench_dir, "env_vars.json")
 
 def write_to_log(message: str):
     """Write a message to the logs.txt file in the workbench directory.
@@ -406,4 +407,4 @@ def get_clients():
             print(f"Failed to initialize Supabase: {e}")
             write_to_log(f"Failed to initialize Supabase: {e}")
 
-    return embedding_client, supabase      
+    return embedding_client, supabase
