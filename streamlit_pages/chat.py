@@ -63,6 +63,7 @@ async def run_agent_with_streaming(user_input: str):
             async with asyncio.timeout(60):  # 60 second timeout
                 log_event("Starting astream for first message")
                 last_chunk_time = time.time()
+                has_yielded_content = False
                 
                 async for msg in agentic_flow.astream(
                         {"latest_user_message": user_input}, config, stream_mode="custom"
@@ -75,13 +76,25 @@ async def run_agent_with_streaming(user_input: str):
                         total_tokens += len(msg) if msg else 0
                         
                         if chunk_count % 10 == 0 or chunk_delay > 1.0:
-                            log_event(f"Received chunk #{chunk_count}, size: {len(msg)}, delay: {chunk_delay:.2f}s")
+                            log_event(f"Received chunk #{chunk_count}, size: {len(msg) if msg else 0}, delay: {chunk_delay:.2f}s")
                         
+                        # Skip empty chunks but count them
+                        if not msg:
+                            log_event(f"Received empty chunk #{chunk_count}, skipping", level="WARNING")
+                            continue
+                            
+                        has_yielded_content = True
                         # Add timeout check between chunks
                         yield msg
                 
                 elapsed = time.time() - start_time
                 log_event(f"Streaming completed - {chunk_count} chunks, {total_tokens} chars in {elapsed:.2f}s")
+                
+                # Handle case where no content was yielded
+                if not has_yielded_content:
+                    error_msg = "\n\n[No response was generated. The agent may be experiencing issues. Please try again with a more detailed prompt.]"
+                    log_event("No content was yielded during streaming, returning fallback message", level="WARNING")
+                    yield error_msg
                 
         except asyncio.TimeoutError:
             error_msg = "\n\n[Timeout occurred: The agent took too long to respond. Please try again.]"
@@ -100,6 +113,8 @@ async def run_agent_with_streaming(user_input: str):
             async with asyncio.timeout(60):  # 60 second timeout
                 log_event("Starting astream for continuation")
                 last_chunk_time = time.time()
+                has_yielded_content = False
+                wait_count = 0
                 
                 async for msg in agentic_flow.astream(
                     Command(resume=user_input), config, stream_mode="custom"
@@ -112,13 +127,56 @@ async def run_agent_with_streaming(user_input: str):
                     total_tokens += len(msg) if msg else 0
                     
                     if chunk_count % 10 == 0 or chunk_delay > 1.0:
-                        log_event(f"Received chunk #{chunk_count}, size: {len(msg)}, delay: {chunk_delay:.2f}s")
+                        log_event(f"Received chunk #{chunk_count}, size: {len(msg) if msg else 0}, delay: {chunk_delay:.2f}s")
                     
+                    # Skip empty chunks but count them
+                    if not msg:
+                        log_event(f"Received empty chunk #{chunk_count}, skipping", level="WARNING")
+                        continue
+                        
+                    has_yielded_content = True
                     # Add timeout check between chunks
                     yield msg
                 
                 elapsed = time.time() - start_time
                 log_event(f"Streaming completed - {chunk_count} chunks, {total_tokens} chars in {elapsed:.2f}s")
+                
+                # Handle case where no content was yielded
+                if not has_yielded_content:
+                    # If we got no content, let's try to restart the conversation
+                    try:
+                        log_event("No content yielded, attempting to retry with direct prompt", level="WARNING")
+                        # Add a small delay to let any pending operations complete
+                        await asyncio.sleep(0.5)
+                        
+                        # Try with an explicit retry prompt
+                        retry_prompt = f"I couldn't generate a response to '{user_input}'. Please clarify or ask a different question."
+                        
+                        # Try again with a direct prompt
+                        async with asyncio.timeout(30):  # shorter timeout for retry
+                            log_event("Starting astream for retry attempt")
+                            retry_chunk_count = 0
+                            
+                            async for retry_msg in agentic_flow.astream(
+                                {"latest_user_message": retry_prompt}, config, stream_mode="custom"
+                            ):
+                                if retry_msg:
+                                    retry_chunk_count += 1
+                                    log_event(f"Retry chunk #{retry_chunk_count}, size: {len(retry_msg)}")
+                                    yield retry_msg
+                                    has_yielded_content = True
+                            
+                        if not has_yielded_content:
+                            # If even the retry failed, provide a fallback message
+                            error_msg = "\n\n[The agent was unable to generate a response. This might be due to the current state of the conversation or an internal issue. Please try again with a new or more detailed prompt.]"
+                            log_event("Both initial and retry attempts yielded no content", level="ERROR")
+                            yield error_msg
+                    
+                    except Exception as retry_error:
+                        # If retry fails, fall back to a standard error message
+                        error_msg = "\n\n[No response was generated. The agent may be experiencing issues. Please try again with a more detailed prompt.]"
+                        log_event(f"Retry attempt failed: {str(retry_error)}", level="ERROR")
+                        yield error_msg
                 
         except asyncio.TimeoutError:
             error_msg = "\n\n[Timeout occurred: The agent took too long to respond. Please try again.]"
@@ -173,6 +231,7 @@ async def chat_tab():
         # Display assistant response in chat message container
         response_content = ""
         chat_start_time = time.time()
+        has_received_content = False
         
         with st.chat_message("assistant"):
             log_event("Starting assistant response")
@@ -191,6 +250,7 @@ async def chat_tab():
                         log_event("Received empty chunk, skipping", level="WARNING")
                         continue
                         
+                    has_received_content = True
                     response_content += chunk
                     chunk_len = len(chunk)
                     log_event(f"Added chunk of length {chunk_len} to response")
@@ -211,8 +271,13 @@ async def chat_tab():
         log_event(f"Chat response completed in {chat_elapsed:.2f}s")
         log_event(f"Final response length: {len(response_content)} chars")
         
-        st.session_state.messages.append({"type": "ai", "content": response_content})
-        log_event(f"Added AI response to history (new length: {len(st.session_state.messages)})")
+        # Only add the message to history if we received a non-empty response
+        if response_content.strip():
+            st.session_state.messages.append({"type": "ai", "content": response_content})
+            log_event(f"Added AI response to history (new length: {len(st.session_state.messages)})")
+        else:
+            log_event("Received empty response, not adding to message history", level="WARNING")
+            message_placeholder.markdown("[No response was generated. Please try again.]")
 
 # Import nest_asyncio at the top level to make it available when needed
 try:

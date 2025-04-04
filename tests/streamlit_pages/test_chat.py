@@ -31,6 +31,13 @@ class MockAgentic:
         yield " response"
         yield " chunk"
 
+# Empty response mock
+class EmptyResponseMock:
+    async def astream(self, *args, **kwargs):
+        # Just return without yielding anything
+        return
+        yield  # This will never be reached
+
 # Now we can safely import the module we want to test
 from streamlit_pages.chat import chat_tab, chat_tab_wrapper, run_agent_with_streaming
 
@@ -106,6 +113,29 @@ class TestChat:
         # We should have received the first two chunks but not the final one
         assert "Initial response after delay" in "".join(chunks)
         assert " final chunk" not in "".join(chunks)
+    
+    @pytest.mark.asyncio
+    async def test_empty_response_handling(self):
+        """Test that empty responses are handled properly with fallback messages"""
+        # Setup
+        mock_session_state.messages = [
+            {"type": "human", "content": "Hello"},
+            {"type": "ai", "content": "Hi there"},
+            {"type": "human", "content": "yes"}  # This should trigger empty response handling
+        ]
+        
+        # Replace with a mock that yields nothing
+        mock_agentic_flow.astream = EmptyResponseMock().astream
+        
+        # Capture the response
+        chunks = []
+        async for chunk in run_agent_with_streaming("yes"):
+            chunks.append(chunk)
+        
+        # Check if we got a fallback message
+        response = "".join(chunks)
+        assert len(response) > 0
+        assert "No response was generated" in response or "agent was unable to generate" in response
         
     def test_chat_tab_wrapper(self):
         """Test that chat_tab_wrapper properly handles event loops"""
