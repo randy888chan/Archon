@@ -8,21 +8,21 @@ from typing import Any, Dict, List, Optional
 try:
     from .query_processor import QueryProcessor
 except ImportError:
-    # Placeholder if QueryProcessor isn't defined yet or path is wrong
+    # TODO:  if QueryProcessor isn't defined yet or path is wrong
     QueryProcessor = Any
 try:
     from .ranking import HierarchicalRanker
 except ImportError:
-    # Placeholder if HierarchicalRanker isn't defined yet or path is wrong
+    # TODO:  if HierarchicalRanker isn't defined yet or path is wrong
     HierarchicalRanker = Any
 try:
     from .response_builder import ResponseBuilder
 except ImportError:
-    # Placeholder if ResponseBuilder isn't defined yet or path is wrong
+    # TODO:  if ResponseBuilder isn't defined yet or path is wrong
     ResponseBuilder = Any
 
 
-# Placeholder for a potential SearchClient interface/type
+# TODO:  for a potential SearchClient interface/type
 # from .search_client import SearchClient # Uncomment when SearchClient is defined
 
 
@@ -89,7 +89,7 @@ class RetrievalManager:
             #       Using 'vector_search' which calls the 'match_hierarchical_nodes' RPC.
             print(
                 f"Performing semantic search with match_count={match_count}", flush=True
-            )  # Placeholder log
+            )  # TODO:  log
             raw_results = self.search_client.vector_search(
                 embedding=query_embedding,  # Corrected parameter name
                 match_count=match_count,
@@ -103,9 +103,7 @@ class RetrievalManager:
                 )
                 raw_results = []
 
-            print(
-                f"Found {len(raw_results)} raw results.", flush=True
-            )  # Placeholder log
+            print(f"Found {len(raw_results)} raw results.", flush=True)  # TODO:  log
             self.debug_info["raw_search_results"] = raw_results  # Store actual results
         except AttributeError:
             # This specific error might be less likely now, but keep for safety

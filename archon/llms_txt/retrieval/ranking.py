@@ -76,42 +76,42 @@ class HierarchicalRanker:
         (Placeholder for future implementation)
         """
         # TODO: Implement weighting and combination logic based on self.config
-        pass  # Placeholder - Actual calculation is bypassed in the basic rerank_results
+        pass  # TODO:  - Actual calculation is bypassed in the basic rerank_results
 
     def score_semantic_similarity(
         self, result: Dict[str, Any], query_embedding: List[float]
     ) -> float:
         """Calculates semantic similarity score. (Placeholder)"""
         # TODO: Implement semantic scoring (e.g., cosine similarity with result embedding)
-        pass  # Placeholder
+        pass  # TODO:
 
     def score_hierarchical_relevance(
         self, result: Dict[str, Any], context: Optional[Dict[str, Any]]
     ) -> float:
         """Calculates score based on hierarchical context. (Placeholder)"""
         # TODO: Implement hierarchy scoring (e.g., based on parent/child relationships)
-        pass  # Placeholder
+        pass  # TODO:
 
     def score_content_type_match(
         self, result: Dict[str, Any], preferences: Optional[Dict[str, Any]]
     ) -> float:
         """Calculates score based on content type preferences. (Placeholder)"""
         # TODO: Implement content type scoring (e.g., matching result type with preferences)
-        pass  # Placeholder
+        pass  # TODO:
 
     def score_reference_relationships(
         self, result: Dict[str, Any], all_results: List[Dict[str, Any]]
     ) -> float:
         """Calculates score based on references to/from other results. (Placeholder)"""
         # TODO: Implement reference scoring (e.g., boost results referenced by others)
-        pass  # Placeholder
+        pass  # TODO:
 
     def score_path_matching(
         self, result: Dict[str, Any], query_path: Optional[str]
     ) -> float:
         """Calculates score based on path similarity. (Placeholder)"""
         # TODO: Implement path scoring using compare_paths
-        pass  # Placeholder
+        pass  # TODO:
 
     def compare_paths(self, path1: str, path2: str) -> float:
         """
@@ -120,4 +120,4 @@ class HierarchicalRanker:
         (Placeholder for future implementation)
         """
         # TODO: Implement path comparison with fuzzy matching logic
-        pass  # Placeholder
+        pass  # TODO:

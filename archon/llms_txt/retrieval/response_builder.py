@@ -66,7 +66,7 @@ class ResponseBuilder:
         Returns:
             A list of structured response blocks.
         """
-        # Placeholder - This logic is currently handled directly in build_response
+        # TODO:  - This logic is currently handled directly in build_response
         # or will be implemented differently later.
         pass
 
@@ -80,7 +80,7 @@ class ResponseBuilder:
         Returns:
             A string containing parent context, or None.
         """
-        # Placeholder - Parent context inclusion will be implemented later.
+        # TODO:  - Parent context inclusion will be implemented later.
         pass
 
     def _extract_citations(self, result: Dict[str, Any]) -> List[str]:
@@ -93,7 +93,7 @@ class ResponseBuilder:
         Returns:
             A list of citation strings or identifiers.
         """
-        # Placeholder - Citation extraction will be implemented later.
+        # TODO:  - Citation extraction will be implemented later.
         pass
 
     def _identify_related_sections(
@@ -108,7 +108,7 @@ class ResponseBuilder:
         Returns:
             A list of identifiers or titles for related sections.
         """
-        # Placeholder - Related section identification will be implemented later.
+        # TODO:  - Related section identification will be implemented later.
         pass
 
     def _format_markdown(self, response_data: List[Dict[str, Any]]) -> str:
@@ -121,7 +121,7 @@ class ResponseBuilder:
         Returns:
             A formatted Markdown string.
         """
-        # Placeholder - Final response formatting (e.g., to Markdown) will be implemented later.
+        # TODO:  - Final response formatting (e.g., to Markdown) will be implemented later.
         # The current build_response returns a list of dicts.
         pass
 

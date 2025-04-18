@@ -100,7 +100,7 @@ class QueryProcessor:
             f"INFO: Hybrid query creation for query: '{query}' (Not implemented)",
             flush=True,
         )
-        return [query]  # Placeholder, returns original query
+        return [query]  # TODO: , returns original query
 
     def process_query(self, query: str) -> Dict[str, Any]:
         """
