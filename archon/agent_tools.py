@@ -40,15 +40,39 @@ embedding_model = get_env_var("EMBEDDING_MODEL") or "text-embedding-3-small"
 async def get_embedding(text: str, embedding_client: Any) -> List[float]:
     """Get embedding vector from OpenAI or OpenAIEmbeddingGenerator."""
     try:
+        # Check token count before sending to API
+        max_tokens = 8192  # Maximum token limit for embedding models
+
         # Check if embedding_client is an AsyncOpenAI client or OpenAIEmbeddingGenerator
         if hasattr(embedding_client, "embeddings"):
             # It's an AsyncOpenAI client
+            # Check token count using tiktoken
+            try:
+                import tiktoken
+
+                encoding = tiktoken.get_encoding("cl100k_base")
+                token_count = len(encoding.encode(text))
+
+                if token_count > max_tokens:
+                    print(
+                        f"Warning: Text with {token_count} tokens exceeds the maximum token limit ({max_tokens}). Truncating."
+                    )
+                    tokens = encoding.encode(text)
+                    truncated_tokens = tokens[:max_tokens]
+                    text = encoding.decode(truncated_tokens)
+            except ImportError:
+                # If tiktoken is not available, proceed without token checking
+                print(
+                    "Warning: tiktoken not available for token counting in async get_embedding"
+                )
+
             response = await embedding_client.embeddings.create(
                 model=embedding_model, input=text
             )
             return response.data[0].embedding
         elif hasattr(embedding_client, "generate_embedding"):
             # It's an OpenAIEmbeddingGenerator
+            # The token check is already implemented in generate_embedding
             return embedding_client.generate_embedding(text)
         else:
             raise ValueError(

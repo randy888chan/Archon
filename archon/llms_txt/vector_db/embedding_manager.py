@@ -89,6 +89,20 @@ class OpenAIEmbeddingGenerator:
             )  # Default fallback
             return [0.0] * dim
 
+        # Check token count before sending to API
+        max_tokens = 8192  # Maximum token limit for embedding models
+        token_count = self._count_tokens(text)
+
+        if token_count > max_tokens:
+            print(
+                f"Warning: Text with {token_count} tokens exceeds the maximum token limit ({max_tokens}). Truncating."
+            )
+            # Truncate the text to fit within token limit
+            encoding = tiktoken.get_encoding("cl100k_base")
+            tokens = encoding.encode(text)
+            truncated_tokens = tokens[:max_tokens]
+            text = encoding.decode(truncated_tokens)
+
         try:
             response = self.client.embeddings.create(
                 model=self.embedding_model,
@@ -161,14 +175,17 @@ class OpenAIEmbeddingGenerator:
         for text in processed_texts:
             text_tokens = self._count_tokens(text)
 
-            # If a single text exceeds the token limit, we need to truncate it
-            # This is a simplistic approach - in production, consider more sophisticated truncation
+            # If a single text exceeds the token limit, truncate it properly
             if text_tokens > max_tokens_per_batch:
                 print(
-                    f"Warning: Text with {text_tokens} tokens exceeds the maximum batch token limit ({max_tokens_per_batch}). It will be truncated."
+                    f"Warning: Text with {text_tokens} tokens exceeds the maximum batch token limit ({max_tokens_per_batch}). Truncating."
                 )
-                # For simplicity, we'll just process it as a single item batch and let OpenAI truncate it
-                # A better approach would be to implement proper truncation here
+
+                # Properly truncate the text to fit within token limit
+                encoding = tiktoken.get_encoding("cl100k_base")
+                tokens = encoding.encode(text)
+                truncated_tokens = tokens[:max_tokens_per_batch]
+                truncated_text = encoding.decode(truncated_tokens)
 
                 if current_batch:
                     # Process the current batch first
@@ -177,8 +194,8 @@ class OpenAIEmbeddingGenerator:
                     current_batch = []
                     current_batch_tokens = 0
 
-                # Process the oversized text as a single item batch
-                batch_embeddings = self._process_embedding_batch([text])
+                # Process the truncated text as a single item batch
+                batch_embeddings = self._process_embedding_batch([truncated_text])
                 all_embeddings.extend(batch_embeddings)
                 continue
 

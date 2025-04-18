@@ -31,3 +31,32 @@ This document summarizes the changes made to integrate the `llms_txt` hierarchic
   - If `DOCS_RETRIEVAL_TABLE` is `site_pages` (or default), the existing RAG process querying the `site_pages` table is used.
   - If `DOCS_RETRIEVAL_TABLE` is `hierarchical_nodes`, the code now queries the `hierarchical_nodes` table using `SupabaseManager` and associated components from `archon.llms_txt` to perform a vector search and retrieve relevant node content.
 - **Context Formatting:** The retrieved context (from either table) is formatted appropriately before being passed to the language model.
+
+## Recent Merges and Pull Requests
+
+The following merges and PRs have contributed to the `llms_txt` integration:
+
+1. **PR #8: LLMS-TXT-INTEGRATION** (Merged April 1, 2025)
+
+   - Main integration PR that introduced the hierarchical RAG workflow
+   - Added core functionality for processing llms.txt format documents
+   - Implemented database schema and vector search capabilities
+   - Added UI components for document selection and processing
+
+2. **Fix: Embedding Batch Token Limit** (Merged April 18, 2025)
+
+   - Implemented token-aware batching for OpenAI embedding requests
+   - Fixed issues with the 8192 token limit in the embedding API
+   - Enhanced the embedding_manager.py to handle large documents more efficiently
+   - Improved UI by clearing output logs at the start of new file processing
+
+3. **Fix: Retrieval Embedding Attribute Error** (Merged April 18, 2025)
+
+   - Fixed an issue with similarity score formatting in the retrieval process
+   - Ensured proper type handling for similarity scores
+
+4. **Feature: Real-time Log Streaming** (April 18, 2025)
+   - Implemented real-time log streaming for large llms.txt/llms-full.txt processing
+   - Replaced subprocess.run with subprocess.Popen for non-blocking execution
+   - Added incremental log updates to the UI for better user experience
+   - Allows users to see processing progress in real time
