@@ -21,10 +21,53 @@ This document summarizes the changes made to integrate the `llms_txt` hierarchic
   - Checks if `DOCS_RETRIEVAL_TABLE` is set to `hierarchical_nodes`.
   - Executes the `run_processing.py` script via `subprocess` with the selected file path.
   - Displays the script's output logs and errors.
-- **Custom Upload Placeholder:** Added a `st.info` message and a `# TODO` comment indicating that custom file uploads will be added later.
+- **Custom File Upload:** Implemented a file uploader for users to upload their own llms.txt or llms-full.txt files.
+  - Files are saved to the `docs/` directory with sanitized filenames
+  - Clear status indicators for successful saves and processing
+  - Real-time processing log display
 - **Database Statistics:** Included a section to display the total count of nodes in the `hierarchical_nodes` table and a button to view sample data.
 
-## 3. Chat RAG Integration (`archon/agent_tools.py`)
+## 3. llms-text.ai Search Integration
+
+- **Search Interface:** Added a dedicated search section to find llms.txt and llms-full.txt files across the web using the llms-text.ai API.
+
+  - Custom styled container with a form-based interface
+  - Search query input with placeholder text
+  - File type selector dropdown with options for:
+    - Both llms.txt and llms-full.txt formats
+    - Basic (llms.txt only)
+    - Comprehensive (llms-full.txt only)
+  - Pagination controls with configurable results per page
+
+- **Search Results Display:**
+
+  - Card-like containers for each result showing:
+    - Title and domain information
+    - URL with external link
+    - Last updated timestamp
+    - Content summary
+  - "Process File" button for immediate importing of discovered files
+  - Expandable metadata sections showing:
+    - Source domain information
+    - URL purpose rankings
+    - Domain and URL topic rankings
+  - Pagination navigation for browsing through result pages
+
+- **One-Click Processing:** Implemented direct processing of search results:
+
+  - Downloads the selected file when "Process File" is clicked
+  - Automatically saves to the docs directory with a sanitized filename
+  - Executes the processing pipeline on the downloaded file
+  - Displays real-time processing logs
+  - Updates the hierarchical nodes database with the content
+
+- **Error Handling:** Comprehensive error handling for:
+  - API connection issues
+  - File download problems
+  - Processing failures
+  - Proper JSON parsing of API responses
+
+## 4. Chat RAG Integration (`archon/agent_tools.py`)
 
 - **Configuration Reading:** The RAG logic now reads the `DOCS_RETRIEVAL_TABLE` setting from `workbench/env_vars.json` at runtime.
 - **Conditional Retrieval:** Implemented conditional logic within the relevant agent tool function(s):
@@ -55,8 +98,16 @@ The following merges and PRs have contributed to the `llms_txt` integration:
    - Fixed an issue with similarity score formatting in the retrieval process
    - Ensured proper type handling for similarity scores
 
-4. **Feature: Real-time Log Streaming** (April 18, 2025)
+4. **Feature: Real-time Log Streaming** (Merged April 18, 2025)
+
    - Implemented real-time log streaming for large llms.txt/llms-full.txt processing
    - Replaced subprocess.run with subprocess.Popen for non-blocking execution
    - Added incremental log updates to the UI for better user experience
    - Allows users to see processing progress in real time
+
+5. **Feature: llms-text.ai API Integration** (Merged April 18, 2025)
+   - Added search capabilities for discovering llms.txt and llms-full.txt files on the web
+   - Integrated with the llms-text.ai API for comprehensive search functionality
+   - Implemented rich result display with metadata visualization
+   - Added one-click processing of discovered framework documentation
+   - Enhanced UI with styled containers and intuitive search controls
