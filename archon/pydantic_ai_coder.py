@@ -43,6 +43,7 @@ class PydanticAIDeps:
     supabase: Client
     embedding_manager: OpenAIEmbeddingGenerator # Replace embedding_client with embedding_manager
     reasoner_output: str
+    advisor_output: str
 
 pydantic_ai_coder = Agent(
     model,
@@ -54,9 +55,13 @@ pydantic_ai_coder = Agent(
 @pydantic_ai_coder.system_prompt  
 def add_reasoner_output(ctx: RunContext[str]) -> str:
     return f"""
-    \n\nAdditional thoughts/instructions from the reasoner LLM. 
+    
+    Additional thoughts/instructions from the reasoner LLM. 
     This scope includes documentation pages for you to search as well: 
     {ctx.deps.reasoner_output}
+
+    Recommended starting point from the advisor agent:
+    {ctx.deps.advisor_output}
     """
 
 @pydantic_ai_coder.tool

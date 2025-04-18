@@ -6,14 +6,12 @@
 
 <h3>🚀 **CURRENT VERSION** 🚀</h3>
 
-**[ V5 - Multi-Agent Coding Workflow ]**
-*Specialized agents for different parts of the agent creation process*
+**[ V6 - Tool Library and MCP Integration ]**
+*Prebuilt tools, examples, and MCP server integration*
 
 </div>
 
-> **🔄 IMPORTANT UPDATE (March 20th)**: Archon now uses a multi-agent workflow with specialized refiner agents for autonomous prompt, tools, and agent definition improvements. The primary coding agent still creates the initial
-agent by itself, but then you can say 'refine' or something along those lines as a follow up prompt to kick
-off the specialized agents in parallel.
+> **🔄 IMPORTANT UPDATE (March 31st)**: Archon now includes a library of prebuilt tools, examples, and MCP server integrations. Archon can now incorporate these resources when building new agents, significantly enhancing capabilities and reducing hallucinations. Note that the examples/tool library for Archon is just starting out. Please feel free to contribute examples, MCP servers, and prebuilt tools!
 
 Archon is the world's first **"Agenteer"**, an AI agent designed to autonomously build, refine, and optimize other AI agents. 
 
@@ -24,7 +22,7 @@ Through its iterative development, Archon showcases the power of planning, feedb
 
 ## Important Links
 
-- The current version of Archon is V5 as mentioned above - see [V5 Documentation](iterations/v5-parallel-specialized-agents/README.md) for details.
+- The current version of Archon is V6 as mentioned above - see [V6 Documentation](iterations/v6-tool-library-integration/README.md) for details.
 
 - I **just** created the [Archon community](https://thinktank.ottomator.ai/c/archon/30) forum over in the oTTomator Think Tank! Please post any questions you have there!
 
@@ -38,9 +36,11 @@ Archon demonstrates three key principles in modern AI development:
 2. **Domain Knowledge Integration**: Seamless embedding of frameworks like Pydantic AI and LangGraph within autonomous workflows
 3. **Scalable Architecture**: Modular design supporting maintainability, cost optimization, and ethical AI practices
 
-## Getting Started with V5 (current version)
+## Getting Started with V6 (current version)
 
-Since V5 is the current version of Archon, all the code for V5 is in both the main directory and `archon/iterations/v5-parallel-specialized-agents` directory.
+Since V6 is the current version of Archon, all the code for V6 is in both the main directory and `archon/iterations/v6-tool-library-integration` directory.
+
+Note that the examples/tool library for Archon is just starting out. Please feel free to contribute examples, MCP servers, and prebuilt tools!
 
 ### Prerequisites
 - Docker (optional but preferred)
@@ -179,7 +179,7 @@ This ensures you're always running the most recent version of Archon with all th
 - MCP configuration through the UI
 - [Learn more about V4](iterations/v4-streamlit-ui-overhaul/README.md)
 
-### V5: Current - Multi-Agent Coding Workflow
+### V5: Multi-Agent Coding Workflow
 - Specialized refiner agents for different autonomously improving the initially generated agent
 - Prompt refiner agent for optimizing system prompts
 - Tools refiner agent for specialized tool implementation
@@ -188,8 +188,17 @@ This ensures you're always running the most recent version of Archon with all th
 - Improved workflow orchestration with LangGraph
 - [Learn more about V5](iterations/v5-parallel-specialized-agents/README.md)
 
+### V6: Current - Tool Library and MCP Integration
+- Comprehensive library of prebuilt tools, examples, and agent templates
+- Integration with MCP servers for massive amounts of prebuilt tools
+- Advisor agent that recommends relevant tools and examples based on user requirements
+- Automatic incorporation of prebuilt components into new agents
+- Specialized tools refiner agent also validates and optimizes MCP server configurations
+- Streamlined access to external services through MCP integration
+- Reduced development time through component reuse
+- [Learn more about V6](iterations/v6-tool-library-integration/README.md)
+
 ### Future Iterations
-- V6: Tool Library and Example Integration - Pre-built external tool and agent examples incorporation
 - V7: LangGraph Documentation - Allow Archon to build Pydantic AI AND LangGraph agents
 - V8: Self-Feedback Loop - Automated validation and error correction
 - V9: Self Agent Execution - Testing and iterating on agents in an isolated environment
@@ -313,3 +322,4 @@ For version-specific details:
 - [V3 Documentation](iterations/v3-mcp-support/README.md)
 - [V4 Documentation](iterations/v4-streamlit-ui-overhaul/README.md)
 - [V5 Documentation](iterations/v5-parallel-specialized-agents/README.md)
+- [V6 Documentation](iterations/v6-tool-library-integration/README.md)

@@ -245,3 +245,21 @@ async def get_page_content_tool(supabase: Client, url: str) -> str:
     except Exception as e:
         print(f"Error retrieving page content: {e}")
         return f"Error retrieving page content: {str(e)}"
+
+def get_file_content_tool(file_path: str) -> str:
+    """
+    Retrieves the content of a specific file. Use this to get the contents of an example, tool, config for an MCP server
+
+    Args:
+        file_path: The path to the file
+        
+    Returns:
+        The raw contents of the file
+    """
+    try:
+        with open(file_path, "r") as file:
+            file_contents = file.read()
+        return file_contents
+    except Exception as e:
+        print(f"Error retrieving file contents: {e}")
+        return f"Error retrieving file contents: {str(e)}"           
