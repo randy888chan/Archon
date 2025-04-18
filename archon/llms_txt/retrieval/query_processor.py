@@ -2,6 +2,7 @@ import re
 from archon.llms_txt.vector_db.embedding_manager import OpenAIEmbeddingGenerator
 from typing import Any, Dict, List, Optional, Tuple
 
+
 class QueryProcessor:
     """
     Processes user queries to extract relevant information, detect query types,
@@ -14,10 +15,13 @@ class QueryProcessor:
         """
         try:
             self.embedder = OpenAIEmbeddingGenerator()
-            print("QueryProcessor: OpenAIEmbeddingGenerator initialized.")
+            print("QueryProcessor: OpenAIEmbeddingGenerator initialized.", flush=True)
         except Exception as e:
-            print(f"Error initializing OpenAIEmbeddingGenerator in QueryProcessor: {e}")
-            self.embedder = None # Handle initialization failure
+            print(
+                f"Error initializing OpenAIEmbeddingGenerator in QueryProcessor: {e}",
+                flush=True,
+            )
+            self.embedder = None  # Handle initialization failure
 
     def extract_contextual_info(self, query: str) -> Dict[str, Any]:
         """
@@ -51,7 +55,7 @@ class QueryProcessor:
             bool: True if a path-like structure is detected, False otherwise.
         """
         # Simple check for common path separators
-        if re.search(r'[>/]', query):
+        if re.search(r"[>/]", query):
             return True
         return False
 
@@ -76,7 +80,7 @@ class QueryProcessor:
             embedding = self.embedder.generate_embedding(query)
             return embedding
         except Exception as e:
-            print(f"Error generating embedding for query '{query}': {e}")
+            print(f"Error generating embedding for query '{query}': {e}", flush=True)
             # Depending on desired behavior, could return empty list or re-raise
             raise Exception(f"Embedding generation failed: {e}") from e
 
@@ -92,8 +96,11 @@ class QueryProcessor:
         """
         # TODO: Implement logic for generating hybrid query variations
         # (e.g., keyword extraction, synonym expansion)
-        print(f"INFO: Hybrid query creation for query: '{query}' (Not implemented)")
-        return [query] # Placeholder, returns original query
+        print(
+            f"INFO: Hybrid query creation for query: '{query}' (Not implemented)",
+            flush=True,
+        )
+        return [query]  # TODO: , returns original query
 
     def process_query(self, query: str) -> Dict[str, Any]:
         """
@@ -108,14 +115,16 @@ class QueryProcessor:
                             Returns None for embedding if generation fails.
         """
         is_path = self.detect_path_query(query)
-        embedding_vector = None # Default to None
+        embedding_vector = None  # Default to None
         try:
             embedding_vector = self.generate_embeddings(query)
-        except ValueError as ve: # Handle embedder initialization error
-             print(f"Processing query failed: {ve}")
-             # Decide how to handle this - maybe return partial data or raise
-        except Exception as e: # Handle embedding generation error
-            print(f"Error generating embeddings during query processing: {e}")
+        except ValueError as ve:  # Handle embedder initialization error
+            print(f"Processing query failed: {ve}", flush=True)
+            # Decide how to handle this - maybe return partial data or raise
+        except Exception as e:  # Handle embedding generation error
+            print(
+                f"Error generating embeddings during query processing: {e}", flush=True
+            )
             # Embedding vector remains None
 
         return {
@@ -125,18 +134,19 @@ class QueryProcessor:
             # Add other processed info later (e.g., extracted context)
         }
 
+
 # Example Usage (Optional - for testing during development)
-if __name__ == '__main__':
+if __name__ == "__main__":
     processor = QueryProcessor()
     test_query_1 = "Tell me about the introduction section."
     test_query_2 = "Details on installation > configuration"
     test_query_3 = "How does the system handle errors?"
 
     processed_1 = processor.process_query(test_query_1)
-    print("Processed Query 1:", processed_1)
+    print("Processed Query 1:", processed_1, flush=True)
 
     processed_2 = processor.process_query(test_query_2)
-    print("\nProcessed Query 2:", processed_2)
+    print("\nProcessed Query 2:", processed_2, flush=True)
 
     processed_3 = processor.process_query(test_query_3)
-    print("\nProcessed Query 3:", processed_3)
+    print("\nProcessed Query 3:", processed_3, flush=True)

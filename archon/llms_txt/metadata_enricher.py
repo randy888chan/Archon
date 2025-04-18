@@ -1,6 +1,7 @@
 # metadata_enricher.py
 import re
 
+
 class MetadataEnricher:
     """
     Enriches document chunks with metadata and enhances text content
@@ -8,8 +9,12 @@ class MetadataEnricher:
     """
 
     def __init__(self):
-        self.section_types = ["API documentation", "Concepts documentation",
-                             "Optional", "Internals"]
+        self.section_types = [
+            "API documentation",
+            "Concepts documentation",
+            "Optional",
+            "Internals",
+        ]
 
     def enrich_chunk(self, chunk, document_tree):
         """Add comprehensive metadata to each chunk"""
@@ -25,13 +30,16 @@ class MetadataEnricher:
             "contains_links": self._contains_links(chunk),
             "link_count": self._count_links(chunk),
             # Add formatted_path here
-            "formatted_path": "" # Placeholder, will be calculated next
+            "formatted_path": "",  # TODO: , will be calculated next
         }
 
         # Calculate formatted_path based on hierarchy_path
         hierarchy_path = metadata.get("hierarchy_path", [])
         if hierarchy_path:
-            path_titles = [p.get('title', str(p)) if isinstance(p, dict) else str(p) for p in hierarchy_path]
+            path_titles = [
+                p.get("title", str(p)) if isinstance(p, dict) else str(p)
+                for p in hierarchy_path
+            ]
             metadata["formatted_path"] = " > ".join(path_titles)
 
         # Attach metadata to chunk
@@ -45,18 +53,17 @@ class MetadataEnricher:
         hierarchy = chunk.get("hierarchy_path", [])
         for path_element in hierarchy:
             element_title = None
-            if isinstance(path_element, dict) and 'title' in path_element:
-                element_title = path_element.get('title', '') # Get title from dict
+            if isinstance(path_element, dict) and "title" in path_element:
+                element_title = path_element.get("title", "")  # Get title from dict
             elif isinstance(path_element, str):
-                element_title = path_element # Use string directly
+                element_title = path_element  # Use string directly
 
-            if element_title: # Check if we successfully got a title string
+            if element_title:  # Check if we successfully got a title string
                 for section_type in self.section_types:
                     if section_type.lower() in element_title.lower():
                         return section_type
             # else: # Optional: Handle or log the case where path_element is neither string nor dict with title
             #     print(f"Warning: Unexpected element type in hierarchy path: {path_element}")
-
 
         # Default if not found
         return "General"
@@ -85,8 +92,11 @@ class MetadataEnricher:
             # Search for sections with similar titles
             for section in self._flatten_sections(document_tree):
                 section_title = section.get("title", "")
-                if (section_title and section_title != chunk_title and
-                    (section_title in chunk_title or chunk_title in section_title)):
+                if (
+                    section_title
+                    and section_title != chunk_title
+                    and (section_title in chunk_title or chunk_title in section_title)
+                ):
                     # Found related section, add its path
                     related.append(self._build_hierarchy_path(section, document_tree))
 
@@ -98,8 +108,9 @@ class MetadataEnricher:
         all_chunks = self._flatten_chunks(document_tree)
 
         # Find position of this chunk in the document
-        chunk_index = next((i for i, c in enumerate(all_chunks)
-                            if c.get("id") == chunk.get("id")), 0)
+        chunk_index = next(
+            (i for i, c in enumerate(all_chunks) if c.get("id") == chunk.get("id")), 0
+        )
 
         # Normalize to 0-1 range
         total_chunks = len(all_chunks)
@@ -116,6 +127,7 @@ class MetadataEnricher:
         content = chunk.get("content", "")
         # Count markdown link patterns
         import re
+
         link_pattern = r"\[.*?\]\(.*?\)"
         links = re.findall(link_pattern, content)
         return len(links)
@@ -160,7 +172,10 @@ class MetadataEnricher:
         hierarchy_path = chunk.get("metadata", {}).get("hierarchy_path", [])
         if hierarchy_path:
             # Extract titles from path elements (assuming dicts with 'title' or strings)
-            path_titles = [p.get('title', str(p)) if isinstance(p, dict) else str(p) for p in hierarchy_path]
+            path_titles = [
+                p.get("title", str(p)) if isinstance(p, dict) else str(p)
+                for p in hierarchy_path
+            ]
             breadcrumb = " > ".join(path_titles)
             enhanced_text += f"Context: {breadcrumb}\n\n"
 
@@ -181,8 +196,11 @@ class MetadataEnricher:
                 # Handle cases where related_sections might contain single paths or lists of paths
                 # Assuming each 'section' reference is a list representing a path
                 if isinstance(section_path_list, list):
-                     # Extract titles from path elements (assuming dicts with 'title' or strings)
-                    path_titles = [p.get('title', str(p)) if isinstance(p, dict) else str(p) for p in section_path_list]
+                    # Extract titles from path elements (assuming dicts with 'title' or strings)
+                    path_titles = [
+                        p.get("title", str(p)) if isinstance(p, dict) else str(p)
+                        for p in section_path_list
+                    ]
                     section_path_str = " > ".join(path_titles)
                 else:
                     # Fallback if it's not a list (e.g., just a string)
@@ -219,7 +237,7 @@ class MetadataEnricher:
             "descriptive_text": "Descriptive Content",
             "code_example": "Code Example",
             "introduction": "Introduction",
-            "table_based": "Table Content"
+            "table_based": "Table Content",
         }
 
         # Apply normalization to all chunks
