@@ -114,7 +114,8 @@ async def retrieve_relevant_documentation_tool(
                     path = node.get(
                         "path", ""
                     )  # Hierarchical path might be useful context
-                    similarity = node.get("similarity", 0.0)  # Score
+                    # Ensure similarity is a float before formatting
+                    similarity = float(node.get("similarity", 0.0))  # Score
 
                     chunk_text = f"""
 # {title} (Path: {path}, Score: {similarity:.4f})
