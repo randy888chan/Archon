@@ -31,3 +31,143 @@ This document summarizes the changes made to integrate the `llms_txt` hierarchic
   - If `DOCS_RETRIEVAL_TABLE` is `site_pages` (or default), the existing RAG process querying the `site_pages` table is used.
   - If `DOCS_RETRIEVAL_TABLE` is `hierarchical_nodes`, the code now queries the `hierarchical_nodes` table using `SupabaseManager` and associated components from `archon.llms_txt` to perform a vector search and retrieve relevant node content.
 - **Context Formatting:** The retrieved context (from either table) is formatted appropriately before being passed to the language model.
+
+## Recent Merges and Pull Requests
+
+The following merges and PRs have contributed to the `llms_txt` integration:
+
+1. **PR #8: LLMS-TXT-INTEGRATION** (Merged April 1, 2025)
+
+   - Main integration PR that introduced the hierarchical RAG workflow
+   - Added core functionality for processing llms.txt format documents
+   - Implemented database schema and vector search capabilities
+   - Added UI components for document selection and processing
+
+2. **Fix: Embedding Batch Token Limit** (Merged April 18, 2025)
+
+   - Implemented token-aware batching for OpenAI embedding requests
+   - Fixed issues with the 8192 token limit in the embedding API
+   - Enhanced the embedding_manager.py to handle large documents more efficiently
+   - Improved UI by clearing output logs at the start of new file processing
+
+3. **Fix: Retrieval Embedding Attribute Error** (Merged April 18, 2025)
+
+   - Fixed an issue with similarity score formatting in the retrieval process
+   - Ensured proper type handling for similarity scores
+
+4. **Feature: Real-time Log Streaming** (April 18, 2025)
+   - Implemented real-time log streaming for large llms.txt/llms-full.txt processing
+   - Replaced subprocess.run with subprocess.Popen for non-blocking execution
+   - Added incremental log updates to the UI for better user experience
+   - Allows users to see processing progress in real time
+
+## How to Create a Pull Request to Upstream
+
+This section provides step-by-step instructions for creating a pull request from this fork to the original repository (https://github.com/coleam00/Archon).
+
+### Prerequisites
+
+1. Ensure your changes are committed to a feature branch in your fork
+2. Test your changes thoroughly to ensure they work as expected
+3. Make sure your code follows the project's coding standards and conventions
+
+### Step 1: Update Your Fork with the Latest Changes from Upstream
+
+```bash
+# Ensure you have the upstream repository configured
+git remote -v
+# If upstream is not listed, add it
+git remote add upstream https://github.com/coleam00/Archon.git
+
+# Fetch the latest changes from upstream
+git fetch upstream
+
+# Switch to your main branch
+git checkout main
+
+# Merge upstream changes into your main branch
+git merge upstream/main
+
+# Push the updated main branch to your fork
+git push origin main
+```
+
+### Step 2: Rebase Your Feature Branch
+
+```bash
+# Switch to your feature branch
+git checkout your-feature-branch
+
+# Rebase your branch on top of the updated main
+git rebase main
+
+# Resolve any conflicts that may arise during the rebase
+# After resolving conflicts:
+git rebase --continue
+
+# Force push your rebased branch to your fork
+git push --force-with-lease origin your-feature-branch
+```
+
+### Step 3: Create the Pull Request
+
+1. Go to the original repository: https://github.com/coleam00/Archon
+2. Click on the "Pull Requests" tab
+3. Click the "New Pull Request" button
+4. Click on the link "compare across forks"
+5. Set the base repository to `coleam00/Archon` and the base branch to `main`
+6. Set the head repository to `HillviewCap/Archon` and the compare branch to your feature branch
+7. Click "Create Pull Request"
+8. Fill in the PR template with the following information:
+
+### Pull Request Template
+
+```markdown
+## Description
+
+[Provide a detailed description of the changes in this PR]
+
+## Related Issues
+
+[Link to any related issues or tickets]
+
+## Type of Change
+
+- [ ] Bug fix
+- [ ] New feature
+- [ ] Documentation update
+- [ ] Performance improvement
+- [ ] Code refactoring
+- [ ] Other (please describe)
+
+## Testing Performed
+
+[Describe the testing you've done to validate your changes]
+
+## Screenshots (if applicable)
+
+[Add screenshots to help explain your changes]
+
+## Checklist
+
+- [ ] My code follows the project's coding style
+- [ ] I have commented my code, particularly in hard-to-understand areas
+- [ ] I have updated the documentation accordingly
+- [ ] My changes generate no new warnings
+- [ ] I have added tests that prove my fix is effective or that my feature works
+- [ ] New and existing tests pass locally with my changes
+```
+
+### Step 4: Respond to Review Feedback
+
+1. Be responsive to any feedback or change requests from the maintainers
+2. Make requested changes to your branch and push them to your fork
+3. The PR will automatically update with your new changes
+
+### Best Practices for Upstream PRs
+
+1. **Keep PRs Focused**: Each PR should address a single concern or feature
+2. **Write Clear Commit Messages**: Use descriptive commit messages that explain what and why
+3. **Document Your Changes**: Update relevant documentation as part of your PR
+4. **Follow Project Conventions**: Adhere to the coding style and patterns used in the project
+5. **Be Patient and Respectful**: Maintainers are often busy; be patient and respectful in communications
