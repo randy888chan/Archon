@@ -74,6 +74,11 @@ def documentation_tab(supabase_client):
                     and st.session_state.crawl_tracker.is_running
                 ):
                     try:
+                        # Clear the Output log at the start of processing a new file
+                        # This ensures users can see progress from a clean state
+                        if "crawl_status" in st.session_state:
+                            st.session_state.crawl_status = None
+
                         # Define a callback function to update the session state
                         def update_progress(status):
                             st.session_state.crawl_status = status
@@ -96,6 +101,11 @@ def documentation_tab(supabase_client):
                 if st.button("Clear Pydantic AI Docs", key="clear_pydantic"):
                     with st.spinner("Clearing existing Pydantic AI docs..."):
                         try:
+                            # Clear the Output log at the start of processing
+                            # This ensures users can see progress from a clean state
+                            if "crawl_status" in st.session_state:
+                                st.session_state.crawl_status = None
+
                             # Run the function to clear records
                             clear_existing_records()
                             st.success(
