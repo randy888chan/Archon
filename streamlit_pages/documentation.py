@@ -380,7 +380,6 @@ def documentation_tab(supabase_client):
                                     stdout=subprocess.PIPE,
                                     stderr=subprocess.PIPE,
                                     text=True,
-                                    check=False,  # Handle non-zero exit codes manually
                                     encoding="utf-8",
                                     errors="replace",  # Handle potential encoding issues in output
                                 )
@@ -604,7 +603,6 @@ def documentation_tab(supabase_client):
                                     stdout=subprocess.PIPE,
                                     stderr=subprocess.PIPE,
                                     text=True,
-                                    check=False,  # Don't raise exception on non-zero exit code
                                     encoding="utf-8",
                                     errors="replace",  # Handle potential encoding errors
                                 )
@@ -753,6 +751,527 @@ def documentation_tab(supabase_client):
             except Exception as e:
                 st.error(f"Error querying hierarchical_nodes table: {str(e)}")
                 write_to_log(f"Error querying hierarchical_nodes table: {str(e)}")
+
+            # llms-text.ai Search Integration
+            st.markdown("---")  # Separator before search section
+            st.subheader("Search llms.txt Files via llms-text.ai")
+
+            # Add explanatory text
+            st.markdown(
+                """
+            Search for llms.txt and llms-full.txt files across the web using the llms-text.ai API.
+            This search allows you to find websites that have implemented the LLMs protocol.
+            """
+            )
+
+            # Initialize session state for search results and pagination
+            if "llms_search_results" not in st.session_state:
+                st.session_state.llms_search_results = None
+            if "llms_search_page" not in st.session_state:
+                st.session_state.llms_search_page = 1
+            if "llms_search_limit" not in st.session_state:
+                st.session_state.llms_search_limit = 10
+            if "llms_search_total" not in st.session_state:
+                st.session_state.llms_search_total = 0
+            # Initialize session state for processing selected URL
+            if "selected_llms_url" not in st.session_state:
+                st.session_state.selected_llms_url = None
+            if "process_selected_url" not in st.session_state:
+                st.session_state.process_selected_url = False
+
+            # Create a visually distinct search section with a border
+            search_container = st.container()
+            with search_container:
+                st.markdown(
+                    """
+                <style>
+                .search-container {
+                    border: 1px solid #ddd;
+                    border-radius: 10px;
+                    padding: 20px;
+                    margin-bottom: 20px;
+                    background-color: #f8f9fa;
+                }
+                </style>
+                <div class="search-container">
+                """,
+                    unsafe_allow_html=True,
+                )
+
+                # Search form
+                with st.form(key="llms_search_form"):
+                    # Search query input (required)
+                    search_query = st.text_input(
+                        "Search Query (required):",
+                        key="llms_search_query",
+                        placeholder="Enter search terms (e.g., 'AI', 'documentation', 'cloudflare.com')",
+                    )
+
+                    # Create two columns for file type and pagination controls
+                    col1, col2 = st.columns(2)
+
+                    with col1:
+                        # File type selector
+                        file_type_options = {
+                            "both": "Both (llms.txt & llms-full.txt)",
+                            "llms.txt": "Basic (llms.txt only)",
+                            "llms-full.txt": "Comprehensive (llms-full.txt only)",
+                        }
+                        file_type = st.selectbox(
+                            "File Type:",
+                            options=list(file_type_options.keys()),
+                            format_func=lambda x: file_type_options[x],
+                            key="llms_file_type",
+                        )
+
+                    with col2:
+                        # Pagination controls
+                        col2a, col2b = st.columns(2)
+                        with col2a:
+                            page = st.number_input(
+                                "Page:",
+                                min_value=1,
+                                value=st.session_state.llms_search_page,
+                                step=1,
+                                key="llms_page_input",
+                            )
+                        with col2b:
+                            limit = st.number_input(
+                                "Results per page:",
+                                min_value=1,
+                                max_value=50,
+                                value=st.session_state.llms_search_limit,
+                                step=5,
+                                key="llms_limit_input",
+                            )
+
+                    # Search button
+                    search_submitted = st.form_submit_button("Search llms-text.ai")
+
+                st.markdown("</div>", unsafe_allow_html=True)
+
+                # Process search when form is submitted
+                if search_submitted:
+                    if not search_query:
+                        st.error(
+                            "Search query is required. Please enter a search term."
+                        )
+                    else:
+                        # Update session state with form values
+                        st.session_state.llms_search_page = page
+                        st.session_state.llms_search_limit = limit
+
+                        # Show loading spinner during API call
+                        with st.spinner("Searching llms-text.ai..."):
+                            try:
+                                # Construct API URL with parameters
+                                api_url = "https://llms-text.ai/api/search-llms"
+                                params = {
+                                    "q": search_query,
+                                    "fileType": file_type,
+                                    "page": page,
+                                    "limit": limit,
+                                }
+
+                                # Make API request
+                                response = requests.get(
+                                    api_url, params=params, timeout=10
+                                )
+
+                                # Check if request was successful
+                                if response.status_code == 200:
+                                    # Parse JSON response
+                                    search_results = response.json()
+                                    st.session_state.llms_search_results = (
+                                        search_results
+                                    )
+                                    st.session_state.llms_search_total = (
+                                        search_results.get("totalResults", 0)
+                                    )
+
+                                    # Display success message
+                                    if search_results.get("totalResults", 0) > 0:
+                                        st.success(
+                                            f"Found {search_results.get('totalResults', 0)} results for '{search_query}'"
+                                        )
+                                    else:
+                                        st.info(
+                                            f"No results found for '{search_query}'"
+                                        )
+                                else:
+                                    # Handle API error
+                                    error_data = (
+                                        response.json()
+                                        if response.headers.get("content-type")
+                                        == "application/json"
+                                        else {"error": "Unknown error"}
+                                    )
+                                    error_message = error_data.get(
+                                        "error",
+                                        f"API returned status code {response.status_code}",
+                                    )
+                                    st.error(
+                                        f"Error searching llms-text.ai: {error_message}"
+                                    )
+                                    st.session_state.llms_search_results = None
+                            except requests.exceptions.RequestException as e:
+                                # Handle network or timeout errors
+                                st.error(
+                                    f"Error connecting to llms-text.ai API: {str(e)}"
+                                )
+                                st.session_state.llms_search_results = None
+                            except ValueError as e:
+                                # Handle JSON parsing errors
+                                st.error(f"Error parsing API response: {str(e)}")
+                                st.session_state.llms_search_results = None
+                            except Exception as e:
+                                # Handle any other unexpected errors
+                                st.error(f"Unexpected error during search: {str(e)}")
+                                st.session_state.llms_search_results = None
+
+                # Display search results if available
+                if st.session_state.llms_search_results:
+                    results = st.session_state.llms_search_results
+
+                    # Display pagination information
+                    total_results = results.get("totalResults", 0)
+                    current_page = results.get("page", 1)
+                    results_per_page = results.get("limit", 10)
+                    total_pages = (
+                        total_results + results_per_page - 1
+                    ) // results_per_page  # Ceiling division
+
+                    st.markdown(
+                        f"**Showing page {current_page} of {total_pages} ({total_results} total results)**"
+                    )
+
+                    # Display results
+                    result_items = results.get("results", [])
+                    if result_items:
+                        for i, item in enumerate(result_items):
+                            # Create columns for the result and process button
+                            result_col, button_col = st.columns([4, 1])
+
+                            with result_col:
+                                # Create a card-like container for each result
+                                st.markdown(
+                                    f"""
+                                <div style="border: 1px solid #ddd; border-radius: 5px; padding: 10px; margin-bottom: 10px;">
+                                    <h4 style="margin-top: 0;">{i+1}. {item.get('title', 'Untitled')}</h4>
+                                    <p><strong>Domain:</strong> {item.get('domain', 'N/A')}</p>
+                                    <p><strong>URL:</strong> <a href="{item.get('url', '#')}" target="_blank">{item.get('url', 'N/A')}</a></p>
+                                    <p><strong>Last Updated:</strong> {item.get('last_updated', 'N/A')}</p>
+                                    <p><strong>Summary:</strong> {item.get('summary', 'No summary available')}</p>
+                                </div>
+                                """,
+                                    unsafe_allow_html=True,
+                                )
+
+                            with button_col:
+                                # Add a button to process this file
+                                if st.button(
+                                    f"Process File", key=f"process_result_{i}"
+                                ):
+                                    # Set the URL to process
+                                    url_to_process = item.get("url", "")
+                                    if url_to_process:
+                                        # Store the URL in session state and rerun to trigger processing
+                                        st.session_state.selected_llms_url = (
+                                            url_to_process
+                                        )
+                                        st.session_state.process_selected_url = True
+                                        st.rerun()
+
+                            # Display metadata in an expander
+                            metadata = item.get("metadata", {})
+                            if metadata:
+                                with st.expander(
+                                    f"View Metadata for {item.get('domain', 'this result')}"
+                                ):
+                                    # Display source domain
+                                    st.markdown(
+                                        f"**Source Domain:** {metadata.get('source_domain', 'N/A')}"
+                                    )
+
+                                    # Display URL purpose ranking
+                                    url_purpose = metadata.get(
+                                        "url_purpose_ranking", []
+                                    )
+                                    if url_purpose:
+                                        st.markdown("**URL Purpose Ranking:**")
+                                        for purpose in url_purpose:
+                                            st.markdown(f"- {purpose}")
+
+                                    # Display URL topic ranking
+                                    url_topics = metadata.get("url_topic_ranking", [])
+                                    if url_topics:
+                                        st.markdown("**URL Topic Ranking:**")
+                                        for topic in url_topics:
+                                            if (
+                                                isinstance(topic, list)
+                                                and len(topic) >= 2
+                                            ):
+                                                st.markdown(f"- {topic[0]}: {topic[1]}")
+                                            else:
+                                                st.markdown(f"- {topic}")
+
+                                    # Display domain purpose ranking
+                                    domain_purpose = metadata.get(
+                                        "domain_purpose_ranking", []
+                                    )
+                                    if domain_purpose:
+                                        st.markdown("**Domain Purpose Ranking:**")
+                                        for purpose in domain_purpose:
+                                            st.markdown(f"- {purpose}")
+
+                                    # Display domain topic ranking
+                                    domain_topics = metadata.get(
+                                        "domain_topic_ranking", []
+                                    )
+                                    if domain_topics:
+                                        st.markdown("**Domain Topic Ranking:**")
+                                        for topic in domain_topics:
+                                            if (
+                                                isinstance(topic, list)
+                                                and len(topic) >= 2
+                                            ):
+                                                st.markdown(f"- {topic[0]}: {topic[1]}")
+                                            else:
+                                                st.markdown(f"- {topic}")
+
+                        # Add pagination controls
+                        st.markdown("---")
+                        pagination_cols = st.columns([1, 2, 1])
+
+                        with pagination_cols[0]:
+                            if current_page > 1:
+                                if st.button("← Previous Page"):
+                                    st.session_state.llms_search_page = current_page - 1
+                                    st.rerun()
+
+                        with pagination_cols[1]:
+                            st.markdown(
+                                f"<div style='text-align: center;'>Page {current_page} of {total_pages}</div>",
+                                unsafe_allow_html=True,
+                            )
+
+                        with pagination_cols[2]:
+                            if current_page < total_pages:
+                                if st.button("Next Page →"):
+                                    st.session_state.llms_search_page = current_page + 1
+                                    st.rerun()
+
+            # Process selected URL if flag is set
+            if st.session_state.get("process_selected_url", False):
+                st.session_state.process_selected_url = False  # Reset the flag
+                selected_url = st.session_state.get("selected_llms_url")
+
+                if selected_url:
+                    # Clear previous processing state
+                    st.session_state.llms_processing_output = None
+                    st.session_state.llms_processing_error = None
+                    st.session_state.llms_processing_complete = False
+
+                    # Check if the correct table is selected in config
+                    docs_retrieval_table = get_env_var("DOCS_RETRIEVAL_TABLE")
+                    if docs_retrieval_table != "hierarchical_nodes":
+                        st.warning(
+                            f"⚠️ Incorrect table selected for documentation processing. Expected 'hierarchical_nodes' but found '{docs_retrieval_table}'. Please select 'Hierarchical Nodes' in the Database configuration tab to process llms.txt files."
+                        )
+                    else:
+                        # Set the URL to process and trigger the existing processing logic
+                        custom_url = selected_url
+                        url_to_process = custom_url
+
+                        # Display a message indicating that processing has started
+                        st.success(f"Processing URL: {selected_url}")
+
+                        # Proceed with processing using the existing logic
+                        script_path = "run_processing.py"
+                        persistent_file_path = None  # Path for the uniquely named file
+                        command = None  # Initialize command
+                        docs_dir = "docs"  # Define target directory
+
+                        process_placeholder = st.empty()
+                        with process_placeholder.status(
+                            "Preparing documentation...", expanded=True
+                        ) as status:
+                            try:
+                                # Ensure 'docs' directory exists
+                                os.makedirs(docs_dir, exist_ok=True)
+                                status.write(f"Ensured '{docs_dir}' directory exists.")
+
+                                # Download the file from URL (using url_to_process)
+                                status.write(
+                                    f"Downloading documentation from {url_to_process}..."
+                                )
+                                response = requests.get(
+                                    url_to_process, timeout=60
+                                )  # Increased timeout
+                                response.raise_for_status()  # Raise HTTPError for bad responses (4xx or 5xx)
+                                content = response.text  # Use text for utf-8 handling
+
+                                # Generate unique filename and save persistently (using url_to_process)
+                                unique_filename = sanitize_filename(url_to_process)
+                                persistent_file_path = os.path.join(
+                                    docs_dir, unique_filename
+                                )
+                                status.write(
+                                    f"Saving content to persistent file: {persistent_file_path}"
+                                )
+                                with open(
+                                    persistent_file_path, "w", encoding="utf-8"
+                                ) as f:
+                                    f.write(content)
+                                status.write(
+                                    f"Content saved successfully to {persistent_file_path}"
+                                )
+
+                                # Prepare the command using the persistent file path
+                                file_arg = persistent_file_path
+                                command = [
+                                    sys.executable,
+                                    script_path,
+                                    "--file",
+                                    file_arg,
+                                ]
+
+                            except requests.exceptions.RequestException as e:
+                                status.update(
+                                    label="Download Failed!",
+                                    state="error",
+                                    expanded=True,
+                                )
+                                st.session_state.llms_processing_error = (
+                                    f"Error downloading file from {url_to_process}: {e}"
+                                )
+                                st.session_state.llms_processing_complete = True
+                                write_to_log(f"Error downloading {url_to_process}: {e}")
+                            except OSError as e:
+                                status.update(
+                                    label="File Saving Failed!",
+                                    state="error",
+                                    expanded=True,
+                                )
+                                st.session_state.llms_processing_error = (
+                                    f"Error saving file to {persistent_file_path}: {e}"
+                                )
+                                st.session_state.llms_processing_complete = True
+                                write_to_log(
+                                    f"Error saving file {persistent_file_path}: {e}"
+                                )
+                            except Exception as e:
+                                status.update(
+                                    label="Error preparing file!",
+                                    state="error",
+                                    expanded=True,
+                                )
+                                st.session_state.llms_processing_error = f"An unexpected error occurred while preparing the file: {e}"
+                                st.session_state.llms_processing_complete = True
+                                write_to_log(
+                                    f"Unexpected error preparing file from {url_to_process}: {e}"
+                                )
+
+                        # Proceed only if download and file saving were successful
+                        if command and persistent_file_path:
+                            with process_placeholder.status(
+                                "Processing documentation...", expanded=True
+                            ) as status:
+                                try:
+                                    st.write(f"Running command: `{' '.join(command)}`")
+
+                                    # Initialize output and error storage
+                                    st.session_state.llms_processing_output = ""
+                                    st.session_state.llms_processing_error = ""
+
+                                    # Create placeholders for real-time logs
+                                    log_output_placeholder = st.empty()
+                                    log_error_placeholder = st.empty()
+
+                                    # Create a text area for stdout
+                                    log_output = log_output_placeholder.text_area(
+                                        "Output Log (Real-time):",
+                                        value="",
+                                        height=200,
+                                        key="search_result_output_log",
+                                    )
+
+                                    # Create a placeholder for stderr (will only show if errors occur)
+                                    log_error = None
+
+                                    # Start the process with Popen
+                                    process = subprocess.Popen(
+                                        command,
+                                        stdout=subprocess.PIPE,
+                                        stderr=subprocess.PIPE,
+                                        text=True,
+                                        encoding="utf-8",
+                                        errors="replace",  # Handle potential encoding errors
+                                    )
+
+                                    # Capture the process output
+                                    result = process.communicate()
+
+                                    # Store output/error in session state for display later
+                                    st.session_state.llms_processing_output = result[0]
+                                    st.session_state.llms_processing_error = result[1]
+
+                                    if process.returncode == 0:
+                                        status.update(
+                                            label="Processing complete!",
+                                            state="complete",
+                                            expanded=False,
+                                        )
+                                        st.session_state.llms_processing_complete = True
+                                        write_to_log(
+                                            f"Successfully processed {persistent_file_path} (from URL: {url_to_process})."
+                                        )
+                                    else:
+                                        status.update(
+                                            label="Processing failed!",
+                                            state="error",
+                                            expanded=True,
+                                        )
+                                        st.session_state.llms_processing_complete = True
+                                        write_to_log(
+                                            f"Error processing {persistent_file_path} (from URL: {url_to_process}). Return code: {process.returncode}"
+                                        )
+
+                                except FileNotFoundError:
+                                    status.update(
+                                        label="Error: Script not found!",
+                                        state="error",
+                                        expanded=True,
+                                    )
+                                    st.session_state.llms_processing_error = f"Error: The script '{script_path}' was not found. Make sure it's in the correct location."
+                                    st.session_state.llms_processing_complete = True
+                                    write_to_log(
+                                        f"Error running processing script: FileNotFoundError - {script_path}"
+                                    )
+                                except Exception as e:
+                                    status.update(
+                                        label="An unexpected error occurred during processing!",
+                                        state="error",
+                                        expanded=True,
+                                    )
+                                    st.session_state.llms_processing_error = f"An unexpected error occurred during processing: {str(e)}"
+                                    st.session_state.llms_processing_complete = True
+                                    write_to_log(
+                                        f"Unexpected error processing {persistent_file_path} (from URL: {url_to_process}): {e}"
+                                    )
+
+                            # Rerun to display results outside the status context
+                            st.rerun()
+                        elif not st.session_state.get(
+                            "llms_processing_complete"
+                        ):  # If command wasn't set due to download error, but not marked complete yet
+                            st.error(
+                                "Processing could not start due to an error during file preparation."
+                            )
+                            st.session_state.llms_processing_complete = (
+                                True  # Ensure it's marked complete
+                            )
+                            st.rerun()  # Rerun to show the error message clearly
 
     with doc_tabs[2]:  # Future Sources Tab (original content moved here)
         st.info("Additional documentation sources will be available in future updates.")
