@@ -1,9 +1,11 @@
 from typing import Dict, List, Optional, Any, Tuple
 import json
-import os # Added for potential future use, though not strictly needed by spec
+import os  # Added for potential future use, though not strictly needed by spec
 from supabase import create_client, Client
+
 # Corrected import path assuming vector_db is sibling to utils
 from ..utils.env_loader import EnvironmentLoader
+
 
 class SupabaseManager:
     """Manage Supabase database connection and operations"""
@@ -14,22 +16,23 @@ class SupabaseManager:
         # Pass the expected path relative to the project root
         # Assuming archon/llms-txt/ is the root for this module's perspective
         # The env_loader itself handles finding the file
-        self.env_loader = env_loader or EnvironmentLoader(env_file_path="../../workbench/env_vars.json") # Adjusted path
+        self.env_loader = env_loader or EnvironmentLoader(
+            env_file_path="../../workbench/env_vars.json"
+        )  # Adjusted path
         self.supabase_config = self.env_loader.get_supabase_config()
 
         if not self.supabase_config.get("url") or not self.supabase_config.get("key"):
-             raise ValueError("Supabase URL or Key missing in configuration.")
+            raise ValueError("Supabase URL or Key missing in configuration.")
 
         # Create Supabase client
         try:
             self.client: Client = create_client(
-                self.supabase_config["url"],
-                self.supabase_config["key"]
+                self.supabase_config["url"], self.supabase_config["key"]
             )
-            print("Supabase client initialized successfully.")
+            print("Supabase client initialized successfully.", flush=True)
         except Exception as e:
-            print(f"Error initializing Supabase client: {e}")
-            raise # Re-raise the exception after printing
+            print(f"Error initializing Supabase client: {e}", flush=True)
+            raise  # Re-raise the exception after printing
 
         # Initialize tables - Perform a basic check
         # self._check_tables() # Commenting out initial check as it might fail if tables aren't ready
@@ -38,19 +41,27 @@ class SupabaseManager:
         """Check if required tables exist by attempting a simple query."""
         # This is just a check - tables should be created using the SQL init script
         required_tables = ["hierarchical_nodes", "hierarchical_references"]
-        print(f"Checking existence of tables: {required_tables}")
+        print(f"Checking existence of tables: {required_tables}", flush=True)
         all_exist = True
         for table_name in required_tables:
             try:
                 # Test query
-                self.client.table(table_name).select("id", count='exact').limit(1).execute()
-                print(f"Successfully connected to '{table_name}' table.")
+                self.client.table(table_name).select("id", count="exact").limit(
+                    1
+                ).execute()
+                print(f"Successfully connected to '{table_name}' table.", flush=True)
             except Exception as e:
-                print(f"Error connecting to '{table_name}' table: {e}")
-                print(f"Ensure '{table_name}' table exists and the SQL initialization script has been run.")
+                print(f"Error connecting to '{table_name}' table: {e}", flush=True)
+                print(
+                    f"Ensure '{table_name}' table exists and the SQL initialization script has been run.",
+                    flush=True,
+                )
                 all_exist = False
         if not all_exist:
-             print("Warning: Not all required Supabase tables could be verified.")
+            print(
+                "Warning: Not all required Supabase tables could be verified.",
+                flush=True,
+            )
         # We don't raise an error here, allowing the application to potentially proceed
         # if only some tables are needed initially, but log a clear warning.
 
@@ -70,33 +81,40 @@ class SupabaseManager:
 
         # Handle the metadata field properly - ensure it's a dict
         if "metadata" not in node or not isinstance(node["metadata"], dict):
-            node["metadata"] = {} # Default to empty dict if missing or wrong type
+            node["metadata"] = {}  # Default to empty dict if missing or wrong type
 
         # Remove fields not expected by the table schema before insertion
         # Example: remove 'original_id' if it was only for mapping
         node_to_insert = node.copy()
         if "metadata" in node_to_insert and "original_id" in node_to_insert["metadata"]:
-             # Keep original_id in metadata JSONB, don't remove
-             pass
+            # Keep original_id in metadata JSONB, don't remove
+            pass
         # Remove other potential temporary fields if necessary
         # node_to_insert.pop("some_temp_field", None)
 
         try:
-            response = self.client.table("hierarchical_nodes").insert(node_to_insert).execute()
+            response = (
+                self.client.table("hierarchical_nodes").insert(node_to_insert).execute()
+            )
 
             if response.data:
                 return response.data[0]["id"]
             else:
                 # Log more detailed error if available
-                error_message = f"Failed to insert node. Response error: {response.error}"
-                print(error_message)
+                error_message = (
+                    f"Failed to insert node. Response error: {response.error}"
+                )
+                print(error_message, flush=True)
                 raise Exception(error_message)
         except Exception as e:
-            print(f"Exception during node insertion: {e}")
+            print(f"Exception during node insertion: {e}", flush=True)
             # Include node details (excluding embedding) for debugging
-            node_details = {k: v for k, v in node_to_insert.items() if k != 'embedding'}
-            print(f"Node data (excluding embedding): {json.dumps(node_details, indent=2)}")
-            raise # Re-raise the exception
+            node_details = {k: v for k, v in node_to_insert.items() if k != "embedding"}
+            print(
+                f"Node data (excluding embedding): {json.dumps(node_details, indent=2)}",
+                flush=True,
+            )
+            raise  # Re-raise the exception
 
     def insert_reference(self, reference: Dict[str, Any]) -> int:
         """Insert a cross-reference into the hierarchical_references table
@@ -108,27 +126,31 @@ class SupabaseManager:
             The inserted reference ID
         """
         try:
-            response = self.client.table("hierarchical_references").insert(reference).execute()
+            response = (
+                self.client.table("hierarchical_references").insert(reference).execute()
+            )
 
             if response.data:
                 return response.data[0]["id"]
             else:
-                 error_message = f"Failed to insert reference. Response error: {response.error}"
-                 print(error_message)
-                 raise Exception(error_message)
+                error_message = (
+                    f"Failed to insert reference. Response error: {response.error}"
+                )
+                print(error_message, flush=True)
+                raise Exception(error_message)
         except Exception as e:
-            print(f"Exception during reference insertion: {e}")
-            print(f"Reference data: {json.dumps(reference, indent=2)}")
-            raise # Re-raise the exception
+            print(f"Exception during reference insertion: {e}", flush=True)
+            print(f"Reference data: {json.dumps(reference, indent=2)}", flush=True)
+            raise  # Re-raise the exception
 
     def vector_search(
         self,
         embedding: List[float],
         match_count: int = 10,
-        metadata_filter: Optional[Dict[str, Any]] = None, # Made Optional
-        section_filter: Optional[str] = None, # Made Optional
-        level_filter: Optional[int] = None, # Made Optional
-        content_type_filter: Optional[str] = None # Made Optional
+        metadata_filter: Optional[Dict[str, Any]] = None,  # Made Optional
+        section_filter: Optional[str] = None,  # Made Optional
+        level_filter: Optional[int] = None,  # Made Optional
+        content_type_filter: Optional[str] = None,  # Made Optional
     ) -> List[Dict[str, Any]]:
         """Perform vector similarity search using the match_hierarchical_nodes function
 
@@ -151,7 +173,7 @@ class SupabaseManager:
             "filter": json.dumps(metadata_filter) if metadata_filter else None,
             "section_filter": section_filter,
             "level_filter": level_filter,
-            "content_type_filter": content_type_filter
+            "content_type_filter": content_type_filter,
         }
 
         # Remove None values from params as RPC might expect missing keys vs null values
@@ -159,23 +181,22 @@ class SupabaseManager:
 
         try:
             # Call the RPC function
-            response = self.client.rpc(
-                "match_hierarchical_nodes",
-                params
-            ).execute()
+            response = self.client.rpc("match_hierarchical_nodes", params).execute()
 
             if response.data:
                 return response.data
             else:
                 # Return empty list on no results or error
                 if response.error:
-                    print(f"Vector search RPC error: {response.error}")
+                    print(f"Vector search RPC error: {response.error}", flush=True)
                 return []
         except Exception as e:
-            print(f"Exception during vector search RPC call: {e}")
-            return [] # Return empty list on exception
+            print(f"Exception during vector search RPC call: {e}", flush=True)
+            return []  # Return empty list on exception
 
-    def get_node_with_context(self, node_id: int, context_depth: int = 3) -> List[Dict[str, Any]]:
+    def get_node_with_context(
+        self, node_id: int, context_depth: int = 3
+    ) -> List[Dict[str, Any]]:
         """Get a node with its context (parents, children, references) via RPC
 
         Args:
@@ -189,22 +210,30 @@ class SupabaseManager:
             response = self.client.rpc(
                 "get_node_with_context",
                 {
-                    "p_node_id": node_id, # Match param name in SQL function
-                    "p_context_depth": context_depth # Match param name in SQL function
-                }
+                    "p_node_id": node_id,  # Match param name in SQL function
+                    "p_context_depth": context_depth,  # Match param name in SQL function
+                },
             ).execute()
 
             if response.data:
                 return response.data
             else:
                 if response.error:
-                    print(f"Context retrieval RPC error for node {node_id}: {response.error}")
+                    print(
+                        f"Context retrieval RPC error for node {node_id}: {response.error}",
+                        flush=True,
+                    )
                 return []
         except Exception as e:
-            print(f"Exception during context retrieval RPC call for node {node_id}: {e}")
+            print(
+                f"Exception during context retrieval RPC call for node {node_id}: {e}",
+                flush=True,
+            )
             return []
 
-    def find_nodes_by_path(self, path_pattern: str, max_results: int = 20) -> List[Dict[str, Any]]:
+    def find_nodes_by_path(
+        self, path_pattern: str, max_results: int = 20
+    ) -> List[Dict[str, Any]]:
         """Find nodes by path pattern using RPC
 
         Args:
@@ -218,9 +247,9 @@ class SupabaseManager:
             response = self.client.rpc(
                 "find_nodes_by_path",
                 {
-                    "path_pattern": path_pattern, # Corrected param name based on error hint
-                    "max_results": max_results  # Corrected param name based on error hint
-                }
+                    "path_pattern": path_pattern,  # Corrected param name based on error hint
+                    "max_results": max_results,  # Corrected param name based on error hint
+                },
             ).execute()
 
             # Check for data first. If data exists, return it.
@@ -228,16 +257,22 @@ class SupabaseManager:
                 return response.data
             # If no data, check if there was an explicit error attribute (might not exist on success)
             # Supabase client >= 2.0 uses model_dump() for error details if available
-            elif hasattr(response, 'model_dump') and response.model_dump().get('error'):
-                 error_details = response.model_dump().get('error')
-                 print(f"Path search RPC error for pattern '{path_pattern}': {error_details}")
-                 return []
+            elif hasattr(response, "model_dump") and response.model_dump().get("error"):
+                error_details = response.model_dump().get("error")
+                print(
+                    f"Path search RPC error for pattern '{path_pattern}': {error_details}",
+                    flush=True,
+                )
+                return []
             # If no data and no explicit error, assume success with empty results
             else:
-                 # print(f"Path search RPC for pattern '{path_pattern}' succeeded but returned no results.") # Optional: Log success/no data
-                 return []
+                # print(f"Path search RPC for pattern '{path_pattern}' succeeded but returned no results.") # Optional: Log success/no data
+                return []
         except Exception as e:
-            print(f"Exception during path search RPC call for pattern '{path_pattern}': {e}")
+            print(
+                f"Exception during path search RPC call for pattern '{path_pattern}': {e}",
+                flush=True,
+            )
             return []
 
     def get_full_subtree(self, root_node_id: int) -> List[Dict[str, Any]]:
@@ -252,35 +287,45 @@ class SupabaseManager:
         try:
             response = self.client.rpc(
                 "get_full_subtree",
-                {
-                    "p_root_node_id": root_node_id # Match param name in SQL function
-                }
+                {"p_root_node_id": root_node_id},  # Match param name in SQL function
             ).execute()
 
             if response.data:
                 return response.data
             else:
                 if response.error:
-                    print(f"Subtree retrieval RPC error for root node {root_node_id}: {response.error}")
+                    print(
+                        f"Subtree retrieval RPC error for root node {root_node_id}: {response.error}",
+                        flush=True,
+                    )
                 return []
         except Exception as e:
-            print(f"Exception during subtree retrieval RPC call for root node {root_node_id}: {e}")
+            print(
+                f"Exception during subtree retrieval RPC call for root node {root_node_id}: {e}",
+                flush=True,
+            )
             return []
 
     def update_node_parent(self, node_id: int, parent_id: Optional[int]) -> None:
-         """Update the parent_id of a specific node."""
-         try:
-             response = self.client.table("hierarchical_nodes").update({
-                 "parent_id": parent_id
-             }).eq("id", node_id).execute()
+        """Update the parent_id of a specific node."""
+        try:
+            response = (
+                self.client.table("hierarchical_nodes")
+                .update({"parent_id": parent_id})
+                .eq("id", node_id)
+                .execute()
+            )
 
-             if response.error:
-                 print(f"Error updating parent for node {node_id}: {response.error}")
-             # else:
-             #     print(f"Successfully updated parent for node {node_id} to {parent_id}")
+            if response.error:
+                print(
+                    f"Error updating parent for node {node_id}: {response.error}",
+                    flush=True,
+                )
+            # else:
+            #     print(f"Successfully updated parent for node {node_id} to {parent_id}")
 
-         except Exception as e:
-             print(f"Exception updating parent for node {node_id}: {e}")
+        except Exception as e:
+            print(f"Exception updating parent for node {node_id}: {e}", flush=True)
 
     def delete_nodes_by_document_id(self, document_id: str) -> int:
         """Deletes all nodes associated with a specific document_id.
@@ -295,20 +340,25 @@ class SupabaseManager:
             Exception: If the delete operation fails.
         """
         if not document_id:
-            print("Warning: Attempted to delete nodes with empty document_id. Skipping.")
+            print(
+                "Warning: Attempted to delete nodes with empty document_id. Skipping.",
+                flush=True,
+            )
             return 0
 
         try:
             # The Supabase client's delete().execute() returns the deleted records
-            response = self.client.table("hierarchical_nodes") \
-                .delete() \
-                .eq("document_id", document_id) \
+            response = (
+                self.client.table("hierarchical_nodes")
+                .delete()
+                .eq("document_id", document_id)
                 .execute()
+            )
 
             # Check for errors in the response
-            if hasattr(response, 'error') and response.error:
+            if hasattr(response, "error") and response.error:
                 error_message = f"Failed to delete nodes for document_id '{document_id}'. Response error: {response.error}"
-                print(error_message)
+                print(error_message, flush=True)
                 raise Exception(error_message)
 
             # If successful, response.data contains the list of deleted records
@@ -317,5 +367,8 @@ class SupabaseManager:
 
         except Exception as e:
             # Catch potential exceptions during the API call or response processing
-            print(f"Exception during node deletion for document_id '{document_id}': {e}")
-            raise # Re-raise the exception to signal failure
+            print(
+                f"Exception during node deletion for document_id '{document_id}': {e}",
+                flush=True,
+            )
+            raise  # Re-raise the exception to signal failure

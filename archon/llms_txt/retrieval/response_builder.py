@@ -2,6 +2,7 @@
 
 from typing import List, Dict, Any, Optional
 
+
 class ResponseBuilder:
     """
     Builds a structured response from ranked search results, preserving context
@@ -18,7 +19,9 @@ class ResponseBuilder:
         self.config = config or {}
         # TODO: Initialize any necessary components based on config
 
-    def build_response(self, ranked_results: List[Dict[str, Any]], **kwargs) -> List[Dict[str, Any]]: # Adjusted signature and return type
+    def build_response(
+        self, ranked_results: List[Dict[str, Any]], **kwargs
+    ) -> List[Dict[str, Any]]:  # Adjusted signature and return type
         """
         Builds a basic list of formatted results from ranked search results.
         This is a basic formatter; context inclusion, citation extraction, etc., will be added later.
@@ -40,9 +43,9 @@ class ResponseBuilder:
             score = result.get("score", result.get("similarity", 0.0))
 
             simplified_result = {
-                "id": result.get("id"), # May be None if not present
-                "path": result.get("path"), # May be None if not present
-                "title": result.get("title"), # May be None if not present
+                "id": result.get("id"),  # May be None if not present
+                "path": result.get("path"),  # May be None if not present
+                "title": result.get("title"),  # May be None if not present
                 "content_snippet": snippet,
                 "score": score,
             }
@@ -50,7 +53,9 @@ class ResponseBuilder:
 
         return formatted_results
 
-    def _build_response_blocks(self, ranked_results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _build_response_blocks(
+        self, ranked_results: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
         """
         Processes ranked results to create structured response blocks,
         preserving hierarchy and including parent context.
@@ -91,7 +96,9 @@ class ResponseBuilder:
         # Placeholder - Citation extraction will be implemented later.
         pass
 
-    def _identify_related_sections(self, ranked_results: List[Dict[str, Any]]) -> List[str]:
+    def _identify_related_sections(
+        self, ranked_results: List[Dict[str, Any]]
+    ) -> List[str]:
         """
         Identifies potentially related sections based on the ranked results.
 
@@ -118,15 +125,28 @@ class ResponseBuilder:
         # The current build_response returns a list of dicts.
         pass
 
+
 # Example Usage (Optional - for testing)
-if __name__ == '__main__':
+if __name__ == "__main__":
     # Example ranked results structure
     sample_results = [
-        {"content": "This is the first chunk of text.", "metadata": {"source": "doc1.md", "section": "Intro"}, "score": 0.95},
-        {"content": "Another relevant piece of information.", "metadata": {"source": "doc2.md", "parent_id": "doc2_sec1"}, "score": 0.88},
-        {"content": "Details about implementation.", "metadata": {"source": "doc1.md", "section": "Implementation"}, "score": 0.85},
+        {
+            "content": "This is the first chunk of text.",
+            "metadata": {"source": "doc1.md", "section": "Intro"},
+            "score": 0.95,
+        },
+        {
+            "content": "Another relevant piece of information.",
+            "metadata": {"source": "doc2.md", "parent_id": "doc2_sec1"},
+            "score": 0.88,
+        },
+        {
+            "content": "Details about implementation.",
+            "metadata": {"source": "doc1.md", "section": "Implementation"},
+            "score": 0.85,
+        },
     ]
 
     builder = ResponseBuilder()
     response = builder.build_response(sample_results)
-    print(response)
+    print(response, flush=True)
