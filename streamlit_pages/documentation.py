@@ -266,7 +266,7 @@ def documentation_tab(supabase_client):
                 sanitized_filename = sanitize_filename(original_filename)
                 docs_dir = "docs"
                 saved_file_path = os.path.join(docs_dir, sanitized_filename)
-                save_status = st.empty()  # Placeholder for status messages
+                save_status = st.empty()  # TODO:  for status messages
 
                 try:
                     save_status.info(
@@ -361,14 +361,8 @@ def documentation_tab(supabase_client):
                                     key="uploaded_output_log",
                                 )
 
-                                # Create a text area for stderr (if needed)
-                                log_error = log_error_placeholder.text_area(
-                                    "Error Log (Real-time):",
-                                    value="",
-                                    height=100,
-                                    key="uploaded_error_log",
-                                    visible=False,  # Initially hidden, will show if errors occur
-                                )
+                                # Create a placeholder for stderr (will only show if errors occur)
+                                log_error = None
 
                                 # Start the process with Popen
                                 process = subprocess.Popen(
@@ -396,7 +390,7 @@ def documentation_tab(supabase_client):
                                                 current_text = (
                                                     st.session_state.llms_processing_output
                                                 )
-                                                if visible:
+                                                if visible and current_text:
                                                     placeholder.text_area(
                                                         "Output Log (Real-time):",
                                                         value=current_text,
@@ -410,14 +404,13 @@ def documentation_tab(supabase_client):
                                                 current_text = (
                                                     st.session_state.llms_processing_error
                                                 )
-                                                if visible:
+                                                if visible and current_text:
                                                     # Make error log visible if it wasn't before
                                                     placeholder.text_area(
                                                         "Error Log (Real-time):",
                                                         value=current_text,
                                                         height=100,
                                                         key=f"uploaded_error_log_{time.time()}",
-                                                        visible=True,
                                                     )
                                             return True
                                     return False
@@ -460,7 +453,6 @@ def documentation_tab(supabase_client):
                                         value=st.session_state.llms_processing_error,
                                         height=100,
                                         key=f"uploaded_error_log_final",
-                                        visible=True,
                                     )
 
                                 # Update status based on return code
@@ -668,14 +660,8 @@ def documentation_tab(supabase_client):
                                     key="url_output_log",
                                 )
 
-                                # Create a text area for stderr (if needed)
-                                log_error = log_error_placeholder.text_area(
-                                    "Error Log (Real-time):",
-                                    value="",
-                                    height=100,
-                                    key="url_error_log",
-                                    visible=False,  # Initially hidden, will show if errors occur
-                                )
+                                # Create a placeholder for stderr (will only show if errors occur)
+                                log_error = None
 
                                 # Start the process with Popen
                                 process = subprocess.Popen(
@@ -703,7 +689,7 @@ def documentation_tab(supabase_client):
                                                 current_text = (
                                                     st.session_state.llms_processing_output
                                                 )
-                                                if visible:
+                                                if visible and current_text:
                                                     placeholder.text_area(
                                                         "Output Log (Real-time):",
                                                         value=current_text,
@@ -717,14 +703,13 @@ def documentation_tab(supabase_client):
                                                 current_text = (
                                                     st.session_state.llms_processing_error
                                                 )
-                                                if visible:
-                                                    # Make error log visible if it wasn't before
+                                                if visible and current_text:
+                                                    # Only show error log if there's content
                                                     placeholder.text_area(
                                                         "Error Log (Real-time):",
                                                         value=current_text,
                                                         height=100,
                                                         key=f"url_error_log_{time.time()}",
-                                                        visible=True,
                                                     )
                                             return True
                                     return False
@@ -767,7 +752,6 @@ def documentation_tab(supabase_client):
                                         value=st.session_state.llms_processing_error,
                                         height=100,
                                         key=f"url_error_log_final",
-                                        visible=True,
                                     )
 
                                 # Update status based on return code
@@ -890,7 +874,7 @@ def documentation_tab(supabase_client):
                         )
 
                         # Example of how it *could* look if counts were available:
-                        # counts_per_doc = {'doc1': 150, 'doc2': 300} # Placeholder
+                        # counts_per_doc = {'doc1': 150, 'doc2': 300} # TODO:
                         # st.dataframe(counts_per_doc)
 
                         # Add a button to view sample data
