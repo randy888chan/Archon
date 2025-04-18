@@ -74,6 +74,11 @@ def documentation_tab(supabase_client):
                     and st.session_state.crawl_tracker.is_running
                 ):
                     try:
+                        # Clear the Output log at the start of processing a new file
+                        # This ensures users can see progress from a clean state
+                        if "crawl_status" in st.session_state:
+                            st.session_state.crawl_status = None
+
                         # Define a callback function to update the session state
                         def update_progress(status):
                             st.session_state.crawl_status = status
@@ -96,6 +101,11 @@ def documentation_tab(supabase_client):
                 if st.button("Clear Pydantic AI Docs", key="clear_pydantic"):
                     with st.spinner("Clearing existing Pydantic AI docs..."):
                         try:
+                            # Clear the Output log at the start of processing
+                            # This ensures users can see progress from a clean state
+                            if "crawl_status" in st.session_state:
+                                st.session_state.crawl_status = None
+
                             # Run the function to clear records
                             clear_existing_records()
                             st.success(
@@ -266,7 +276,7 @@ def documentation_tab(supabase_client):
                 sanitized_filename = sanitize_filename(original_filename)
                 docs_dir = "docs"
                 saved_file_path = os.path.join(docs_dir, sanitized_filename)
-                save_status = st.empty()  # TODO:  for status messages
+                save_status = st.empty()  # Placeholder for status messages
 
                 try:
                     save_status.info(
@@ -303,6 +313,12 @@ def documentation_tab(supabase_client):
                     f"Process Uploaded File: '{st.session_state.uploaded_file_original_name}'",
                     key="process_uploaded_llms_file",
                 ):
+                    # Clear the Output log at the start of processing a new file
+                    # This ensures users can see progress from a clean state
+                    st.session_state.llms_processing_output = None
+                    st.session_state.llms_processing_error = None
+                    st.session_state.llms_processing_complete = False
+
                     # Check Supabase config and table selection again (important!)
                     supabase_url = get_env_var("SUPABASE_URL")
                     supabase_key = get_env_var("SUPABASE_SERVICE_KEY")
@@ -319,13 +335,7 @@ def documentation_tab(supabase_client):
                         )
                     else:
                         # Proceed with processing the saved file
-                        st.session_state.llms_processing_output = (
-                            None  # Clear previous output
-                        )
-                        st.session_state.llms_processing_error = None
-                        st.session_state.llms_processing_complete = (
-                            False  # Reset completion flag for this specific action
-                        )
+                        # Note: Output log already cleared at the beginning of this button click handler
 
                         script_path = "run_processing.py"
                         file_arg = (
@@ -370,93 +380,16 @@ def documentation_tab(supabase_client):
                                     stdout=subprocess.PIPE,
                                     stderr=subprocess.PIPE,
                                     text=True,
+                                    check=False,  # Handle non-zero exit codes manually
                                     encoding="utf-8",
-                                    errors="replace",
-                                    bufsize=1,  # Line buffered
+                                    errors="replace",  # Handle potential encoding issues in output
                                 )
 
-                                # Function to read from a pipe and update UI
-                                def read_pipe(
-                                    pipe, placeholder, storage_key, visible=True
-                                ):
-                                    if pipe:
-                                        line = pipe.readline()
-                                        if line:
-                                            # Append to session state
-                                            if storage_key == "stdout":
-                                                st.session_state.llms_processing_output += (
-                                                    line
-                                                )
-                                                current_text = (
-                                                    st.session_state.llms_processing_output
-                                                )
-                                                if visible and current_text:
-                                                    placeholder.text_area(
-                                                        "Output Log (Real-time):",
-                                                        value=current_text,
-                                                        height=200,
-                                                        key=f"uploaded_output_log_{time.time()}",
-                                                    )
-                                            else:
-                                                st.session_state.llms_processing_error += (
-                                                    line
-                                                )
-                                                current_text = (
-                                                    st.session_state.llms_processing_error
-                                                )
-                                                if visible and current_text:
-                                                    # Make error log visible if it wasn't before
-                                                    placeholder.text_area(
-                                                        "Error Log (Real-time):",
-                                                        value=current_text,
-                                                        height=100,
-                                                        key=f"uploaded_error_log_{time.time()}",
-                                                    )
-                                            return True
-                                    return False
+                                # Store output/error in session state for display later
+                                st.session_state.llms_processing_output = result.stdout
+                                st.session_state.llms_processing_error = result.stderr
 
-                                # Stream output until process completes
-                                returncode = None
-                                while returncode is None:
-                                    # Check if process has completed
-                                    returncode = process.poll()
-
-                                    # Read from stdout and stderr
-                                    stdout_updated = read_pipe(
-                                        process.stdout, log_output_placeholder, "stdout"
-                                    )
-                                    stderr_updated = read_pipe(
-                                        process.stderr, log_error_placeholder, "stderr"
-                                    )
-
-                                    # If nothing was read, sleep briefly to avoid CPU spinning
-                                    if not (stdout_updated or stderr_updated):
-                                        time.sleep(0.1)
-
-                                # Read any remaining output
-                                for line in process.stdout:
-                                    st.session_state.llms_processing_output += line
-                                for line in process.stderr:
-                                    st.session_state.llms_processing_error += line
-
-                                # Update UI with final output
-                                log_output_placeholder.text_area(
-                                    "Output Log (Real-time):",
-                                    value=st.session_state.llms_processing_output,
-                                    height=200,
-                                    key=f"uploaded_output_log_final",
-                                )
-
-                                if st.session_state.llms_processing_error:
-                                    log_error_placeholder.text_area(
-                                        "Error Log (Real-time):",
-                                        value=st.session_state.llms_processing_error,
-                                        height=100,
-                                        key=f"uploaded_error_log_final",
-                                    )
-
-                                # Update status based on return code
-                                if returncode == 0:
+                                if result.returncode == 0:
                                     status.update(
                                         label="Processing complete!",
                                         state="complete",
@@ -477,7 +410,7 @@ def documentation_tab(supabase_client):
                                     )
                                     st.session_state.llms_processing_complete = True
                                     write_to_log(
-                                        f"Error processing uploaded file: {file_arg}. Return code: {returncode}\\nStderr: {st.session_state.llms_processing_error}"
+                                        f"Error processing uploaded file: {file_arg}. Return code: {result.returncode}\\nStderr: {result.stderr}"
                                     )
 
                             except FileNotFoundError:
@@ -544,6 +477,12 @@ def documentation_tab(supabase_client):
             if st.button(
                 button_label, key="process_llms_docs", disabled=button_disabled
             ):
+                # Clear the Output log at the start of processing a new file
+                # This ensures users can see progress from a clean state
+                st.session_state.llms_processing_output = None
+                st.session_state.llms_processing_error = None
+                st.session_state.llms_processing_complete = False
+
                 # The original check for selected_framework_file is now covered by url_to_process
                 # Check if the correct table is selected in config
                 docs_retrieval_table = get_env_var("DOCS_RETRIEVAL_TABLE")
@@ -552,11 +491,7 @@ def documentation_tab(supabase_client):
                         f"⚠️ Incorrect table selected for documentation processing. Expected 'hierarchical_nodes' but found '{docs_retrieval_table}'. Please select 'Hierarchical Nodes' in the Database configuration tab to process llms.txt files."
                     )
                 else:
-                    st.session_state.llms_processing_output = (
-                        None  # Clear previous output
-                    )
-                    st.session_state.llms_processing_error = None
-                    st.session_state.llms_processing_complete = False
+                    # Note: Output log already cleared at the beginning of this button click handler
 
                     script_path = "run_processing.py"
                     persistent_file_path = None  # Path for the uniquely named file
@@ -669,93 +604,15 @@ def documentation_tab(supabase_client):
                                     stdout=subprocess.PIPE,
                                     stderr=subprocess.PIPE,
                                     text=True,
+                                    check=False,  # Don't raise exception on non-zero exit code
                                     encoding="utf-8",
-                                    errors="replace",
-                                    bufsize=1,  # Line buffered
+                                    errors="replace",  # Handle potential encoding errors
                                 )
 
-                                # Function to read from a pipe and update UI
-                                def read_pipe(
-                                    pipe, placeholder, storage_key, visible=True
-                                ):
-                                    if pipe:
-                                        line = pipe.readline()
-                                        if line:
-                                            # Append to session state
-                                            if storage_key == "stdout":
-                                                st.session_state.llms_processing_output += (
-                                                    line
-                                                )
-                                                current_text = (
-                                                    st.session_state.llms_processing_output
-                                                )
-                                                if visible and current_text:
-                                                    placeholder.text_area(
-                                                        "Output Log (Real-time):",
-                                                        value=current_text,
-                                                        height=200,
-                                                        key=f"url_output_log_{time.time()}",
-                                                    )
-                                            else:
-                                                st.session_state.llms_processing_error += (
-                                                    line
-                                                )
-                                                current_text = (
-                                                    st.session_state.llms_processing_error
-                                                )
-                                                if visible and current_text:
-                                                    # Only show error log if there's content
-                                                    placeholder.text_area(
-                                                        "Error Log (Real-time):",
-                                                        value=current_text,
-                                                        height=100,
-                                                        key=f"url_error_log_{time.time()}",
-                                                    )
-                                            return True
-                                    return False
+                                st.session_state.llms_processing_output = result.stdout
+                                st.session_state.llms_processing_error = result.stderr
 
-                                # Stream output until process completes
-                                returncode = None
-                                while returncode is None:
-                                    # Check if process has completed
-                                    returncode = process.poll()
-
-                                    # Read from stdout and stderr
-                                    stdout_updated = read_pipe(
-                                        process.stdout, log_output_placeholder, "stdout"
-                                    )
-                                    stderr_updated = read_pipe(
-                                        process.stderr, log_error_placeholder, "stderr"
-                                    )
-
-                                    # If nothing was read, sleep briefly to avoid CPU spinning
-                                    if not (stdout_updated or stderr_updated):
-                                        time.sleep(0.1)
-
-                                # Read any remaining output
-                                for line in process.stdout:
-                                    st.session_state.llms_processing_output += line
-                                for line in process.stderr:
-                                    st.session_state.llms_processing_error += line
-
-                                # Update UI with final output
-                                log_output_placeholder.text_area(
-                                    "Output Log (Real-time):",
-                                    value=st.session_state.llms_processing_output,
-                                    height=200,
-                                    key=f"url_output_log_final",
-                                )
-
-                                if st.session_state.llms_processing_error:
-                                    log_error_placeholder.text_area(
-                                        "Error Log (Real-time):",
-                                        value=st.session_state.llms_processing_error,
-                                        height=100,
-                                        key=f"url_error_log_final",
-                                    )
-
-                                # Update status based on return code
-                                if returncode == 0:
+                                if result.returncode == 0:
                                     status.update(
                                         label="Processing complete!",
                                         state="complete",
@@ -773,7 +630,7 @@ def documentation_tab(supabase_client):
                                     )
                                     st.session_state.llms_processing_complete = True
                                     write_to_log(
-                                        f"Error processing {persistent_file_path} (from URL: {url_to_process}). Return code: {returncode}"
+                                        f"Error processing {persistent_file_path} (from URL: {url_to_process}). Return code: {result.returncode}"
                                     )
 
                             except FileNotFoundError:
