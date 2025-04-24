@@ -1,4 +1,11 @@
 from __future__ import annotations as _annotations
+from archon.agent_tools import (
+    retrieve_relevant_documentation_tool,
+    list_documentation_pages_tool,
+    get_page_content_tool
+)
+from archon.agent_prompts import primary_coder_prompt
+from utils.utils import get_env_var
 
 from dataclasses import dataclass
 from dotenv import load_dotenv
@@ -15,27 +22,37 @@ from pydantic_ai.models.anthropic import AnthropicModel
 from pydantic_ai.models.openai import OpenAIModel
 from openai import AsyncOpenAI
 from supabase import Client
-
+from pydantic_ai.providers.openai import OpenAIProvider
 # Add the parent directory to sys.path to allow importing from the parent directory
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from utils.utils import get_env_var
-from archon.agent_prompts import primary_coder_prompt
-from archon.agent_tools import (
-    retrieve_relevant_documentation_tool,
-    list_documentation_pages_tool,
-    get_page_content_tool
-)
 
 load_dotenv()
 
+# --- Configuration ---
+PROVIDER = get_env_var('LLM_PROVIDER') or 'OpenAI'
+LLM_MODEL_NAME = get_env_var('PRIMARY_MODEL') or 'gpt-4o-mini'
+BASE_URL = get_env_var('BASE_URL') or 'https://api.openai.com/v1'
+API_KEY = get_env_var('LLM_API_KEY') or 'no-llm-api-key-provided'
+SOURCE_NAME = "pydantic_ai_docs"  # Specific source for this agent
+# ---------------------
 provider = get_env_var('LLM_PROVIDER') or 'OpenAI'
-llm = get_env_var('PRIMARY_MODEL') or 'gpt-4o-mini'
-base_url = get_env_var('BASE_URL') or 'https://api.openai.com/v1'
-api_key = get_env_var('LLM_API_KEY') or 'no-llm-api-key-provided'
 
-model = AnthropicModel(llm, api_key=api_key) if provider == "Anthropic" else OpenAIModel(llm, base_url=base_url, api_key=api_key)
+logfire.configure(token=os.getenv('LOGFIRE_API_KEY'))
 
-logfire.configure(send_to_logfire='if-token-present')
+if provider == "Anthropic":
+    model = AnthropicModel(model_name=LLM_MODEL_NAME, api_key=API_KEY)
+    logfire.instrument_anthropic()
+elif provider == "OpenAI":
+    logfire.instrument_openai()
+    openai_provider = OpenAIProvider(api_key=API_KEY, base_url=BASE_URL)
+    model = OpenAIModel(model_name=LLM_MODEL_NAME,
+                        provider=openai_provider)
+else:
+    openai_provider = OpenAIProvider(api_key=API_KEY, base_url=BASE_URL)
+    model = OpenAIModel(model_name=LLM_MODEL_NAME,
+                        provider=openai_provider)
+    logfire.instrument_aiohttp_client()
+
 
 @dataclass
 class PydanticAIDeps:
@@ -44,6 +61,7 @@ class PydanticAIDeps:
     reasoner_output: str
     advisor_output: str
 
+
 pydantic_ai_coder = Agent(
     model,
     system_prompt=primary_coder_prompt,
@@ -51,52 +69,60 @@ pydantic_ai_coder = Agent(
     retries=2
 )
 
-@pydantic_ai_coder.system_prompt  
-def add_reasoner_output(ctx: RunContext[str]) -> str:
+
+@pydantic_ai_coder.system_prompt
+def add_reasoner_output(ctx: RunContext[PydanticAIDeps]) -> str:
+    # Update prompt to mention context if needed, keeping generic for now
     return f"""
-    
-    Additional thoughts/instructions from the reasoner LLM. 
-    This scope includes documentation pages for you to search as well: 
+
+    Additional thoughts/instructions from the reasoner LLM.
+    This scope includes documentation pages specific to {SOURCE_NAME} for you to search:
     {ctx.deps.reasoner_output}
 
     Recommended starting point from the advisor agent:
     {ctx.deps.advisor_output}
     """
 
+
 @pydantic_ai_coder.tool
 async def retrieve_relevant_documentation(ctx: RunContext[PydanticAIDeps], user_query: str) -> str:
     """
-    Retrieve relevant documentation chunks based on the query with RAG.
-    
+    Retrieve relevant Pydantic AI documentation chunks based on the query with RAG.
+
     Args:
         ctx: The context including the Supabase client and OpenAI client
         user_query: The user's question or query
-        
+
     Returns:
-        A formatted string containing the top 4 most relevant documentation chunks
+        A formatted string containing the top 4 most relevant Pydantic AI documentation chunks
     """
-    return await retrieve_relevant_documentation_tool(ctx.deps.supabase, ctx.deps.embedding_client, user_query)
+    # Pass the source filter
+    return await retrieve_relevant_documentation_tool(ctx.deps.supabase, ctx.deps.embedding_client, user_query, source_filter=SOURCE_NAME)
+
 
 @pydantic_ai_coder.tool
 async def list_documentation_pages(ctx: RunContext[PydanticAIDeps]) -> List[str]:
     """
-    Retrieve a list of all available Pydantic AI documentation pages.
-    
+    Retrieve a list of all available Pydantic AI documentation pages ({SOURCE_NAME}).
+
     Returns:
-        List[str]: List of unique URLs for all documentation pages
+        List[str]: List of unique URLs for Pydantic AI documentation pages
     """
-    return await list_documentation_pages_tool(ctx.deps.supabase)
+    # Pass the source filter
+    return await list_documentation_pages_tool(ctx.deps.supabase, source_filter=SOURCE_NAME)
+
 
 @pydantic_ai_coder.tool
 async def get_page_content(ctx: RunContext[PydanticAIDeps], url: str) -> str:
     """
-    Retrieve the full content of a specific documentation page by combining all its chunks.
-    
+    Retrieve the full content of a specific Pydantic AI documentation page ({SOURCE_NAME}).
+
     Args:
         ctx: The context including the Supabase client
         url: The URL of the page to retrieve
-        
+
     Returns:
         str: The complete page content with all chunks combined in order
     """
-    return await get_page_content_tool(ctx.deps.supabase, url)
+    # Pass the source filter
+    return await get_page_content_tool(ctx.deps.supabase, url, source_filter=SOURCE_NAME)

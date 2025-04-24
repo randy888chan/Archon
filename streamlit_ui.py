@@ -1,8 +1,18 @@
 from __future__ import annotations
-from dotenv import load_dotenv
-import streamlit as st
+from streamlit_pages.future_enhancements import future_enhancements_tab
+from streamlit_pages.mcp import mcp_tab
+from streamlit_pages.agent_service import agent_service_tab
+from streamlit_pages.documentation import documentation_tab
+from streamlit_pages.database import database_tab
+from streamlit_pages.environment import environment_tab
+from streamlit_pages.chat import chat_tab
+from streamlit_pages.intro import intro_tab
+from streamlit_pages.styles import load_css
+from utils.utils import get_clients
 import logfire
 import asyncio
+from dotenv import load_dotenv
+import streamlit as st
 
 # Set page config - must be the first Streamlit command
 st.set_page_config(
@@ -11,19 +21,7 @@ st.set_page_config(
     layout="wide",
 )
 
-# Utilities and styles
-from utils.utils import get_clients
-from streamlit_pages.styles import load_css
-
-# Streamlit pages
-from streamlit_pages.intro import intro_tab
-from streamlit_pages.chat import chat_tab
-from streamlit_pages.environment import environment_tab
-from streamlit_pages.database import database_tab
-from streamlit_pages.documentation import documentation_tab
-from streamlit_pages.agent_service import agent_service_tab
-from streamlit_pages.mcp import mcp_tab
-from streamlit_pages.future_enhancements import future_enhancements_tab
+# Now import all the modules that might use streamlit
 
 # Load environment variables from .env file
 load_dotenv()
@@ -37,6 +35,7 @@ load_css()
 # Configure logfire to suppress warnings (optional)
 logfire.configure(send_to_logfire='never')
 
+
 async def main():
     # Check for tab query parameter
     query_params = st.query_params
@@ -48,24 +47,32 @@ async def main():
     # Add sidebar navigation
     with st.sidebar:
         st.image("public/ArchonLightGrey.png", width=1000)
-        
+
         # Navigation options with vertical buttons
         st.write("### Navigation")
-        
+
         # Initialize session state for selected tab if not present
         if "selected_tab" not in st.session_state:
             st.session_state.selected_tab = "Intro"
-        
+
         # Vertical navigation buttons
-        intro_button = st.button("Intro", use_container_width=True, key="intro_button")
-        chat_button = st.button("Chat", use_container_width=True, key="chat_button")
-        env_button = st.button("Environment", use_container_width=True, key="env_button")
-        db_button = st.button("Database", use_container_width=True, key="db_button")
-        docs_button = st.button("Documentation", use_container_width=True, key="docs_button")
-        service_button = st.button("Agent Service", use_container_width=True, key="service_button")
-        mcp_button = st.button("MCP", use_container_width=True, key="mcp_button")
-        future_enhancements_button = st.button("Future Enhancements", use_container_width=True, key="future_enhancements_button")
-        
+        intro_button = st.button(
+            "Intro", use_container_width=True, key="intro_button")
+        chat_button = st.button(
+            "Chat", use_container_width=True, key="chat_button")
+        env_button = st.button(
+            "Environment", use_container_width=True, key="env_button")
+        db_button = st.button(
+            "Database", use_container_width=True, key="db_button")
+        docs_button = st.button(
+            "Documentation", use_container_width=True, key="docs_button")
+        service_button = st.button(
+            "Agent Service", use_container_width=True, key="service_button")
+        mcp_button = st.button(
+            "MCP", use_container_width=True, key="mcp_button")
+        future_enhancements_button = st.button(
+            "Future Enhancements", use_container_width=True, key="future_enhancements_button")
+
         # Update selected tab based on button clicks
         if intro_button:
             st.session_state.selected_tab = "Intro"
@@ -83,7 +90,7 @@ async def main():
             st.session_state.selected_tab = "Documentation"
         elif future_enhancements_button:
             st.session_state.selected_tab = "Future Enhancements"
-    
+
     # Display the selected tab
     if st.session_state.selected_tab == "Intro":
         st.title("Archon - Introduction")

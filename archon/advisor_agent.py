@@ -1,4 +1,7 @@
 from __future__ import annotations as _annotations
+from archon.agent_tools import get_file_content_tool
+from archon.agent_prompts import advisor_prompt
+from utils.utils import get_env_var
 
 from dataclasses import dataclass
 from dotenv import load_dotenv
@@ -15,12 +18,9 @@ from pydantic_ai.models.anthropic import AnthropicModel
 from pydantic_ai.models.openai import OpenAIModel
 from openai import AsyncOpenAI
 from supabase import Client
-
+from pydantic_ai.providers.openai import OpenAIProvider
 # Add the parent directory to sys.path to allow importing from the parent directory
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from utils.utils import get_env_var
-from archon.agent_prompts import advisor_prompt
-from archon.agent_tools import get_file_content_tool
 
 load_dotenv()
 
@@ -28,14 +28,27 @@ provider = get_env_var('LLM_PROVIDER') or 'OpenAI'
 llm = get_env_var('PRIMARY_MODEL') or 'gpt-4o-mini'
 base_url = get_env_var('BASE_URL') or 'https://api.openai.com/v1'
 api_key = get_env_var('LLM_API_KEY') or 'no-llm-api-key-provided'
+logfire.configure(token=os.getenv('LOGFIRE_API_KEY'))
 
-model = AnthropicModel(llm, api_key=api_key) if provider == "Anthropic" else OpenAIModel(llm, base_url=base_url, api_key=api_key)
+if provider == "Anthropic":
+    model = AnthropicModel(model_name=llm, api_key=api_key)
+    logfire.instrument_anthropic()
+elif provider == "OpenAI":
+    logfire.instrument_openai()
+    openai_provider = OpenAIProvider(api_key=api_key, base_url=base_url)
+    model = OpenAIModel(model_name=llm,
+                        provider=openai_provider)
+else:
+    openai_provider = OpenAIProvider(api_key=api_key, base_url=base_url)
+    model = OpenAIModel(model_name=llm,
+                        provider=openai_provider)
+    logfire.instrument_aiohttp_client()
 
-logfire.configure(send_to_logfire='if-token-present')
 
 @dataclass
 class AdvisorDeps:
     file_list: List[str]
+
 
 advisor_agent = Agent(
     model,
@@ -44,7 +57,8 @@ advisor_agent = Agent(
     retries=2
 )
 
-@advisor_agent.system_prompt  
+
+@advisor_agent.system_prompt
 def add_file_list(ctx: RunContext[str]) -> str:
     joined_files = "\n".join(ctx.deps.file_list)
     return f"""
@@ -56,14 +70,15 @@ def add_file_list(ctx: RunContext[str]) -> str:
     {joined_files}
     """
 
+
 @advisor_agent.tool_plain
 def get_file_content(file_path: str) -> str:
     """
     Retrieves the content of a specific file. Use this to get the contents of an example, tool, config for an MCP server
-    
+
     Args:
         file_path: The path to the file
-        
+
     Returns:
         The raw contents of the file
     """

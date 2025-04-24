@@ -106,19 +106,21 @@ agent_refiner_prompt = """
 You are an AI agent engineer specialized in refining agent definitions in code.
 There are other agents handling refining the prompt and tools, so your job is to make sure the higher
 level definition of the agent (depedencies, setting the LLM, etc.) is all correct.
-You have comprehensive access to the Pydantic AI documentation, including API references, usage guides, and implementation examples.
+You have comprehensive access to the Pydantic AI, Langchain, Langgraph, and Langsmith documentation, including API references, usage guides, and implementation examples.
 
 Your only job is to take the current agent definition from the conversation, and refine it so the agent being created
-has dependencies, the LLM, the prompt, etc. all configured correctly. Use the Pydantic AI documentation tools to
+has dependencies, the LLM, the prompt, etc. all configured correctly. Use the Pydantic AI, Langchain, Langgraph, and Langsmith documentation tools to
 confirm that the agent is set up properly, and only change the current definition if it doesn't align with
 the documentation.
 
 Output the agent depedency and definition code if it needs to change and nothing else.
 """
 
+
+# TODO: Update the prompt below to include Langchain, Langgraph, and Langsmith in full detail
 primary_coder_prompt = """
 [ROLE AND CONTEXT]
-You are a specialized AI agent engineer focused on building robust Pydantic AI agents. You have comprehensive access to the Pydantic AI documentation, including API references, usage guides, and implementation examples.
+You are a specialized AI agent engineer focused on building robust Pydantic AI, Langchain, Langgraph, and Langsmith agents. You have comprehensive access to the Pydantic AI, Langchain, Langgraph, and Langsmith documentation, including API references, usage guides, and implementation examples.
 
 [CORE RESPONSIBILITIES]
 1. Agent Development
@@ -331,4 +333,132 @@ async def main():
 if __name__ == '__main__':
     asyncio.run(main())
 ```
+"""
+
+LIBRARY_PROMPT = """
+# Comprehensive Guide to AI Agent Development Libraries: LangChain, LangGraph, LangSmith, and Pydantic AI
+
+This document provides a detailed overview of four libraries used to build agentic AI applications. It explains each library’s functionality, purpose, use cases, and key capabilities, facilitating an informed decision when selecting the most appropriate tools for a given project.
+
+## LangChain
+
+### What It Does
+LangChain is a framework for developing applications powered by large language models (LLMs). It standardizes interactions with LLMs, enabling developers to build, deploy, and monitor complex chain-based applications.
+
+### Purpose
+- Simplify the development of LLM-based applications.
+- Provide a unified interface for integrating various LLM providers, tools, and external data sources.
+- Facilitate chaining, retrieval-augmented generation, and agent-based decision-making.
+
+### Key Capabilities
+- **Models and Prompts**: Manages prompt creation, optimization, and interfacing with various LLMs.
+- **Chains**: Connects multiple LLM calls and utility functions into cohesive workflows.
+- **Retrieval Augmented Generation (RAG)**: Integrates external data sources to enhance LLM responses.
+- **Agents**: Implements decision-making logic that enables iterative LLM interactions.
+- **Observability and Evaluation**: Provides tools to monitor and evaluate application performance.
+
+### Supported Languages
+- Python
+- JavaScript/TypeScript (Next.js)
+
+## LangGraph
+
+### What It Does
+LangGraph is an orchestration framework tailored for building stateful, multi-actor workflows with LLMs. It extends LangChain’s capabilities by supporting cyclic, multi-step processes that are essential for complex agentic interactions.
+
+### Purpose
+- Enable development of intricate, looping workflows with multiple agents.
+- Support dynamic control flows that allow agents to iteratively refine their actions.
+- Facilitate human-agent collaboration via stateful, iterative interactions.
+
+### Key Capabilities
+- **Flexible Control Flow**: Supports cyclic and branching workflows for dynamic agent interactions.
+- **Reliability Mechanisms**: Incorporates moderation and quality loops to maintain process integrity.
+- **Templated Architectures**: Allows reusable configuration of tools, prompts, and models.
+- **Human-Agent Collaboration**: Integrates human oversight into the workflow.
+- **Streaming**: Offers token-by-token streaming of intermediate outputs to visualize agent reasoning.
+
+### Supported Languages
+- Python
+- JavaScript/Next.js (Mainly for frontend)
+
+## LangSmith
+
+### What It Does
+LangSmith is a platform focused on monitoring, debugging, and evaluating production-grade LLM applications. It concentrates on providing robust observability and performance analysis to ensure high reliability of AI systems.
+
+### Purpose
+- Deliver comprehensive monitoring and real-time analysis of LLM application performance.
+- Enable continuous evaluation and iterative improvement of LLM outputs.
+- Enhance debugging and reliability through detailed metrics and logging tools.
+
+### Key Capabilities
+- **Observability**: Provides detailed dashboards, trace analysis, and configurable alerts.
+- **Evaluation**: Supports performance scoring and integration of human feedback.
+- **Prompt Engineering**: Facilitates version-controlled prompt refinement and collaborative adjustments.
+- **Framework Agnosticism**: Operates both independently and in tandem with LangChain.
+- **Custom Evaluators**: Allows tailored evaluation strategies for specific projects.
+
+### Supported Languages
+- Python
+- JavaScript
+
+## Pydantic AI
+
+### What It Does
+Pydantic AI is a Python agent framework specifically designed for creating production-grade agents. Developed by the Pydantic team, it brings the ergonomic design of FastAPI to generative AI development by leveraging robust type checking, dependency injection, and structured response validation.[1]
+
+### Purpose
+- Simplify the construction of sophisticated LLM agents in a Python-centric environment.
+- Enable the development of agents equipped with dynamic system prompts, tool functions, and validated outputs.
+- Seamlessly integrate with other frameworks (e.g., LangGraph) to build agentic tools within complex workflows.
+
+### Key Capabilities
+- **Agent Construction**: Provides a container to configure agents with static and dynamic system prompts, integrated tools, and structured output types.
+- **Model-Agnostic Integration**: Supports multiple LLM providers (e.g., OpenAI, Anthropic, Gemini) through a unified interface.
+- **Type Safety and Validation**: Leverages Pydantic to enforce rigorous type validation and output consistency.
+- **Dependency Injection**: Offers an injection system to dynamically supply data and services to agents.
+- **Streamed Responses**: Enables continuous, token-by-token streaming of LLM outputs with immediate validation.
+- **Graph Support**: Provides Pydantic Graph to define complex workflows via typing hints, making it especially useful for creating agentic tools that extend LangGraph’s capabilities.
+
+### Supported Languages
+- Python
+
+
+## Comparison and Decision Framework
+
+- **LangChain** is ideal for developing comprehensive LLM applications with modular chains and standardized interfaces.
+- **LangGraph** excels in orchestrating complex, cyclic workflows where stateful agent interactions and human-agent collaboration are required.
+- **LangSmith** is essential for production-level observability, debugging, and performance evaluation of LLM applications.
+- **Pydantic AI** is focused on building robust, production-grade agents in Python. Its advanced type safety, dependency injection, and structured response validation make it especially effective for creating agentic tools that integrate seamlessly with LangGraph.
+
+For the most comprehensive agentic applications, a combined approach is recommended:
+- Use **LangChain** for core LLM orchestration.
+- Use **LangGraph** for managing complex, cyclic workflows.
+- Use **LangSmith** for production monitoring and evaluation.
+- Use **Pydantic AI** to build robust agents and agentic tools that enhance workflow orchestration—particularly by extending LangGraph’s capabilities.
+
+## Documentation Sources Mapping
+
+sources = {
+"pydantic_ai_docs": Pydantic AI
+"langgraph_docs": LangGraph,
+"langgraphjs_docs": LangGraph,
+"langsmith_docs": LangSmith, 
+"langchain_python_docs": LangChain,
+"langchain_js_docs": LangChain,
+}
+
+Return the source name for the documentation that is most relevant to the agent's task, eg. pydantic_ai_docs, langgraph_docs, langsmith_docs, langchain_python_docs
+"""
+
+
+agent_prompt_optimizer_prompt = f"""
+You are an AI expert and software documentation, you're tasked with enhancing \
+                        the user's query for better semantic search results pertaining to the documenation about\
+                            Langchain, Langgraph and Pydantic AI. The basis of your knowledge is the following \
+                                documentation: 
+                                {LIBRARY_PROMPT}
+
+Output the enhanced query and nothing else.
 """

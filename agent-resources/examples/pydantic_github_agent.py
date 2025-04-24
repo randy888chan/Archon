@@ -1,4 +1,5 @@
 from __future__ import annotations as _annotations
+from utils.utils import get_env_var
 
 import asyncio
 import os
@@ -24,15 +25,25 @@ load_dotenv()
 llm = os.getenv('LLM_MODEL', 'deepseek/deepseek-chat')
 model = OpenAIModel(
     llm,
-    provider=OpenAIProvider(base_url="https://openrouter.ai/api/v1", api_key=os.getenv('OPEN_ROUTER_API_KEY'))
+    provider=OpenAIProvider(base_url="https://openrouter.ai/api/v1",
+                            api_key=os.getenv('OPEN_ROUTER_API_KEY'))
 ) if os.getenv('OPEN_ROUTER_API_KEY', None) else OpenAIModel(llm)
 
-logfire.configure(send_to_logfire='if-token-present')
+provider = get_env_var('LLM_PROVIDER') or 'OpenAI'
+logfire.configure(token=os.getenv('LOGFIRE_API_KEY'))
+if provider == "OpenAI":
+    logfire.instrument_openai()
+elif provider == "Anthropic":
+    logfire.instrument_anthropic()
+else:
+    logfire.instrument_aiohttp_client()
+
 
 @dataclass
 class GitHubDeps:
     client: httpx.AsyncClient
     github_token: str | None = None
+
 
 system_prompt = """
 You are a coding expert with access to GitHub to help the user manage their repository and get information from it.
@@ -55,6 +66,7 @@ github_agent = Agent(
     retries=2
 )
 
+
 @github_agent.tool
 async def get_repo_info(ctx: RunContext[GitHubDeps], github_url: str) -> str:
     """Get repository information including size and description using GitHub API.
@@ -66,24 +78,26 @@ async def get_repo_info(ctx: RunContext[GitHubDeps], github_url: str) -> str:
     Returns:
         str: Repository information as a formatted string.
     """
-    match = re.search(r'github\.com[:/]([^/]+)/([^/]+?)(?:\.git)?$', github_url)
+    match = re.search(
+        r'github\.com[:/]([^/]+)/([^/]+?)(?:\.git)?$', github_url)
     if not match:
         return "Invalid GitHub URL format"
-    
+
     owner, repo = match.groups()
-    headers = {'Authorization': f'token {ctx.deps.github_token}'} if ctx.deps.github_token else {}
-    
+    headers = {
+        'Authorization': f'token {ctx.deps.github_token}'} if ctx.deps.github_token else {}
+
     response = await ctx.deps.client.get(
         f'https://api.github.com/repos/{owner}/{repo}',
         headers=headers
     )
-    
+
     if response.status_code != 200:
         return f"Failed to get repository info: {response.text}"
-    
+
     data = response.json()
     size_mb = data['size'] / 1024
-    
+
     return (
         f"Repository: {data['full_name']}\n"
         f"Description: {data['description']}\n"
@@ -93,6 +107,7 @@ async def get_repo_info(ctx: RunContext[GitHubDeps], github_url: str) -> str:
         f"Created: {data['created_at']}\n"
         f"Last Updated: {data['updated_at']}"
     )
+
 
 @github_agent.tool
 async def get_repo_structure(ctx: RunContext[GitHubDeps], github_url: str) -> str:
@@ -105,18 +120,20 @@ async def get_repo_structure(ctx: RunContext[GitHubDeps], github_url: str) -> st
     Returns:
         str: Directory structure as a formatted string.
     """
-    match = re.search(r'github\.com[:/]([^/]+)/([^/]+?)(?:\.git)?$', github_url)
+    match = re.search(
+        r'github\.com[:/]([^/]+)/([^/]+?)(?:\.git)?$', github_url)
     if not match:
         return "Invalid GitHub URL format"
-    
+
     owner, repo = match.groups()
-    headers = {'Authorization': f'token {ctx.deps.github_token}'} if ctx.deps.github_token else {}
-    
+    headers = {
+        'Authorization': f'token {ctx.deps.github_token}'} if ctx.deps.github_token else {}
+
     response = await ctx.deps.client.get(
         f'https://api.github.com/repos/{owner}/{repo}/git/trees/main?recursive=1',
         headers=headers
     )
-    
+
     if response.status_code != 200:
         # Try with master branch if main fails
         response = await ctx.deps.client.get(
@@ -125,17 +142,19 @@ async def get_repo_structure(ctx: RunContext[GitHubDeps], github_url: str) -> st
         )
         if response.status_code != 200:
             return f"Failed to get repository structure: {response.text}"
-    
+
     data = response.json()
     tree = data['tree']
-    
+
     # Build directory structure
     structure = []
     for item in tree:
         if not any(excluded in item['path'] for excluded in ['.git/', 'node_modules/', '__pycache__/']):
-            structure.append(f"{'📁 ' if item['type'] == 'tree' else '📄 '}{item['path']}")
-    
+            structure.append(
+                f"{'📁 ' if item['type'] == 'tree' else '📄 '}{item['path']}")
+
     return "\n".join(structure)
+
 
 @github_agent.tool
 async def get_file_content(ctx: RunContext[GitHubDeps], github_url: str, file_path: str) -> str:
@@ -149,18 +168,20 @@ async def get_file_content(ctx: RunContext[GitHubDeps], github_url: str, file_pa
     Returns:
         str: File content as a string.
     """
-    match = re.search(r'github\.com[:/]([^/]+)/([^/]+?)(?:\.git)?$', github_url)
+    match = re.search(
+        r'github\.com[:/]([^/]+)/([^/]+?)(?:\.git)?$', github_url)
     if not match:
         return "Invalid GitHub URL format"
-    
+
     owner, repo = match.groups()
-    headers = {'Authorization': f'token {ctx.deps.github_token}'} if ctx.deps.github_token else {}
-    
+    headers = {
+        'Authorization': f'token {ctx.deps.github_token}'} if ctx.deps.github_token else {}
+
     response = await ctx.deps.client.get(
         f'https://raw.githubusercontent.com/{owner}/{repo}/main/{file_path}',
         headers=headers
     )
-    
+
     if response.status_code != 200:
         # Try with master branch if main fails
         response = await ctx.deps.client.get(
@@ -169,5 +190,5 @@ async def get_file_content(ctx: RunContext[GitHubDeps], github_url: str, file_pa
         )
         if response.status_code != 200:
             return f"Failed to get file content: {response.text}"
-    
+
     return response.text

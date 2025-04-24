@@ -9,3 +9,12 @@ venv
 .env.temp
 .env.test
 env_vars.json
+
+archon/backup_archon_graph.py
+concurrency_cancellation_prd.md
+langgraph_config_docs.md
+langgraph_config_prd.md
+langgraph_config_summary.md
+rag_pydantic_debugging.md
+refactor_plan.md
+clear_redis_migration.sh

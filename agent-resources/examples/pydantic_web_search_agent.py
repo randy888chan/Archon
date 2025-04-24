@@ -1,4 +1,5 @@
 from __future__ import annotations as _annotations
+from utils.utils import get_env_var
 
 import asyncio
 import os
@@ -19,14 +20,22 @@ load_dotenv()
 llm = os.getenv('LLM_MODEL', 'gpt-4o')
 
 client = AsyncOpenAI(
-    base_url = 'http://localhost:11434/v1',
+    base_url='http://localhost:11434/v1',
     api_key='ollama'
 )
 
-model = OpenAIModel(llm) if llm.lower().startswith("gpt") else OpenAIModel(llm, openai_client=client)
+model = OpenAIModel(llm) if llm.lower().startswith(
+    "gpt") else OpenAIModel(llm, openai_client=client)
 
 # 'if-token-present' means nothing will be sent (and the example will work) if you don't have logfire configured
-logfire.configure(send_to_logfire='if-token-present')
+provider = get_env_var('LLM_PROVIDER') or 'OpenAI'
+logfire.configure(token=os.getenv('LOGFIRE_API_KEY'))
+if provider == "OpenAI":
+    logfire.instrument_openai()
+elif provider == "Anthropic":
+    logfire.instrument_anthropic()
+else:
+    logfire.instrument_aiohttp_client()
 
 
 @dataclass
@@ -63,7 +72,7 @@ async def search_web(
         'X-Subscription-Token': ctx.deps.brave_api_key,
         'Accept': 'application/json',
     }
-    
+
     with logfire.span('calling Brave search API', query=web_query) as span:
         r = await ctx.deps.client.get(
             'https://api.search.brave.com/res/v1/web/search',
@@ -80,7 +89,7 @@ async def search_web(
         span.set_attribute('response', data)
 
     results = []
-    
+
     # Add web results in a nice formatted way
     web_results = data.get('web', {}).get('results', [])
     for item in web_results[:3]:
@@ -88,7 +97,8 @@ async def search_web(
         description = item.get('description', '')
         url = item.get('url', '')
         if title and description:
-            results.append(f"Title: {title}\nSummary: {description}\nSource: {url}\n")
+            results.append(
+                f"Title: {title}\nSummary: {description}\nSource: {url}\n")
 
     return "\n".join(results) if results else "No results found for the query."
 
@@ -101,7 +111,7 @@ async def main():
         result = await web_search_agent.run(
             'Give me some articles talking about the new release of React 19.', deps=deps
         )
-        
+
         debug(result)
         print('Response:', result.data)
 
