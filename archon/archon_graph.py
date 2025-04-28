@@ -1,5 +1,6 @@
 from pydantic_ai.models.anthropic import AnthropicModel
 from pydantic_ai.models.openai import OpenAIModel
+from pydantic_ai.providers.openai import OpenAIProvider
 from pydantic_ai import Agent, RunContext
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import MemorySaver
@@ -43,7 +44,11 @@ is_anthropic = provider == "Anthropic"
 is_openai = provider == "OpenAI"
 
 reasoner_llm_model_name = get_env_var('REASONER_MODEL') or 'o3-mini'
-reasoner_llm_model = AnthropicModel(reasoner_llm_model_name, api_key=api_key) if is_anthropic else OpenAIModel(reasoner_llm_model_name, base_url=base_url, api_key=api_key)
+if is_anthropic:
+    reasoner_llm_model = AnthropicModel(reasoner_llm_model_name, api_key=api_key)
+else:
+    openai_provider = OpenAIProvider(base_url=base_url, api_key=api_key)
+    reasoner_llm_model = OpenAIModel(reasoner_llm_model_name, provider=openai_provider)
 
 reasoner = Agent(  
     reasoner_llm_model,
@@ -51,7 +56,11 @@ reasoner = Agent(
 )
 
 primary_llm_model_name = get_env_var('PRIMARY_MODEL') or 'gpt-4o-mini'
-primary_llm_model = AnthropicModel(primary_llm_model_name, api_key=api_key) if is_anthropic else OpenAIModel(primary_llm_model_name, base_url=base_url, api_key=api_key)
+if is_anthropic:
+    primary_llm_model = AnthropicModel(primary_llm_model_name, api_key=api_key)
+else:
+    openai_provider = OpenAIProvider(base_url=base_url, api_key=api_key)
+    primary_llm_model = OpenAIModel(primary_llm_model_name, provider=openai_provider)
 
 router_agent = Agent(  
     primary_llm_model,
