@@ -1,0 +1,42 @@
+{
+  "mcpServers": {
+    "filesystem": {
+      "command": "/home/developer/.nvm/versions/node/v24.1.0/bin/npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "/home/developer/local-ai-packaged"
+      ],
+      "disabled": false,
+      "alwaysAllow": [],
+      "timeout": 15
+    },
+    "brave-search": {
+      "command": "/home/developer/.nvm/versions/node/v24.1.0/bin/npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-brave-search"
+      ],
+      "env": {
+        "BRAVE_API_KEY": "BSAxYw0tM9kyjLo2FWaAdTY3DMQdCTm"
+      },
+      "disabled": false,
+      "alwaysAllow": []
+    },
+    "git": {
+      "command": "/home/developer/.local/bin/uvx",
+      "args": [
+        "mcp-server-git",
+        "--repository",
+        "/home/developer/local-ai-packaged"
+      ]
+    },
+    "context7": {
+      "command": "/home/developer/.nvm/versions/node/v24.1.0/bin/npx",
+      "args": [
+        "-y",
+        "@upstash/context7-mcp@latest"
+      ]
+    }
+  }
+}
