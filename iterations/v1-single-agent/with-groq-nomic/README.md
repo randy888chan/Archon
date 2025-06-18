@@ -1,4 +1,4 @@
-# Open source modesl with Groq api and nomic embeddings (local)
+# Open source models with Groq api and nomic embeddings (local)
 
 If you do not have the hardware to run ollama with open source models, using groqs free tier is a good way to experiment.
 The code structure is almost identical as the openai setup in the v1-single-agent parent directory, modified to work with groq api (for open source llms with fast inference and more model choices)
