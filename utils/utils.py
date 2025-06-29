@@ -401,7 +401,7 @@ def get_clients():
     supabase_key = get_env_var("SUPABASE_SERVICE_KEY")
     if supabase_url and supabase_key:
         try:
-            supabase: Client = Client(supabase_url, supabase_key)
+            supabase = create_client(supabase_url, supabase_key)
         except Exception as e:
             print(f"Failed to initialize Supabase: {e}")
             write_to_log(f"Failed to initialize Supabase: {e}")
