@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/coleam00-archon-badge.png)](https://mseep.ai/app/coleam00-archon)
+
 # Archon - AI Agent Builder
 
 <img src="public/Archon.png" alt="Archon Logo" />
