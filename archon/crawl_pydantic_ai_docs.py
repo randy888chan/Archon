@@ -309,23 +309,167 @@ async def process_and_store_document(url: str, markdown: str, tracker: Optional[
     else:
         print(f"Stored {len(processed_chunks)} chunks for {url}")
 
-def fetch_url_content(url: str) -> str:
-    """Fetch content from a URL using requests and convert to markdown."""
+class SmartContentExtractor:
+    def __init__(self):
+        self.html_converter = html2text.HTML2Text()
+        self.html_converter.ignore_links = False
+        self.html_converter.ignore_images = False
+        self.html_converter.ignore_tables = False
+        self.html_converter.body_width = 0
+        
+        # Define content selectors for each framework
+        self.content_selectors = {
+            "pydantic_ai": [
+                "article",
+                "main .markdown-body",
+                ".content-area",
+                ".documentation-content"
+            ],
+            "langchain": [
+                "article",
+                ".doc-content",
+                "main article",
+                ".markdown-body",
+                ".content"
+            ],
+            "crewai": [
+                ".markdown-content"
+                "article",
+                ".docs-content",
+                "main .content",
+                ".documentation"
+            ]
+        }
+        
+        # Elements to remove (navigation, sidebars, etc.)
+        self.elements_to_remove = [
+            'nav', 'header', 'footer', 
+            '.sidebar', '.navigation', '.nav',
+            '.breadcrumb', '.toc', '.table-of-contents',
+            '.prev-next', '.pagination',
+            '.header', '.top-bar', '.menu',
+            'script', 'style', 'noscript'
+        ]
+
+    def extract_main_content(self, html: str, framework: str, url: str) -> str:
+        """Extract only the main documentation content, filtering out navigation and sidebars."""
+        soup = BeautifulSoup(html, 'html.parser')
+        
+        # Remove unwanted elements
+        for selector in self.elements_to_remove:
+            for element in soup.select(selector):
+                element.decompose()
+        
+        # Try framework-specific selectors first
+        content_element = None
+        if framework in self.content_selectors:
+            for selector in self.content_selectors[framework]:
+                content_element = soup.select_one(selector)
+                if content_element:
+                    print(f"Found content using selector: {selector} for {url}")
+                    break
+        
+        # Fallback to common content selectors
+        if not content_element:
+            fallback_selectors = [
+                'main', 'article', '.content', '.main-content',
+                '.documentation', '.docs', '.markdown-body',
+                '#content', '#main-content'
+            ]
+            for selector in fallback_selectors:
+                content_element = soup.select_one(selector)
+                if content_element:
+                    print(f"Found content using fallback selector: {selector} for {url}")
+                    break
+        
+        # If still no content found, use body but remove common navigation elements
+        if not content_element:
+            content_element = soup.find('body')
+            if content_element:
+                # Remove additional navigation elements from body
+                for nav_elem in content_element.select('.nav, .navbar, .menu, .sidebar, .header, .footer'):
+                    nav_elem.decompose()
+        
+        if content_element:
+            # Convert to markdown
+            clean_html = str(content_element)
+            markdown = self.html_converter.handle(clean_html)
+            
+            # Clean up markdown
+            markdown = self._clean_markdown(markdown)
+            return markdown
+        
+        print(f"Warning: No content found for {url}, falling back to full page")
+        return self.html_converter.handle(html)
+
+    def _clean_markdown(self, markdown: str) -> str:
+        """Clean up the extracted markdown."""
+        import re
+        
+        # Remove excessive newlines
+        markdown = re.sub(r'\n{3,}', '\n\n', markdown)
+        
+        # Remove navigation links patterns
+        markdown = re.sub(r'^\* \[.*?\]\(.*?\)\s*$', '', markdown, flags=re.MULTILINE)
+        
+        # Remove breadcrumb patterns
+        markdown = re.sub(r'^.*?».*?».*?$', '', markdown, flags=re.MULTILINE)
+        
+        # Remove "Edit this page" type links
+        markdown = re.sub(r'^\[Edit.*?\].*?$', '', markdown, flags=re.MULTILINE)
+        
+        # Clean up remaining whitespace
+        markdown = re.sub(r'^\s*$', '', markdown, flags=re.MULTILINE)
+        markdown = re.sub(r'\n{3,}', '\n\n', markdown)
+        
+        return markdown.strip()
+
+#When crawling certain dropdowns from pydantic ai docs, it crawls the line numbers before the actual code, 
+#which is unnecessary. Thus, it would be better for us to remove them
+def remove_line_numbers(text):
+    """Remove line numbers from crawled content"""
+    # Pattern to match line numbers (sequences of digits on their own lines)
+    patterns = [
+        r'^\s*\d+\s*$',  # Just digits on a line
+        r'^\s*\d+\s*\n',  # Digits followed by newline
+        r'\n\s*\d+\s*\n',  # Digits between newlines
+        r'\n\s*\d+\s*$',  # Digits at end after newline
+    ]
+    
+    cleaned_text = text
+    for pattern in patterns:
+        cleaned_text = re.sub(pattern, '', cleaned_text, flags=re.MULTILINE)
+    
+    # Remove sequences of consecutive numbers
+    cleaned_text = re.sub(r'(\n\s*\d+\s*){3,}', '\n', cleaned_text, flags=re.MULTILINE)
+    
+    # Clean up extra whitespace
+    cleaned_text = re.sub(r'\n\s*\n\s*\n', '\n\n', cleaned_text)
+    cleaned_text = cleaned_text.strip()
+    
+    return cleaned_text   
+    
+# Updated url crawling content to exclude headers, navigators, margins and other unnecessary information
+def fetch_url_content_improved(url: str, framework: str = "unknown") -> str:
+    """Fetch and extract main content from URL."""
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
     }
+    
+    extractor = SmartContentExtractor()
     
     try:
         response = requests.get(url, headers=headers, timeout=30)
         response.raise_for_status()
         
-        # Convert HTML to Markdown
-        markdown = html_converter.handle(response.text)
+        # Extract main content instead of converting entire page
+        markdown = extractor.extract_main_content(response.text, framework, url)
         
-        # Clean up the markdown
-        markdown = re.sub(r'\n{3,}', '\n\n', markdown)  # Remove excessive newlines
-        
-        return markdown
+        cleaned_markdown = remove_line_numbers(markdown)
+
+        with open("html_crawl.md", 'w') as file:
+            file.write(cleaned_markdown)
+        return cleaned_markdown
     except Exception as e:
         raise Exception(f"Error fetching {url}: {str(e)}")
 
