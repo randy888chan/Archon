@@ -45,9 +45,14 @@ is_openai = provider == "OpenAI"
 reasoner_llm_model_name = get_env_var('REASONER_MODEL') or 'o3-mini'
 reasoner_llm_model = AnthropicModel(reasoner_llm_model_name, api_key=api_key) if is_anthropic else OpenAIModel(reasoner_llm_model_name, base_url=base_url, api_key=api_key)
 
+class scope_and_urls(BaseModel):
+    scope: str = Field(description="Detailed description of the agent's scope, architecture, and components")
+    selected_urls: List[str] = Field(default=[], description="List of relevant documentation URLs")
+
 reasoner = Agent(  
     reasoner_llm_model,
     system_prompt='You are an expert at coding AI agents with Pydantic AI and defining the scope for doing so.',  
+    output_type=scope_and_urls
 )
 
 primary_llm_model_name = get_env_var('PRIMARY_MODEL') or 'gpt-4o-mini'
@@ -80,41 +85,74 @@ class AgentState(TypedDict):
     refined_agent: str
 
 # Scope Definition Node with Reasoner LLM
+# The files selected by the Reasoner LLM are important but not actually crawled by the coder agent, so I thought of making this process mandatory. 
+# For easier extraction of the selected urls, I revised to let the reasoner output a dictionary including the scope and the selected urls separately.
 async def define_scope_with_reasoner(state: AgentState):
-    # First, get the documentation pages so the reasoner can decide which ones are necessary
-    documentation_pages = await list_documentation_pages_tool(supabase)
+    write_to_log("Defining scope with reasoner")
+    #1. get documentation for the reasoner to decide which ones are necessary
+    #2. call the reasoner to define the scope, including architecture diagram, core components, external dependencies, testing strategy, and a list of relevant documentation.
+    #3. save the scope to a file in ./workbench/scope.md
+    documentation_pages = await list_documentation_pages_helper(supabase, state['framework'])
     documentation_pages_str = "\n".join(documentation_pages)
 
-    # Then, use the reasoner to define the scope
     prompt = f"""
-    User AI Agent Request: {state['latest_user_message']}
+User AI Agent Request: {state['latest_user_message']}
     
-    Create detailed scope document for the AI agent including:
+1. Create detailed scope document for the AI agent including:
     - Architecture diagram
     - Core components
     - External dependencies
     - Testing strategy
 
-    Also based on these documentation pages available:
+2. **Documentation Selection** (Critical):  
+   Review these documentation pages and select ONLY the relevant ones:
+   {documentation_pages_str}
+   
+   Selection criteria:
+   - Documentation that is relevant to any {state['framework']} agent, such as the the core agent documentation, messages, tool usage, etc.
+   - Directly related to the agent's core functionality
+   - Contain implementation patterns for similar agents
+   - Include essential API references
+   - Cover necessary architectural components
 
-    {documentation_pages_str}
+**Output Format**:
+Return a JSON object with EXACTLY these two fields:
+1. "scope": A detailed description of the agent's scope
+2. "selected_urls": A list of ONLY the relevant documentation URLs
 
-    Include a list of documentation pages that are relevant to creating this agent for the user in the scope document.
-    """
+Example:
+{{
+  "scope": "This agent will... [detailed scope description]",
+  "selected_urls": ["https://example.com/doc1", "https://example.com/doc2"]
+}}
 
-    result = await reasoner.run(prompt)
-    scope = result.data
-
+"""
+    result = await reasoner_agent.run(prompt)
+    output = result.output
+    try:
+        scope = output.scope
+        selected_urls = output.selected_urls
+        if not scope:
+            raise ValueError("No scope provided in reasoner response")
+        if not selected_urls:
+            write_to_log("Warning: No URLs selected by reasoner, will use fallback method")
+            selected_urls = []
+        else:
+            write_to_log(f"Reasoner selected {len(selected_urls)} URLs: {selected_urls[:3]}...")
+        
+    except Exception as e:
+        write_to_log(f"Error during reasoning: {str(e)}")
+        scope = result.data
+        selected_urls = []
     # Get the directory one level up from the current file
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    parent_dir = os.path.dirname(current_dir)
+    parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     scope_path = os.path.join(parent_dir, "workbench", "scope.md")
     os.makedirs(os.path.join(parent_dir, "workbench"), exist_ok=True)
 
     with open(scope_path, "w", encoding="utf-8") as f:
         f.write(scope)
     
-    return {"scope": scope}
+    return {"scope": scope, "selected_urls": selected_urls}
 
 # Advisor agent - create a starting point based on examples and prebuilt tools/MCP servers
 async def advisor_with_examples(state: AgentState):
