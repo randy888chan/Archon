@@ -1,6 +1,7 @@
 from pydantic_ai.models.anthropic import AnthropicModel
 from pydantic_ai.models.openai import OpenAIModel
 from pydantic_ai import Agent, RunContext
+from pydantic import BaseModel, Field
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import MemorySaver
 from typing import TypedDict, Annotated, List, Any
@@ -27,7 +28,7 @@ from archon.refiner_agents.prompt_refiner_agent import prompt_refiner_agent
 from archon.refiner_agents.tools_refiner_agent import tools_refiner_agent, ToolsRefinerDeps
 from archon.refiner_agents.agent_refiner_agent import agent_refiner_agent, AgentRefinerDeps
 from archon.agent_tools import list_documentation_pages_tool
-from utils.utils import get_env_var, get_clients
+from utils.utils import get_env_var, get_clients, write_to_log
 
 # Load environment variables
 load_dotenv()
@@ -77,6 +78,7 @@ class AgentState(TypedDict):
     messages: Annotated[List[bytes], lambda x, y: x + y]
 
     scope: str
+    selected_urls: List[str]
     advisor_output: str
     file_list: List[str]
 
@@ -88,13 +90,23 @@ class AgentState(TypedDict):
 # The files selected by the Reasoner LLM are important but not actually crawled by the coder agent, so I thought of making this process mandatory. 
 # For easier extraction of the selected urls, I revised to let the reasoner output a dictionary including the scope and the selected urls separately.
 async def define_scope_with_reasoner(state: AgentState):
+    """Defines agent scope using the reasoner LLM and selects relevant documentation URLs.
+    
+    Args:
+        state: Current agent state containing user message and framework info
+        
+    Returns:
+        Dict containing:
+        - scope: Detailed scope description (markdown format)
+        - selected_urls: List of relevant documentation URLs
+    """
     write_to_log("Defining scope with reasoner")
-    #1. get documentation for the reasoner to decide which ones are necessary
-    #2. call the reasoner to define the scope, including architecture diagram, core components, external dependencies, testing strategy, and a list of relevant documentation.
-    #3. save the scope to a file in ./workbench/scope.md
-    documentation_pages = await list_documentation_pages_helper(supabase, state['framework'])
+    
+    # Fetch all available documentation pages
+    documentation_pages = await list_documentation_pages_tool(supabase)
     documentation_pages_str = "\n".join(documentation_pages)
 
+    # Construct detailed prompt for the reasoner
     prompt = f"""
 User AI Agent Request: {state['latest_user_message']}
     
@@ -109,31 +121,31 @@ User AI Agent Request: {state['latest_user_message']}
    {documentation_pages_str}
    
    Selection criteria:
-   - Documentation that is relevant to any {state['framework']} agent, such as the the core agent documentation, messages, tool usage, etc.
+   - Documentation that is relevant to Pydantic AI Agents
    - Directly related to the agent's core functionality
    - Contain implementation patterns for similar agents
    - Include essential API references
    - Cover necessary architectural components
 
 **Output Format**:
-Return a JSON object with EXACTLY these two fields:
-1. "scope": A detailed description of the agent's scope
-2. "selected_urls": A list of ONLY the relevant documentation URLs
-
-Example:
+Return a JSON object with:
 {{
-  "scope": "This agent will... [detailed scope description]",
-  "selected_urls": ["https://example.com/doc1", "https://example.com/doc2"]
+  "scope": "Detailed scope description...",
+  "selected_urls": ["url1", "url2"]
 }}
-
 """
-    result = await reasoner_agent.run(prompt)
+    # Execute reasoner with the constructed prompt
+    result = await reasoner.run(prompt)
     output = result.output
+    
     try:
+        # Parse and validate reasoner output
         scope = output.scope
         selected_urls = output.selected_urls
+        
         if not scope:
             raise ValueError("No scope provided in reasoner response")
+            
         if not selected_urls:
             write_to_log("Warning: No URLs selected by reasoner, will use fallback method")
             selected_urls = []
@@ -142,10 +154,11 @@ Example:
         
     except Exception as e:
         write_to_log(f"Error during reasoning: {str(e)}")
-        scope = result.data
+        scope = result.data  # Fallback to raw data if parsing fails
         selected_urls = []
-    # Get the directory one level up from the current file
-    parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    parent_dir = os.path.dirname(current_dir)
     scope_path = os.path.join(parent_dir, "workbench", "scope.md")
     os.makedirs(os.path.join(parent_dir, "workbench"), exist_ok=True)
 
@@ -153,7 +166,6 @@ Example:
         f.write(scope)
     
     return {"scope": scope, "selected_urls": selected_urls}
-
 # Advisor agent - create a starting point based on examples and prebuilt tools/MCP servers
 async def advisor_with_examples(state: AgentState):
     # Get the directory one level up from the current file (archon_graph.py)
@@ -187,7 +199,8 @@ async def coder_agent(state: AgentState, writer):
         supabase=supabase,
         embedding_client=embedding_client,
         reasoner_output=state['scope'],
-        advisor_output=state['advisor_output']
+        advisor_output=state['advisor_output'],
+        selected_urls=state['selected_urls']
     )
 
     # Get the message history into the format for Pydantic AI

@@ -43,6 +43,7 @@ class PydanticAIDeps:
     embedding_client: AsyncOpenAI
     reasoner_output: str
     advisor_output: str
+    selected_urls: List[str]
 
 pydantic_ai_coder = Agent(
     model,
@@ -51,12 +52,14 @@ pydantic_ai_coder = Agent(
     retries=2
 )
 
+# Added a line that forces the agent to crawl all the urls provided by the Scope Reasoner.
 @pydantic_ai_coder.system_prompt  
 def add_reasoner_output(ctx: RunContext[str]) -> str:
     return f"""
-    
-    Additional thoughts/instructions from the reasoner LLM. 
-    This scope includes documentation pages for you to search as well: 
+    !!!IMPORTANT!!! THESE ARE CRUCIAL DOCS SELECTED BY THE REASONER LLM,
+     YOU MUST GET THE CONTENT FROM ALL THESE URLS: {ctx.deps.selected_urls}.
+
+    Additional thoughts/instructions from the reasoner LLM:
     {ctx.deps.reasoner_output}
 
     Recommended starting point from the advisor agent:

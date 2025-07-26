@@ -15,6 +15,7 @@ from dotenv import load_dotenv
 from openai import AsyncOpenAI
 import re
 import html2text
+import BeautifulSoup
 
 # Add the parent directory to sys.path to allow importing from the parent directory
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -43,13 +44,6 @@ if provider == "Ollama":
     llm_client = AsyncOpenAI(base_url=base_url, api_key=api_key)
 else:
     llm_client = AsyncOpenAI(base_url=base_url, api_key=api_key)
-
-# Initialize HTML to Markdown converter
-html_converter = html2text.HTML2Text()
-html_converter.ignore_links = False
-html_converter.ignore_images = False
-html_converter.ignore_tables = False
-html_converter.body_width = 0  # No wrapping
 
 @dataclass
 class ProcessedChunk:
