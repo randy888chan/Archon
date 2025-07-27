@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 from openai import AsyncOpenAI
 import re
 import html2text
-import BeautifulSoup
+from bs4 import BeautifulSoup
 
 # Add the parent directory to sys.path to allow importing from the parent directory
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -311,29 +311,13 @@ class SmartContentExtractor:
         self.html_converter.ignore_tables = False
         self.html_converter.body_width = 0
         
-        # Define content selectors for each framework
-        self.content_selectors = {
-            "pydantic_ai": [
+        # Define content selectors
+        self.content_selectors = [
                 "article",
                 "main .markdown-body",
                 ".content-area",
                 ".documentation-content"
-            ],
-            "langchain": [
-                "article",
-                ".doc-content",
-                "main article",
-                ".markdown-body",
-                ".content"
-            ],
-            "crewai": [
-                ".markdown-content"
-                "article",
-                ".docs-content",
-                "main .content",
-                ".documentation"
             ]
-        }
         
         # Elements to remove (navigation, sidebars, etc.)
         self.elements_to_remove = [
@@ -345,7 +329,7 @@ class SmartContentExtractor:
             'script', 'style', 'noscript'
         ]
 
-    def extract_main_content(self, html: str, framework: str, url: str) -> str:
+    def extract_main_content(self, html: str, url: str) -> str:
         """Extract only the main documentation content, filtering out navigation and sidebars."""
         soup = BeautifulSoup(html, 'html.parser')
         
@@ -356,12 +340,11 @@ class SmartContentExtractor:
         
         # Try framework-specific selectors first
         content_element = None
-        if framework in self.content_selectors:
-            for selector in self.content_selectors[framework]:
-                content_element = soup.select_one(selector)
-                if content_element:
-                    print(f"Found content using selector: {selector} for {url}")
-                    break
+        for selector in self.content_selectors:
+            content_element = soup.select_one(selector)
+            if content_element:
+                print(f"Found content using selector: {selector} for {url}")
+                break
         
         # Fallback to common content selectors
         if not content_element:
@@ -444,7 +427,7 @@ def remove_line_numbers(text):
     return cleaned_text   
     
 # Updated url crawling content to exclude headers, navigators, margins and other unnecessary information
-def fetch_url_content_improved(url: str, framework: str = "unknown") -> str:
+def fetch_url_content(url: str) -> str:
     """Fetch and extract main content from URL."""
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
@@ -457,12 +440,10 @@ def fetch_url_content_improved(url: str, framework: str = "unknown") -> str:
         response.raise_for_status()
         
         # Extract main content instead of converting entire page
-        markdown = extractor.extract_main_content(response.text, framework, url)
+        markdown = extractor.extract_main_content(response.text, url)
         
         cleaned_markdown = remove_line_numbers(markdown)
 
-        with open("html_crawl.md", 'w') as file:
-            file.write(cleaned_markdown)
         return cleaned_markdown
     except Exception as e:
         raise Exception(f"Error fetching {url}: {str(e)}")
