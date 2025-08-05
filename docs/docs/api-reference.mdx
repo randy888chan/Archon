@@ -1223,56 +1223,39 @@ Update task status (MCP compatibility endpoint).
 
 ## ⚙️ Settings Management API
 
-### OpenAI Key Status
+### List All Credentials
 
-**GET** `/api/openai-key/status`
+**GET** `/api/credentials`
 
-Check if OpenAI API key is configured.
+List all credentials and their metadata.
+
+#### Example Response
+
+```json
+[
+  {
+    "key": "OPENAI_API_KEY",
+    "value": "sk-proj-...",
+    "is_encrypted": true,
+    "category": "api_keys",
+    "description": "OpenAI API Key for embedding model"
+  }
+]
+```
+
+### Get Specific Credential
+
+**GET** `/api/credentials/{key}`
+
+Get a specific credential by key.
 
 #### Example Response
 
 ```json
 {
-  "configured": true,
-  "message": "OpenAI API key is configured"
-}
-```
-
-### Set OpenAI Key
-
-**POST** `/api/openai-key`
-
-Set the OpenAI API key.
-
-#### Request Body
-
-```json
-{
-  "api_key": "sk-proj-..."
-}
-```
-
-#### Example Response
-
-```json
-{
-  "success": true,
-  "message": "OpenAI API key saved successfully"
-}
-```
-
-### Delete OpenAI Key
-
-**DELETE** `/api/openai-key`
-
-Delete the stored OpenAI API key.
-
-#### Example Response
-
-```json
-{
-  "success": true,
-  "message": "OpenAI API key deleted successfully"
+  "key": "OPENAI_API_KEY",
+  "value": "sk-proj-...",
+  "is_encrypted": true
 }
 ```
 
