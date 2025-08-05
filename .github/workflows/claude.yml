@@ -52,11 +52,45 @@ jobs:
           # Optional: Allow Claude to run specific commands
           # allowed_tools: "Bash(npm install),Bash(npm run build),Bash(npm run test:*),Bash(npm run lint:*)"
           
-          # Optional: Add custom instructions for Claude to customize its behavior for your project
-          # custom_instructions: |
-          #   Follow our coding standards
-          #   Ensure all new code has tests
-          #   Use TypeScript for new files
+          # Custom instructions for Archon V2 Alpha bug fixing
+          custom_instructions: |
+            You are working on Archon V2 Alpha, a local-first AI knowledge management system.
+            
+            ## Architecture Overview
+            - Frontend: React + TypeScript + Vite (port 3737)
+            - Backend: FastAPI + Socket.IO + Python (port 8181) 
+            - MCP Service: MCP protocol server (port 8051)
+            - Agents Service: PydanticAI agents (port 8052)
+            - Database: Supabase (PostgreSQL + pgvector)
+            
+            ## When fixing bugs, follow this workflow:
+            
+            1. **ANALYZE**: Read the bug report thoroughly and identify root cause from stack trace
+            2. **LOCATE**: Find the specific code causing the issue
+            3. **UNDERSTAND**: Determine why the error occurs and scope of impact
+            4. **PLAN**: Design minimal fix that addresses root cause
+            5. **IMPLEMENT**: 
+               - Create branch: `fix/issue-{issue-number}`
+               - Fix the bug following existing patterns
+               - Add/update tests to prevent regression
+               - Ensure code follows project style
+            6. **VERIFY**: Test the fix addresses the original issue
+            7. **PR**: Create pull request with clear description
+            
+            ## Key Guidelines
+            - Follow patterns in existing codebase
+            - Respect CLAUDE.md guidelines
+            - Keep changes minimal and focused
+            - Add proper error handling
+            - Include meaningful commit messages
+            - Test both frontend and backend changes
+            
+            ## Common Archon Components
+            - Knowledge Base: RAG, crawling, document processing
+            - MCP Integration: Protocol server, client connections
+            - Projects: Task management (optional feature)
+            - Settings: Credential management, configuration
+            - Real-time: Socket.IO for live updates
           
           # Optional: Custom environment variables for Claude
           # claude_env: |
