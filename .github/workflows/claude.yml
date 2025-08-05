@@ -19,10 +19,10 @@ jobs:
       (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
     runs-on: ubuntu-latest
     permissions:
-      contents: read
-      pull-requests: read
-      issues: read
-      id-token: write
+      contents: write # Allow Claude to create branches and edit files
+      pull-requests: write # Allow Claude to create and update pull requests  
+      issues: write # Allow Claude to comment on and update issues
+      id-token: write # Required for OIDC authentication
       actions: read # Required for Claude to read CI results on PRs
     steps:
       - name: Checkout repository
@@ -33,6 +33,7 @@ jobs:
       - name: Run Claude Code
         id: claude
         uses: anthropics/claude-code-action@beta
+        timeout-minutes: 30
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 
