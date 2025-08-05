@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Loader, Settings, ChevronDown, ChevronUp, Palette, Key, Brain, Code, Activity, FileCode } from 'lucide-react';
+import { Loader, Settings, ChevronDown, ChevronUp, Palette, Key, Brain, Code, Activity, FileCode, Bug } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useToast } from '../contexts/ToastContext';
 import { useSettings } from '../contexts/SettingsContext';
@@ -12,6 +12,7 @@ import { TestStatus } from '../components/settings/TestStatus';
 import { IDEGlobalRules } from '../components/settings/IDEGlobalRules';
 import { ButtonPlayground } from '../components/settings/ButtonPlayground';
 import { CollapsibleSettingsCard } from '../components/ui/CollapsibleSettingsCard';
+import { BugReportButton } from '../components/bug-report/BugReportButton';
 import { credentialsService, RagSettings, CodeExtractionSettings as CodeExtractionSettingsType } from '../services/credentialsService';
 
 export const SettingsPage = () => {
@@ -179,6 +180,33 @@ export const SettingsPage = () => {
                 codeExtractionSettings={codeExtractionSettings} 
                 setCodeExtractionSettings={setCodeExtractionSettings} 
               />
+            </CollapsibleSettingsCard>
+          </motion.div>
+
+          {/* Bug Report Section */}
+          <motion.div variants={itemVariants}>
+            <CollapsibleSettingsCard
+              title="Bug Reporting"
+              icon={Bug}
+              iconColor="text-red-500"
+              borderColor="border-red-200 dark:border-red-800"
+              defaultExpanded={false}
+            >
+              <div className="space-y-4">
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Found a bug or issue? Report it to help improve Archon V2 Alpha.
+                </p>
+                <div className="flex justify-start">
+                  <BugReportButton variant="secondary" size="md">
+                    Report Bug
+                  </BugReportButton>
+                </div>
+                <div className="text-xs text-gray-500 dark:text-gray-400 space-y-1">
+                  <p>• Bug reports are sent directly to GitHub Issues</p>
+                  <p>• System context is automatically collected</p>
+                  <p>• Your privacy is protected - no personal data is sent</p>
+                </div>
+              </div>
             </CollapsibleSettingsCard>
           </motion.div>
         </div>

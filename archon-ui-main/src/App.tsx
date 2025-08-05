@@ -9,6 +9,7 @@ import { ToastProvider } from './contexts/ToastContext';
 import { SettingsProvider, useSettings } from './contexts/SettingsContext';
 import { ProjectPage } from './pages/ProjectPage';
 import { DisconnectScreenOverlay } from './components/DisconnectScreenOverlay';
+import { ErrorBoundaryWithBugReport } from './components/bug-report/ErrorBoundaryWithBugReport';
 import { serverHealthService } from './services/serverHealthService';
 
 const AppRoutes = () => {
@@ -69,9 +70,11 @@ const AppContent = () => {
   return (
     <>
       <Router>
-        <MainLayout>
-          <AppRoutes />
-        </MainLayout>
+        <ErrorBoundaryWithBugReport>
+          <MainLayout>
+            <AppRoutes />
+          </MainLayout>
+        </ErrorBoundaryWithBugReport>
       </Router>
       <DisconnectScreenOverlay
         isActive={disconnectScreenActive && disconnectScreenSettings.enabled}
