@@ -47,11 +47,11 @@ def check_env_file():
     return True
 
 async def check_database_setup():
-    """Check if the credentials table exists in Supabase."""
+    """Check if the settings table exists in Supabase."""
     try:
-        # Try to initialize credentials - this will fail if table doesn't exist
+        # Try to initialize credentials - this will fail if settings table doesn't exist
         await credential_service.load_all_credentials()
-        print("✅ Database credentials table found")
+        print("✅ Database settings table found")
         return True
     except Exception as e:
         print(f"❌ Database setup incomplete: {e}")

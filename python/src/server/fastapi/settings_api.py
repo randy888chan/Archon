@@ -20,9 +20,6 @@ from ..config.logfire_config import logfire
 
 router = APIRouter(prefix="/api", tags=["settings"])
 
-class SetOpenAIKeyRequest(BaseModel):
-    api_key: str
-
 class CredentialRequest(BaseModel):
     key: str
     value: str
@@ -39,89 +36,6 @@ class CredentialUpdateRequest(BaseModel):
 class CredentialResponse(BaseModel):
     success: bool
     message: str
-
-@router.get("/openai-key/status")
-async def get_openai_key_status():
-    """Check if OpenAI API key is configured."""
-    try:
-        logfire.info("Checking OpenAI API key status")
-        supabase_client = get_supabase_client()
-        
-        response = supabase_client.table("credentials").select("key_value").eq("key_name", "openai_api_key").execute()
-        
-        has_key = bool(response.data)
-        
-        logfire.info(f"OpenAI key status retrieved | configured={has_key}")
-        
-        return {
-            "configured": has_key,
-            "message": "OpenAI API key is configured" if has_key else "OpenAI API key not configured"
-        }
-        
-    except Exception as e:
-        logfire.error(f"Failed to check OpenAI key status | error={str(e)}")
-        raise HTTPException(status_code=500, detail={'error': str(e)})
-
-@router.post("/openai-key", response_model=CredentialResponse)
-async def set_openai_key(request: SetOpenAIKeyRequest):
-    """Set the OpenAI API key."""
-    try:
-        logfire.info("Setting OpenAI API key")
-        supabase_client = get_supabase_client()
-        
-        # Check if key already exists
-        existing = supabase_client.table("credentials").select("id").eq("key_name", "openai_api_key").execute()
-        
-        if existing.data:
-            # Update existing key
-            logfire.info("Updating existing OpenAI API key")
-            response = supabase_client.table("credentials").update({
-                "key_value": request.api_key
-            }).eq("key_name", "openai_api_key").execute()
-        else:
-            # Insert new key
-            logfire.info("Creating new OpenAI API key")
-            response = supabase_client.table("credentials").insert({
-                "key_name": "openai_api_key",
-                "key_value": request.api_key
-            }).execute()
-        
-        if response.data:
-            logfire.info("OpenAI API key saved successfully")
-            return CredentialResponse(
-                success=True,
-                message="OpenAI API key saved successfully"
-            )
-        else:
-            logfire.error("Failed to save OpenAI API key")
-            return CredentialResponse(
-                success=False,
-                message="Failed to save OpenAI API key"
-            )
-            
-    except Exception as e:
-        logfire.error(f"Error setting OpenAI API key | error={str(e)}")
-        raise HTTPException(status_code=500, detail={'error': str(e)})
-
-@router.delete("/openai-key", response_model=CredentialResponse)
-async def delete_openai_key():
-    """Delete the stored OpenAI API key."""
-    try:
-        logfire.info("Deleting OpenAI API key")
-        supabase_client = get_supabase_client()
-        
-        response = supabase_client.table("credentials").delete().eq("key_name", "openai_api_key").execute()
-        
-        logfire.info("OpenAI API key deleted successfully")
-        
-        return CredentialResponse(
-            success=True,
-            message="OpenAI API key deleted successfully"
-        )
-        
-    except Exception as e:
-        logfire.error(f"Error deleting OpenAI API key | error={str(e)}")
-        raise HTTPException(status_code=500, detail={'error': str(e)})
 
 # Credential Management Endpoints
 @router.get("/credentials")
@@ -352,9 +266,9 @@ async def database_metrics():
         pages_response = supabase_client.table("crawled_pages").select("id", count="exact").execute()
         tables_info["crawled_pages"] = pages_response.count if pages_response.count is not None else 0
         
-        # Get credentials count
-        creds_response = supabase_client.table("credentials").select("id", count="exact").execute()
-        tables_info["credentials"] = creds_response.count if creds_response.count is not None else 0
+        # Get settings count
+        settings_response = supabase_client.table("settings").select("id", count="exact").execute()
+        tables_info["settings"] = settings_response.count if settings_response.count is not None else 0
         
         total_records = sum(tables_info.values())
         logfire.info(f"Database metrics retrieved | total_records={total_records} | tables={tables_info}")
