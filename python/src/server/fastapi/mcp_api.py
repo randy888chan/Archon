@@ -648,35 +648,31 @@ async def save_configuration(config: ServerConfig):
         safe_set_attribute(span, "port", config.port)
         
         try:
-            api_logger.info("Saving MCP server configuration", transport=config.transport, host=config.host, port=config.port)
+            api_logger.info(f"Saving MCP server configuration | transport={config.transport} | host={config.host} | port={config.port}")
             supabase_client = get_supabase_client()
             
             config_json = config.model_dump_json()
             
-            # Check if config exists
-            existing = supabase_client.table("credentials").select("id").eq("key_name", "mcp_config").execute()
+            # Save MCP config using credential service
+            from ..services.credential_service import credential_service
+            success = await credential_service.set_credential(
+                "mcp_config", 
+                config_json, 
+                category="mcp", 
+                description="MCP server configuration settings"
+            )
             
-            if existing.data:
-                # Update existing
-                response = supabase_client.table("credentials").update({
-                    "key_value": config_json
-                }).eq("key_name", "mcp_config").execute()
-                api_logger.info("MCP configuration updated")
-                safe_set_attribute(span, "operation", "update")
+            if success:
+                api_logger.info("MCP configuration saved successfully")
+                safe_set_attribute(span, "operation", "save")
             else:
-                # Insert new
-                response = supabase_client.table("credentials").insert({
-                    "key_name": "mcp_config",
-                    "key_value": config_json
-                }).execute()
-                api_logger.info("MCP configuration created")
-                safe_set_attribute(span, "operation", "create")
+                raise Exception("Failed to save MCP configuration")
             
             safe_set_attribute(span, "success", True)
             return {"success": True, "message": "Configuration saved"}
             
         except Exception as e:
-            api_logger.error("Failed to save MCP configuration", error=str(e))
+            api_logger.error(f"Failed to save MCP configuration | error={str(e)}")
             safe_set_attribute(span, "error", str(e))
             raise HTTPException(status_code=500, detail={'error': str(e)})
 
