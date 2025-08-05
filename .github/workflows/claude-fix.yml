@@ -12,13 +12,13 @@ jobs:
     env:
       ALLOWED_USERS: '["Wirasm", "coleam00", "sean-eskerium"]'
     
-    # Only trigger on /claude-fix command from authorized users
+    # Only trigger on @claude-fix command from authorized users
     if: |
       (
         github.event_name == 'issue_comment' || 
         github.event_name == 'pull_request_review_comment'
       ) &&
-      contains(github.event.comment.body, '/claude-fix') &&
+      contains(github.event.comment.body, '@claude-fix') &&
       contains(env.ALLOWED_USERS, github.event.comment.user.login)
     
     runs-on: ubuntu-latest
@@ -44,6 +44,9 @@ jobs:
         timeout-minutes: 25
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          
+          # Custom trigger phrase for fix
+          trigger_phrase: "@claude-fix"
           
           # Fix-specific instructions
           custom_instructions: |
@@ -104,7 +107,7 @@ jobs:
             github.event_name == 'issue_comment' || 
             github.event_name == 'pull_request_review_comment'
           ) &&
-          contains(github.event.comment.body, '/claude-fix') &&
+          contains(github.event.comment.body, '@claude-fix') &&
           !contains(env.ALLOWED_USERS, github.event.comment.user.login)
         uses: actions/github-script@v7
         with:

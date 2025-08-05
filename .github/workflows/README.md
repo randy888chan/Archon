@@ -4,9 +4,9 @@ This directory contains GitHub Actions workflows for Claude Code integration in 
 
 ## Available Commands
 
-### `/claude-review` - Code Review (Read-Only)
+### `@claude-review` - Code Review (Read-Only)
 - **Purpose**: Performs code review without making changes
-- **Trigger**: Comment `/claude-review` on any PR or issue
+- **Trigger**: Comment `@claude-review` on any PR or issue
 - **Permissions**: Read-only access to code
 - **Use Cases**:
   - Review PR changes for quality and bugs
@@ -14,9 +14,9 @@ This directory contains GitHub Actions workflows for Claude Code integration in 
   - Suggest improvements
   - Check adherence to coding standards
 
-### `/claude-fix` - Fix Issues (Write Access)
+### `@claude-fix` - Fix Issues (Write Access)
 - **Purpose**: Implements fixes and creates pull requests
-- **Trigger**: Comment `/claude-fix` on any PR or issue
+- **Trigger**: Comment `@claude-fix` on any PR or issue
 - **Permissions**: Full write access to create branches and PRs
 - **Use Cases**:
   - Fix reported bugs
@@ -37,17 +37,17 @@ Unauthorized users will receive an error message if they try to trigger Claude.
 
 ### Request a Code Review
 ```
-/claude-review Please review this PR for security issues and performance concerns
+@claude-review Please review this PR for security issues and performance concerns
 ```
 
 ### Fix an Issue
 ```
-/claude-fix Fix the TypeError in the bug report above and add appropriate error handling
+@claude-fix Fix the TypeError in the bug report above and add appropriate error handling
 ```
 
 ### Specific Fix Request
 ```
-/claude-fix Implement the missing validation for user input in the settings page
+@claude-fix Implement the missing validation for user input in the settings page
 ```
 
 ## Security Features
@@ -90,7 +90,7 @@ Please use the new command-based workflows instead.
 
 ### Claude doesn't respond to command
 - Verify you're an authorized user
-- Check the command syntax (must start with `/claude-review` or `/claude-fix`)
+- Check the command syntax (must start with `@claude-review` or `@claude-fix`)
 - Ensure the workflow files are in the main branch
 
 ### Unauthorized error
