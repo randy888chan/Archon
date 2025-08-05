@@ -6,12 +6,11 @@ on:
   pull_request_review_comment:
     types: [created]
 
+env:
+  ALLOWED_USERS: '["Wirasm", "coleam00", "sean-eskerium"]'
+
 jobs:
   claude-review:
-    # List of users authorized to trigger Claude
-    env:
-      ALLOWED_USERS: '["Wirasm", "coleam00", "sean-eskerium"]'
-    
     # Only trigger on @claude-review command from authorized users
     if: |
       (
@@ -19,7 +18,7 @@ jobs:
         github.event_name == 'pull_request_review_comment'
       ) &&
       contains(github.event.comment.body, '@claude-review') &&
-      contains(env.ALLOWED_USERS, github.event.comment.user.login)
+      contains('["Wirasm", "coleam00", "sean-eskerium"]', github.event.comment.user.login)
     
     runs-on: ubuntu-latest
     
@@ -28,8 +27,7 @@ jobs:
       pull-requests: write # Allow comments on PRs
       issues: write       # Allow comments on issues
       actions: read       # Read CI results
-    
-    timeout-minutes: 15  # Prevent runaway sessions
+      id-token: write     # Required for OIDC authentication
     
     steps:
       - name: Checkout repository
@@ -40,9 +38,10 @@ jobs:
       - name: Run Claude Code Review
         id: claude
         uses: anthropics/claude-code-action@beta
-        timeout-minutes: 10
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          timeout_minutes: "15"
           
           # Custom trigger phrase for review
           trigger_phrase: "@claude-review"
@@ -85,22 +84,32 @@ jobs:
           
           # Limited permissions for review-only mode
           allowed_tools: "Read(*),Grep(*),LS(*),Glob(*)"
-      
+  
+  unauthorized-message:
+    # Post message for unauthorized users
+    if: |
+      (
+        github.event_name == 'issue_comment' || 
+        github.event_name == 'pull_request_review_comment'
+      ) &&
+      contains(github.event.comment.body, '@claude-review') &&
+      !contains('["Wirasm", "coleam00", "sean-eskerium"]', github.event.comment.user.login)
+    
+    runs-on: ubuntu-latest
+    
+    permissions:
+      issues: write
+      pull-requests: write
+    
+    steps:
       - name: Post unauthorized message
-        if: |
-          (
-            github.event_name == 'issue_comment' || 
-            github.event_name == 'pull_request_review_comment'
-          ) &&
-          contains(github.event.comment.body, '@claude-review') &&
-          !contains(env.ALLOWED_USERS, github.event.comment.user.login)
         uses: actions/github-script@v7
         with:
           script: |
             const comment = {
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: `❌ @${context.actor} - You are not authorized to trigger Claude reviews.\n\nOnly the following users can trigger Claude:\n${JSON.parse(process.env.ALLOWED_USERS).map(u => `- @${u}`).join('\n')}\n\nPlease ask a maintainer for review.`
+              body: `❌ @${context.actor} - You are not authorized to trigger Claude reviews.\n\nOnly the following users can trigger Claude:\n- @Wirasm\n- @coleam00\n- @sean-eskerium\n\nPlease ask a maintainer for review.`
             };
             
             if (context.eventName === 'issue_comment') {

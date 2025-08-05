@@ -6,12 +6,11 @@ on:
   pull_request_review_comment:
     types: [created]
 
+env:
+  ALLOWED_USERS: '["Wirasm", "coleam00", "sean-eskerium"]'
+
 jobs:
   claude-fix:
-    # List of users authorized to trigger Claude
-    env:
-      ALLOWED_USERS: '["Wirasm", "coleam00", "sean-eskerium"]'
-    
     # Only trigger on @claude-fix command from authorized users
     if: |
       (
@@ -19,7 +18,7 @@ jobs:
         github.event_name == 'pull_request_review_comment'
       ) &&
       contains(github.event.comment.body, '@claude-fix') &&
-      contains(env.ALLOWED_USERS, github.event.comment.user.login)
+      contains('["Wirasm", "coleam00", "sean-eskerium"]', github.event.comment.user.login)
     
     runs-on: ubuntu-latest
     
@@ -30,8 +29,6 @@ jobs:
       id-token: write     # Required for OIDC authentication
       actions: read       # Read CI results
     
-    timeout-minutes: 30  # Allow more time for fixes
-    
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -41,9 +38,10 @@ jobs:
       - name: Run Claude Code Fix
         id: claude
         uses: anthropics/claude-code-action@beta
-        timeout-minutes: 25
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          timeout_minutes: "30"
           
           # Custom trigger phrase for fix
           trigger_phrase: "@claude-fix"
@@ -100,22 +98,32 @@ jobs:
           
           # Full permissions for fixing
           allowed_tools: "Bash(git *),Bash(npm install),Bash(npm run build),Bash(npm run test:*),Bash(npm run lint:*),Bash(uv sync),Bash(uv run pytest)"
-      
+  
+  unauthorized-message:
+    # Post message for unauthorized users
+    if: |
+      (
+        github.event_name == 'issue_comment' || 
+        github.event_name == 'pull_request_review_comment'
+      ) &&
+      contains(github.event.comment.body, '@claude-fix') &&
+      !contains('["Wirasm", "coleam00", "sean-eskerium"]', github.event.comment.user.login)
+    
+    runs-on: ubuntu-latest
+    
+    permissions:
+      issues: write
+      pull-requests: write
+    
+    steps:
       - name: Post unauthorized message
-        if: |
-          (
-            github.event_name == 'issue_comment' || 
-            github.event_name == 'pull_request_review_comment'
-          ) &&
-          contains(github.event.comment.body, '@claude-fix') &&
-          !contains(env.ALLOWED_USERS, github.event.comment.user.login)
         uses: actions/github-script@v7
         with:
           script: |
             const comment = {
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: `❌ @${context.actor} - You are not authorized to trigger Claude fixes.\n\nOnly the following users can trigger Claude:\n${JSON.parse(process.env.ALLOWED_USERS).map(u => `- @${u}`).join('\n')}\n\nPlease ask a maintainer to run the fix command.`
+              body: `❌ @${context.actor} - You are not authorized to trigger Claude fixes.\n\nOnly the following users can trigger Claude:\n- @Wirasm\n- @coleam00\n- @sean-eskerium\n\nPlease ask a maintainer to run the fix command.`
             };
             
             if (context.eventName === 'issue_comment') {
