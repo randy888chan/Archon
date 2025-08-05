@@ -6,9 +6,6 @@ on:
   pull_request_review_comment:
     types: [created]
 
-env:
-  ALLOWED_USERS: '["Wirasm", "coleam00", "sean-eskerium"]'
-
 jobs:
   claude-review:
     # Only trigger on @claude-review command from authorized users
@@ -18,7 +15,7 @@ jobs:
         github.event_name == 'pull_request_review_comment'
       ) &&
       contains(github.event.comment.body, '@claude-review') &&
-      contains('["Wirasm", "coleam00", "sean-eskerium"]', github.event.comment.user.login)
+      contains(fromJSON('["Wirasm", "coleam00", "sean-eskerium"]'), github.event.comment.user.login)
     
     runs-on: ubuntu-latest
     
@@ -82,8 +79,9 @@ jobs:
             - 💡 **Suggestions**: Improvements and recommendations
             - 🔒 **Security**: Any security concerns
           
-          # Limited permissions for review-only mode
-          allowed_tools: "Read(*),Grep(*),LS(*),Glob(*)"
+          # Enhanced permissions for comprehensive review
+          # Allows running tests, linters, and analysis tools while preventing file modifications
+          allowed_tools: "Read(*),Grep(*),LS(*),Glob(*),Bash(npm test*),Bash(npm run test*),Bash(npm run lint*),Bash(npm run type*),Bash(npm run check*),Bash(uv run pytest*),Bash(uv run ruff*),Bash(uv run mypy*),Bash(git log*),Bash(git diff*),Bash(git status*),Bash(git show*),Bash(cat *),Bash(head *),Bash(tail *),Bash(wc *),Bash(find * -type f),WebSearch(*),TodoWrite(*)"
   
   unauthorized-message:
     # Post message for unauthorized users
@@ -93,7 +91,7 @@ jobs:
         github.event_name == 'pull_request_review_comment'
       ) &&
       contains(github.event.comment.body, '@claude-review') &&
-      !contains('["Wirasm", "coleam00", "sean-eskerium"]', github.event.comment.user.login)
+      !contains(fromJSON('["Wirasm", "coleam00", "sean-eskerium"]'), github.event.comment.user.login)
     
     runs-on: ubuntu-latest
     
@@ -116,5 +114,13 @@ jobs:
               await github.rest.issues.createComment({
                 ...comment,
                 issue_number: context.issue.number
+              });
+            } else if (context.eventName === 'pull_request_review_comment') {
+              await github.rest.pulls.createReplyForReviewComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: context.payload.pull_request.number,
+                comment_id: context.payload.comment.id,
+                body: comment.body
               });
             }

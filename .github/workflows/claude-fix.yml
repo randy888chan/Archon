@@ -6,9 +6,6 @@ on:
   pull_request_review_comment:
     types: [created]
 
-env:
-  ALLOWED_USERS: '["Wirasm", "coleam00", "sean-eskerium"]'
-
 jobs:
   claude-fix:
     # Only trigger on @claude-fix command from authorized users
@@ -18,7 +15,7 @@ jobs:
         github.event_name == 'pull_request_review_comment'
       ) &&
       contains(github.event.comment.body, '@claude-fix') &&
-      contains('["Wirasm", "coleam00", "sean-eskerium"]', github.event.comment.user.login)
+      contains(fromJSON('["Wirasm", "coleam00", "sean-eskerium"]'), github.event.comment.user.login)
     
     runs-on: ubuntu-latest
     
@@ -96,8 +93,8 @@ jobs:
             - Reference issue numbers in PR description
             - Include test results in PR when relevant
           
-          # Full permissions for fixing
-          allowed_tools: "Bash(git *),Bash(npm install),Bash(npm run build),Bash(npm run test:*),Bash(npm run lint:*),Bash(uv sync),Bash(uv run pytest)"
+          # Full permissions for fixing - includes all editing and analysis tools
+          allowed_tools: "Edit(*),MultiEdit(*),Write(*),Read(*),Grep(*),LS(*),Glob(*),TodoWrite(*),NotebookEdit(*),Bash(git *),Bash(npm *),Bash(uv *),Bash(python *),Bash(pip *),Bash(cd *),Bash(pwd),Bash(ls *),Bash(cat *),Bash(head *),Bash(tail *),Bash(wc *),Bash(find *),Bash(grep *),Bash(rg *),Bash(sed *),Bash(awk *),Bash(curl *),Bash(wget *),Bash(echo *),Bash(mkdir *),Bash(rm -rf node_modules),Bash(rm -rf __pycache__),Bash(rm -rf .pytest_cache),WebSearch(*),WebFetch(*)"
   
   unauthorized-message:
     # Post message for unauthorized users
@@ -107,7 +104,7 @@ jobs:
         github.event_name == 'pull_request_review_comment'
       ) &&
       contains(github.event.comment.body, '@claude-fix') &&
-      !contains('["Wirasm", "coleam00", "sean-eskerium"]', github.event.comment.user.login)
+      !contains(fromJSON('["Wirasm", "coleam00", "sean-eskerium"]'), github.event.comment.user.login)
     
     runs-on: ubuntu-latest
     
@@ -130,5 +127,13 @@ jobs:
               await github.rest.issues.createComment({
                 ...comment,
                 issue_number: context.issue.number
+              });
+            } else if (context.eventName === 'pull_request_review_comment') {
+              await github.rest.pulls.createReplyForReviewComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: context.payload.pull_request.number,
+                comment_id: context.payload.comment.id,
+                body: comment.body
               });
             }
