@@ -12,8 +12,3 @@ services:
       - "${ARCHON_DOCS_PORT:-3838}:80"
     networks:
       - app-network
-
-networks:
-  app-network:
-    external: true
-    name: app-network
