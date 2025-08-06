@@ -33,7 +33,7 @@ Access RAG settings in the **Web Interface** → **Settings** → **RAG Settings
 |---------|-------------|---------|--------|
 | **MODEL_CHOICE** | Chat model for query enhancement | `gpt-4o-mini` | Response quality |
 | **EMBEDDING_MODEL** | Model for vector embeddings | `text-embedding-3-small` | Search accuracy |
-| **LLM_PROVIDER** | Provider (openai/openrouter/ollama/google) | `openai` | Model availability |
+| **LLM_PROVIDER** | Provider (openai/google/ollama/) | `openai` | Model availability |
 
 ### Advanced Strategies
 
@@ -307,13 +307,14 @@ EMBEDDING_MODEL=text-embedding-3-small
 # Cons: Cost per query
 ```
 
-### OpenRouter (Multi-Model Access)
+### Google Gemini
 ```bash
-LLM_PROVIDER=openrouter
-MODEL_CHOICE=openai/gpt-4o-mini
-EMBEDDING_MODEL=openai/text-embedding-3-small
-# Pros: Access to multiple models
-# Cons: Additional latency
+LLM_PROVIDER=google
+LLM_BASE_URL=https://generativelanguage.googleapis.com/v1beta
+MODEL_CHOICE=gemini-2.5-flash
+EMBEDDING_MODEL=text-embedding-004
+# Pros: Good performance, competitive pricing
+# Cons: Different API patterns
 ```
 
 ### Ollama (Local/Private)
@@ -324,15 +325,6 @@ MODEL_CHOICE=llama2
 EMBEDDING_MODEL=nomic-embed-text
 # Pros: Privacy, no API costs
 # Cons: Local compute requirements
-```
-
-### Google Gemini
-```bash
-LLM_PROVIDER=google
-MODEL_CHOICE=gemini-1.5-flash
-EMBEDDING_MODEL=text-embedding-004
-# Pros: Good performance, competitive pricing
-# Cons: Different API patterns
 ```
 
 ## 📈 Monitoring & Analytics

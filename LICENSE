@@ -1,30 +1,39 @@
-# DYNAMOUS COMMUNITY - PROPRIETARY LICENSE
+Archon Community License (ACL) v1.2
 
-Copyright (c) 2025 Cole Medin / Dynamous
+Copyright © 2025 The Archon Project Community
+Maintained by the [Dynamous community](https://dynamous.ai)
 
-## TERMS AND CONDITIONS
+Archon is **free, open, and hackable.** Run it, fork it, and share it — no strings attached — except one: **don’t sell it as‑a‑service without talking to us first.**
 
-1. **GRANT OF LICENSE**: This code (and other resources in the repository) is licensed exclusively to paying members of the Dynamous AI Mastery community.
+---
 
-2. **RESTRICTED ACCESS**: Access to this repository and its contents is restricted to current, active paying members of the Dynamous community. It may not be shared with anyone outside of currently paying Dynamous community members in any way. No forking this repository to share with others or downloading the code and sending it to non-members.
+### 1  You Can
 
-3. **USAGE RIGHTS**: Members are permitted to use the code for personal and commercial projects. Members may modify the code for their own use.
+* **Run** Archon anywhere, for anything, for free.
+* **Study & tweak** the code, add features, change the UI—go wild.
+* **Share** your changes or forks publicly (must keep this license in place).
 
-4. **RESTRICTIONS**:
-   - Members may not redistribute, share, publish, or otherwise make available any portion of this code outside of the Dynamous community.
-   - Members may not sublicense, sell, rent, or lease the code to any third party.
-   - Members may not remove or alter any copyright notices or attributions in the code.
+### 2  Please Do
 
-5. **TERMINATION**: This license automatically terminates if a member cancels their Dynamous membership or violates any of these terms. Upon termination, the member must cease all use of the code and delete all copies. The exception to this which applies to a membership cancellation can be read in #9.
+* Keep this license notice and a link back to the main repo.
+* Mark clearly if you’ve modified Archon.
 
-6. **OWNERSHIP**: All intellectual property rights to the code, including copyright, remain with Cole Medin / Dynamous. This license does not transfer ownership of the code.
+### 3  You Can’t (Without Permission)
 
-7. **NO WARRANTY**: The code is provided "as is" without warranty of any kind, express or implied. Cole Medin / Dynamous is not liable for any damages arising from the use of this code.
+* Charge money for Archon itself—e.g. paid downloads, paywalled builds, or subscriptions.
+* Offer Archon (original or modified) as a hosted or managed service that others can sign up for.
+* Bundle Archon into another paid product.
 
-8. **UPDATES**: Cole Medin / Dynamous reserves the right to update or modify this license at any time. Continued use of the code after any modification constitutes acceptance of the new terms.
+> **Consulting/support is totally fine.** Get paid to install, customise, or teach Archon as long as your clients don’t get a hosted Archon instance run by you.
 
-9. **LEGACY ACCESS**: If a member has maintained active paid membership for at least 3 months, they will retain personal usage rights to any code they accessed during their membership period, even after their membership ends. However, redistribution restrictions remain in effect permanently.
+### 4  No Warranty
 
-10. **COMMUNITY SUNSET PROVISION**: In the event that the Dynamous community officially closes or becomes inactive (defined as no updates to the repository for 12 consecutive months), all current and former members who maintained membership in good standing will automatically receive a perpetual license to use the code for personal and commercial projects, though redistribution restrictions will remain in effect.
+Archon comes **as‑is** with **no warranty** of any kind.
 
-By accessing or using this repository, you acknowledge that you have read this license, understand it, and agree to be bound by its terms.
+### 5  Limitation of Liability
+
+We’re **not liable** for any damages resulting from using Archon.
+
+### 6  Breaking the Rules
+
+If you violate these terms and don’t fix it within **30 days** after we let you know, your rights under this license end.
