@@ -1,0 +1,139 @@
+name: Claude Code Fix (Write Access)
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+
+jobs:
+  claude-fix:
+    # Only trigger on @claude-fix command from authorized users
+    if: |
+      (
+        github.event_name == 'issue_comment' || 
+        github.event_name == 'pull_request_review_comment'
+      ) &&
+      contains(github.event.comment.body, '@claude-fix') &&
+      contains(fromJSON('["Wirasm", "coleam00", "sean-eskerium"]'), github.event.comment.user.login)
+    
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: write      # Allow creating branches and editing files
+      pull-requests: write # Allow creating and updating pull requests
+      issues: write       # Allow commenting on and updating issues
+      id-token: write     # Required for OIDC authentication
+      actions: read       # Read CI results
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for better context
+      
+      - name: Run Claude Code Fix
+        id: claude
+        uses: anthropics/claude-code-action@beta
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          timeout_minutes: "30"
+          
+          # Custom trigger phrase for fix
+          trigger_phrase: "@claude-fix"
+          
+          # Fix-specific instructions
+          custom_instructions: |
+            You are authorized to IMPLEMENT FIXES and CREATE PULL REQUESTS.
+            
+            ## Your Role
+            You are fixing issues in Archon V2 Alpha, a local-first AI knowledge management system.
+            
+            ## Architecture Context
+            - Frontend: React + TypeScript + Vite (port 3737)
+            - Backend: FastAPI + Socket.IO + Python (port 8181)
+            - MCP Service: MCP protocol server (port 8051)
+            - Agents Service: PydanticAI agents (port 8052)
+            - Database: Supabase (PostgreSQL + pgvector)
+            
+            ## When fixing issues, follow this workflow:
+            
+            1. **ANALYZE**: Read the issue/bug report thoroughly
+            2. **LOCATE**: Find the specific code causing the issue
+            3. **UNDERSTAND**: Determine why the error occurs
+            4. **PLAN**: Design minimal fix that addresses root cause
+            5. **IMPLEMENT**: 
+               - Create branch: `fix/issue-{issue-number}` or `fix/{description}`
+               - Fix the bug following existing patterns
+               - Add/update tests if applicable
+               - Ensure code follows project style
+            6. **VERIFY**: Test the fix addresses the original issue
+            7. **PR**: Create pull request with clear description
+            
+            ## Key Guidelines
+            - Follow patterns in existing codebase
+            - Respect CLAUDE.md guidelines
+            - Keep changes minimal and focused
+            - Add proper error handling
+            - Include meaningful commit messages
+            - Test both frontend and backend changes when applicable
+            - Follow alpha principles: fail fast, detailed errors
+            
+            ## Common Components
+            - Knowledge Base: RAG, crawling, document processing
+            - MCP Integration: Protocol server, client connections
+            - Projects: Task management (optional feature)
+            - Settings: Credential management, configuration
+            - Real-time: Socket.IO for live updates
+            
+            ## Git Workflow
+            - Create descriptive branch names
+            - Write clear commit messages
+            - Reference issue numbers in PR description
+            - Include test results in PR when relevant
+          
+          # Full permissions for fixing - includes all editing and analysis tools
+          allowed_tools: "Edit(*),MultiEdit(*),Write(*),Read(*),Grep(*),LS(*),Glob(*),TodoWrite(*),NotebookEdit(*),Bash(git *),Bash(npm *),Bash(uv *),Bash(python *),Bash(pip *),Bash(cd *),Bash(pwd),Bash(ls *),Bash(cat *),Bash(head *),Bash(tail *),Bash(wc *),Bash(find *),Bash(grep *),Bash(rg *),Bash(sed *),Bash(awk *),Bash(curl *),Bash(wget *),Bash(echo *),Bash(mkdir *),Bash(rm -rf node_modules),Bash(rm -rf __pycache__),Bash(rm -rf .pytest_cache),WebSearch(*),WebFetch(*)"
+  
+  unauthorized-message:
+    # Post message for unauthorized users
+    if: |
+      (
+        github.event_name == 'issue_comment' || 
+        github.event_name == 'pull_request_review_comment'
+      ) &&
+      contains(github.event.comment.body, '@claude-fix') &&
+      !contains(fromJSON('["Wirasm", "coleam00", "sean-eskerium"]'), github.event.comment.user.login)
+    
+    runs-on: ubuntu-latest
+    
+    permissions:
+      issues: write
+      pull-requests: write
+    
+    steps:
+      - name: Post unauthorized message
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const comment = {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `❌ @${context.actor} - You are not authorized to trigger Claude fixes.\n\nOnly the following users can trigger Claude:\n- @Wirasm\n- @coleam00\n- @sean-eskerium\n\nPlease ask a maintainer to run the fix command.`
+            };
+            
+            if (context.eventName === 'issue_comment') {
+              await github.rest.issues.createComment({
+                ...comment,
+                issue_number: context.issue.number
+              });
+            } else if (context.eventName === 'pull_request_review_comment') {
+              await github.rest.pulls.createReplyForReviewComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: context.payload.pull_request.number,
+                comment_id: context.payload.comment.id,
+                body: comment.body
+              });
+            }
