@@ -1,4 +1,4 @@
-<h1 align="center">Archon Knowledge and Task Engine for AI Coding Assistants</h1>
+<h1 align="center">Archon Knowledge and Task Engine for AI Coding</h1>
 
 <p align="center">
   <img src="./archon-ui-main/public/favicon.svg" alt="Archon Logo" width="200" height="200">
