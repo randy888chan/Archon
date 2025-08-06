@@ -1,6 +1,7 @@
 __pycache__
 .env
 .serena
+.claude
 
 # Security reports should not be committed to public repositories
 security-report.md
