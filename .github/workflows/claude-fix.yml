@@ -35,12 +35,11 @@ jobs:
       - name: Run Claude Code Fix
         id: claude
         uses: anthropics/claude-code-action@beta
+        timeout-minutes: 30
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          timeout_minutes: "30"
           
-          # Custom trigger phrase for fix
+          # Custom trigger phrase for fix workflow
           trigger_phrase: "@claude-fix"
           
           # Fix-specific instructions
@@ -93,8 +92,8 @@ jobs:
             - Reference issue numbers in PR description
             - Include test results in PR when relevant
           
-          # Full permissions for fixing - includes all editing and analysis tools
-          allowed_tools: "Edit(*),MultiEdit(*),Write(*),Read(*),Grep(*),LS(*),Glob(*),TodoWrite(*),NotebookEdit(*),Bash(git *),Bash(npm *),Bash(uv *),Bash(python *),Bash(pip *),Bash(cd *),Bash(pwd),Bash(ls *),Bash(cat *),Bash(head *),Bash(tail *),Bash(wc *),Bash(find *),Bash(grep *),Bash(rg *),Bash(sed *),Bash(awk *),Bash(curl *),Bash(wget *),Bash(echo *),Bash(mkdir *),Bash(rm -rf node_modules),Bash(rm -rf __pycache__),Bash(rm -rf .pytest_cache),WebSearch(*),WebFetch(*)"
+          # Commented out - using default tools
+          # allowed_tools: "Edit(*),MultiEdit(*),Write(*),Read(*),Grep(*),LS(*),Glob(*),TodoWrite(*),NotebookEdit(*),Bash(git *),Bash(npm *),Bash(uv *),Bash(python *),Bash(pip *),Bash(cd *),Bash(pwd),Bash(ls *),Bash(cat *),Bash(head *),Bash(tail *),Bash(wc *),Bash(find *),Bash(grep *),Bash(rg *),Bash(sed *),Bash(awk *),Bash(curl *),Bash(wget *),Bash(echo *),Bash(mkdir *),Bash(rm -rf node_modules),Bash(rm -rf __pycache__),Bash(rm -rf .pytest_cache),WebSearch(*),WebFetch(*)"
   
   unauthorized-message:
     # Post message for unauthorized users
