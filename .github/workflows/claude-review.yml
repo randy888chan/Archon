@@ -35,13 +35,9 @@ jobs:
       - name: Run Claude Code Review
         id: claude
         uses: anthropics/claude-code-action@beta
+        timeout-minutes: 15
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          timeout_minutes: "15"
-
-          # Custom trigger phrase for review
-          trigger_phrase: "@claude-review"
 
           # Review-specific instructions
           custom_instructions: |
@@ -79,8 +75,8 @@ jobs:
             - 💡 **Suggestions**: Improvements and recommendations
             - 🔒 **Security**: Any security concerns
 
-          # Allows running tests, linters, and analysis tools while preventing file modifications
-          allowed_tools: "Read(*),Grep(*),LS(*),Glob(*),Bash(npm test*),Bash(npm run test*),Bash(npm run lint*),Bash(npm run type*),Bash(npm run check*),Bash(uv run pytest*),Bash(uv run ruff*),Bash(uv run mypy*),Bash(git log*),Bash(git diff*),Bash(git status*),Bash(git show*),Bash(cat *),Bash(head *),Bash(tail *),Bash(wc *),Bash(find * -type f),WebSearch(*),TodoWrite(*)"
+          # Commented out - using default tools
+          # allowed_tools: "Read(*),Grep(*),LS(*),Glob(*),Bash(npm test*),Bash(npm run test*),Bash(npm run lint*),Bash(npm run type*),Bash(npm run check*),Bash(uv run pytest*),Bash(uv run ruff*),Bash(uv run mypy*),Bash(git log*),Bash(git diff*),Bash(git status*),Bash(git show*),Bash(cat *),Bash(head *),Bash(tail *),Bash(wc *),Bash(find * -type f),WebSearch(*),TodoWrite(*)"
 
   unauthorized-message:
     # Post message for unauthorized users
