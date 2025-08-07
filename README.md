@@ -36,7 +36,7 @@ Archon is a **Model Context Protocol (MCP) server** that creates a centralized k
 
 1. **Clone Repository**:
    ```bash
-   git clone https://github.com/coleam00/archon.git
+   git clone https://github.com/dynamous-community/Archon-V2-Alpha.git
    cd archon
    ```
 
@@ -47,6 +47,8 @@ Archon is a **Model Context Protocol (MCP) server** that creates a centralized k
    # SUPABASE_URL=https://your-project.supabase.co
    # SUPABASE_SERVICE_KEY=your-service-key-here
    ```
+
+   NOTE: Supabase introduced a new type of service key but use the legacy one (the longer one).
 
 3. **Database Setup**: In your [Supabase project](https://supabase.com/dashboard) SQL Editor, copy, paste, and execute the contents of migration/complete_setup.sql
 
