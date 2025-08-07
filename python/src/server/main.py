@@ -238,16 +238,12 @@ async def health_check():
             "ready": False
         }
     
-    # Check if credentials are actually loaded
-    openai_key_available = bool(os.getenv("OPENAI_API_KEY"))
-    
     return {
         "status": "healthy",
         "service": "archon-backend", 
         "timestamp": datetime.now().isoformat(),
         "ready": True,
-        "credentials_loaded": True,
-        "openai_key_available": openai_key_available
+        "credentials_loaded": True
     }
 
 # API health check endpoint (alias for /health at /api/health)

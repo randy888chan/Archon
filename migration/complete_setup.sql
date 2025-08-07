@@ -84,7 +84,7 @@ INSERT INTO archon_settings (key, value, is_encrypted, category, description) VA
 -- Monitoring Configuration
 INSERT INTO archon_settings (key, value, is_encrypted, category, description) VALUES
 ('LOGFIRE_ENABLED', 'true', false, 'monitoring', 'Enable or disable Pydantic Logfire logging and observability platform'),
-('PROJECTS_ENABLED', 'false', false, 'features', 'Enable or disable Projects and Tasks functionality');
+('PROJECTS_ENABLED', 'true', false, 'features', 'Enable or disable Projects and Tasks functionality');
 
 -- Placeholder for sensitive credentials (to be added via Settings UI)
 INSERT INTO archon_settings (key, encrypted_value, is_encrypted, category, description) VALUES

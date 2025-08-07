@@ -26,12 +26,10 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
   const [isChatOpen, setIsChatOpen] = useState(false);
   const { showToast } = useToast();
   const navigate = useNavigate();
-  const [hasShownApiKeyToast, setHasShownApiKeyToast] = useState(false);
   const [backendReady, setBackendReady] = useState(false);
 
-  // Check backend readiness first, then validate credentials
+  // Check backend readiness
   useEffect(() => {
-    if (hasShownApiKeyToast) return; // Don't show multiple times per session
     
     const checkBackendHealth = async (retryCount = 0) => {
       const maxRetries = 10; // Increased retries for initialization
@@ -50,29 +48,8 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
           
           // Check if backend is truly ready (not just started)
           if (healthData.ready === true) {
-            console.log('✅ Backend is fully initialized, checking credentials...');
+            console.log('✅ Backend is fully initialized');
             setBackendReady(true);
-            
-            // If OpenAI key status is already available from health check, use it
-            if (healthData.openai_key_available === false) {
-              showToast('OpenAI API Key missing! Click here to go to Settings and configure it.', 'warning', 8000);
-              setHasShownApiKeyToast(true);
-              
-              // Add click handler to navigate to settings when toast is clicked
-              const handleToastClick = (e: any) => {
-                if (e.target.closest('.fixed.top-4.right-4')) {
-                  navigate('/settings');
-                  document.removeEventListener('click', handleToastClick);
-                }
-              };
-              document.addEventListener('click', handleToastClick);
-            } else if (healthData.openai_key_available === true) {
-              console.log('✅ OpenAI API key is configured (from health check)');
-              setHasShownApiKeyToast(true);
-            } else {
-              // Fallback to detailed credential check if health check doesn't include key status
-              setTimeout(() => checkOpenAIKey(), 100);
-            }
           } else {
             // Backend is starting up but not ready yet
             console.log(`🔄 Backend initializing... (attempt ${retryCount + 1}/${maxRetries}):`, healthData.message || 'Loading credentials...');
@@ -106,72 +83,12 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
       }
     };
 
-    const checkOpenAIKey = async (retryCount = 0) => {
-      const maxRetries = 3;
-      const retryDelay = 1000;
-      
-      let isBackendReady = false; // Track backend readiness locally to avoid dependency on state
-      
-      try {
-        // Get all credentials to catch OPENAI_API_KEY regardless of category (it might be NULL)
-        const allCredentials = await credentialsService.getAllCredentials();
-        const openaiKey = allCredentials.find(cred => cred.key === 'OPENAI_API_KEY');
-        
-        console.log('🔍 Checking OpenAI API key:', {
-          found: !!openaiKey,
-          key: openaiKey?.key,
-          hasValue: !!openaiKey?.value,
-          hasEncryptedValue: !!openaiKey?.encrypted_value,
-          isEncrypted: openaiKey?.is_encrypted,
-          category: openaiKey?.category
-        });
-        
-        isBackendReady = true; // If we got here, backend is ready
-        
-        // For encrypted credentials, check encrypted_value instead of value
-        const hasApiKey = openaiKey && (
-          (openaiKey.is_encrypted && openaiKey.encrypted_value) || 
-          (!openaiKey.is_encrypted && openaiKey.value && openaiKey.value.trim() !== '')
-        );
-        
-        console.log('🔍 API key validation result:', { hasApiKey });
-        
-        if (!hasApiKey) {
-          showToast('OpenAI API Key missing! Click here to go to Settings and configure it.', 'warning', 8000);
-          setHasShownApiKeyToast(true);
-          
-          // Add click handler to the document to navigate to settings when toast is clicked
-          const handleToastClick = (e: any) => {
-            if (e.target.closest('.fixed.top-4.right-4')) {
-              navigate('/settings');
-              document.removeEventListener('click', handleToastClick);
-            }
-          };
-          document.addEventListener('click', handleToastClick);
-        } else {
-          console.log('✅ OpenAI API key is configured');
-          setHasShownApiKeyToast(true); // Mark as checked to prevent re-checking
-        }
-      } catch (error) {
-        console.error(`Error checking OpenAI API key (attempt ${retryCount + 1}):`, error);
-        
-        // Retry if we haven't exceeded max retries and backend appears ready
-        if (retryCount < maxRetries && isBackendReady) {
-          setTimeout(() => {
-            checkOpenAIKey(retryCount + 1);
-          }, retryDelay * (retryCount + 1)); // Linear backoff for credential check
-        } else {
-          console.warn('Failed to check OpenAI API key after maximum retries');
-          // Don't show error toast for credential check failures - only for missing keys
-        }
-      }
-    };
 
     // Start the health check process
     setTimeout(() => {
       checkBackendHealth();
     }, 1000); // Wait 1 second for initial app startup
-  }, [showToast, navigate, hasShownApiKeyToast]); // Removed backendReady from dependencies to prevent double execution
+  }, [showToast, navigate]); // Removed backendReady from dependencies to prevent double execution
 
   return <div className="relative min-h-screen bg-white dark:bg-black overflow-hidden">
       {/* Fixed full-page background grid that doesn't scroll */}
