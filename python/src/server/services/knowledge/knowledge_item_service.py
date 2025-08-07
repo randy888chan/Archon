@@ -43,7 +43,7 @@ class KnowledgeItemService:
         """
         try:
             # Build the query with filters at database level for better performance
-            query = self.supabase.from_('sources').select('*')
+            query = self.supabase.from_('archon_sources').select('*')
             
             # Apply knowledge type filter at database level if provided
             if knowledge_type:
@@ -56,7 +56,7 @@ class KnowledgeItemService:
             
             # Get total count before pagination
             # Clone the query for counting
-            count_query = self.supabase.from_('sources').select('*', count='exact', head=True)
+            count_query = self.supabase.from_('archon_sources').select('*', count='exact', head=True)
             
             # Apply same filters to count query
             if knowledge_type:
@@ -90,7 +90,7 @@ class KnowledgeItemService:
             
             if source_ids:
                 # Batch fetch first URLs
-                urls_result = self.supabase.from_('crawled_pages')\
+                urls_result = self.supabase.from_('archon_crawled_pages')\
                     .select('source_id, url')\
                     .in_('source_id', source_ids)\
                     .execute()
@@ -103,7 +103,7 @@ class KnowledgeItemService:
                 # Get code example counts per source - NO CONTENT, just counts!
                 # Fetch counts individually for each source
                 for source_id in source_ids:
-                    count_result = self.supabase.from_('code_examples')\
+                    count_result = self.supabase.from_('archon_code_examples')\
                         .select('id', count='exact', head=True)\
                         .eq('source_id', source_id)\
                         .execute()
@@ -187,7 +187,7 @@ class KnowledgeItemService:
             safe_logfire_info(f"Getting knowledge item | source_id={source_id}")
             
             # Get the source record
-            result = self.supabase.from_('sources')\
+            result = self.supabase.from_('archon_sources')\
                 .select('*')\
                 .eq('source_id', source_id)\
                 .single()\
@@ -231,7 +231,7 @@ class KnowledgeItemService:
             
             if metadata_updates:
                 # Get current metadata
-                current_response = self.supabase.table("sources").select("metadata").eq("source_id", source_id).execute()
+                current_response = self.supabase.table("archon_sources").select("metadata").eq("source_id", source_id).execute()
                 if current_response.data:
                     current_metadata = current_response.data[0].get('metadata', {})
                     current_metadata.update(metadata_updates)
@@ -240,7 +240,7 @@ class KnowledgeItemService:
                     update_data['metadata'] = metadata_updates
             
             # Perform the update
-            result = self.supabase.table("sources").update(update_data).eq("source_id", source_id).execute()
+            result = self.supabase.table("archon_sources").update(update_data).eq("source_id", source_id).execute()
             
             if result.data:
                 safe_logfire_info(f"Knowledge item updated successfully | source_id={source_id}")
@@ -266,7 +266,7 @@ class KnowledgeItemService:
         """
         try:
             # Query the sources table
-            result = self.supabase.from_('sources')\
+            result = self.supabase.from_('archon_sources')\
                 .select('*')\
                 .order('source_id')\
                 .execute()
@@ -358,7 +358,7 @@ class KnowledgeItemService:
     async def _get_first_page_url(self, source_id: str) -> str:
         """Get the first page URL for a source."""
         try:
-            pages_response = self.supabase.from_('crawled_pages')\
+            pages_response = self.supabase.from_('archon_crawled_pages')\
                 .select('url')\
                 .eq('source_id', source_id)\
                 .limit(1)\
@@ -375,7 +375,7 @@ class KnowledgeItemService:
     async def _get_code_examples(self, source_id: str) -> List[Dict[str, Any]]:
         """Get code examples for a source."""
         try:
-            code_examples_response = self.supabase.from_('code_examples')\
+            code_examples_response = self.supabase.from_('archon_code_examples')\
                 .select('id, content, summary, metadata')\
                 .eq('source_id', source_id)\
                 .execute()
@@ -415,7 +415,7 @@ class KnowledgeItemService:
         """Get the actual number of chunks for a source."""
         try:
             # Count the actual rows in crawled_pages for this source
-            result = self.supabase.table('crawled_pages')\
+            result = self.supabase.table('archon_crawled_pages')\
                 .select('*', count='exact')\
                 .eq('source_id', source_id)\
                 .execute()

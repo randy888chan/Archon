@@ -49,7 +49,7 @@ class ProjectService:
                 project_data["github_repo"] = github_repo.strip()
             
             # Insert project
-            response = self.supabase_client.table("projects").insert(project_data).execute()
+            response = self.supabase_client.table("archon_projects").insert(project_data).execute()
             
             if not response.data:
                 logger.error("Supabase returned empty data for project creation")
@@ -80,7 +80,7 @@ class ProjectService:
             Tuple of (success, result_dict)
         """
         try:
-            response = self.supabase_client.table("projects").select("*").order("created_at", desc=True).execute()
+            response = self.supabase_client.table("archon_projects").select("*").order("created_at", desc=True).execute()
             
             projects = []
             for project in response.data:
@@ -114,7 +114,7 @@ class ProjectService:
             Tuple of (success, result_dict)
         """
         try:
-            response = self.supabase_client.table("projects").select("*").eq("id", project_id).execute()
+            response = self.supabase_client.table("archon_projects").select("*").eq("id", project_id).execute()
             
             if response.data:
                 project = response.data[0]
@@ -125,7 +125,7 @@ class ProjectService:
                 
                 try:
                     # Get source IDs from project_sources table
-                    sources_response = self.supabase_client.table("project_sources").select("source_id, notes").eq("project_id", project["id"]).execute()
+                    sources_response = self.supabase_client.table("archon_project_sources").select("source_id, notes").eq("project_id", project["id"]).execute()
                     
                     # Collect source IDs by type
                     technical_source_ids = []
@@ -139,11 +139,11 @@ class ProjectService:
                     
                     # Fetch full source objects
                     if technical_source_ids:
-                        tech_sources_response = self.supabase_client.table("sources").select("*").in_("source_id", technical_source_ids).execute()
+                        tech_sources_response = self.supabase_client.table("archon_sources").select("*").in_("source_id", technical_source_ids).execute()
                         technical_sources = tech_sources_response.data
                     
                     if business_source_ids:
-                        biz_sources_response = self.supabase_client.table("sources").select("*").in_("source_id", business_source_ids).execute()
+                        biz_sources_response = self.supabase_client.table("archon_sources").select("*").in_("source_id", business_source_ids).execute()
                         business_sources = biz_sources_response.data
                         
                 except Exception as e:
@@ -170,16 +170,16 @@ class ProjectService:
         """
         try:
             # First, check if project exists
-            check_response = self.supabase_client.table("projects").select("id").eq("id", project_id).execute()
+            check_response = self.supabase_client.table("archon_projects").select("id").eq("id", project_id).execute()
             if not check_response.data:
                 return False, {"error": f"Project with ID {project_id} not found"}
             
             # Get task count for reporting
-            tasks_response = self.supabase_client.table("tasks").select("id").eq("project_id", project_id).execute()
+            tasks_response = self.supabase_client.table("archon_tasks").select("id").eq("project_id", project_id).execute()
             tasks_count = len(tasks_response.data) if tasks_response.data else 0
             
             # Delete the project (tasks will be deleted by cascade)
-            response = self.supabase_client.table("projects").delete().eq("id", project_id).execute()
+            response = self.supabase_client.table("archon_projects").delete().eq("id", project_id).execute()
             
             # For DELETE operations, success is indicated by no error, not by response.data content
             # response.data will be empty list [] even on successful deletion
@@ -201,7 +201,7 @@ class ProjectService:
             Tuple of (success, result_dict)
         """
         try:
-            response = self.supabase_client.table("projects").select("features").eq("id", project_id).single().execute()
+            response = self.supabase_client.table("archon_projects").select("features").eq("id", project_id).single().execute()
             
             if not response.data:
                 return False, {"error": "Project not found"}
@@ -252,10 +252,10 @@ class ProjectService:
             # Handle pinning logic - only one project can be pinned at a time
             if update_fields.get("pinned") is True:
                 # Unpin any other pinned projects
-                self.supabase_client.table("projects").update({"pinned": False}).neq("id", project_id).eq("pinned", True).execute()
+                self.supabase_client.table("archon_projects").update({"pinned": False}).neq("id", project_id).eq("pinned", True).execute()
             
             # Update the project
-            response = self.supabase_client.table("projects").update(update_data).eq("id", project_id).execute()
+            response = self.supabase_client.table("archon_projects").update(update_data).eq("id", project_id).execute()
             
             if response.data:
                 project = response.data[0]

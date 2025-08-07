@@ -79,7 +79,7 @@ def add_documents_to_supabase_sync(
             # Delete in configured batch sizes
             for i in range(0, len(unique_urls), delete_batch_size):
                 batch_urls = unique_urls[i:i + delete_batch_size]
-                client.table("crawled_pages").delete().in_("url", batch_urls).execute()
+                client.table("archon_crawled_pages").delete().in_("url", batch_urls).execute()
                 # Brief pause between batches to prevent overwhelming the connection
                 if i + delete_batch_size < len(unique_urls):
                     import time
@@ -93,7 +93,7 @@ def add_documents_to_supabase_sync(
         for i in range(0, len(unique_urls), fallback_batch_size):
             batch_urls = unique_urls[i:i + 10]
             try:
-                client.table("crawled_pages").delete().in_("url", batch_urls).execute()
+                client.table("archon_crawled_pages").delete().in_("url", batch_urls).execute()
                 import time
                 time.sleep(0.05)  # Rate limit to prevent overwhelming
             except Exception as inner_e:
@@ -218,7 +218,7 @@ def add_documents_to_supabase_sync(
         
         # Insert batch using Supabase
         try:
-            client.table("crawled_pages").insert(batch_data).execute()
+            client.table("archon_crawled_pages").insert(batch_data).execute()
             completed_batches += 1
             search_logger.info(f"Successfully stored batch {batch_num}/{total_batches}")
             
@@ -238,7 +238,7 @@ def add_documents_to_supabase_sync(
             # Try to insert one by one as fallback
             for data in batch_data:
                 try:
-                    client.table("crawled_pages").insert([data]).execute()
+                    client.table("archon_crawled_pages").insert([data]).execute()
                 except Exception as inner_e:
                     search_logger.error(f"Error storing individual chunk: {inner_e}")
     

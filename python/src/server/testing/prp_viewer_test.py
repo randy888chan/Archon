@@ -76,7 +76,7 @@ class PRPViewerTester:
         """Fetch project and its documents from database"""
         try:
             # Fetch project
-            project_response = self.supabase.table("projects").select("*").eq("id", self.project_id).execute()
+            project_response = self.supabase.table("archon_projects").select("*").eq("id", self.project_id).execute()
             if not project_response.data:
                 raise ValueError(f"Project {self.project_id} not found")
             

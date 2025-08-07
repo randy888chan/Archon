@@ -11,13 +11,10 @@
 -- Usage:
 --   1. Connect to your Supabase/PostgreSQL database
 --   2. Run this script in the SQL editor
---   3. Run the migration files in order to recreate the schema:
---      - 1_initial_setup.sql
---      - 2_archon_projects.sql  
---      - 3_mcp_client_management.sql (optional)
+--   3. Run migration/complete_setup.sql to recreate the schema
 --
 -- Created: 2024-01-01
--- Updated: 2024-01-01
+-- Updated: 2025-01-07 - Added archon_ prefix to all tables
 -- ======================================================================
 
 BEGIN;
@@ -35,41 +32,55 @@ BEGIN
     RAISE NOTICE 'Dropping Row Level Security policies...';
     
     -- Settings table policies
-    DROP POLICY IF EXISTS "Allow service role full access" ON settings;
-    DROP POLICY IF EXISTS "Allow authenticated users to read and update" ON settings;
+    DROP POLICY IF EXISTS "Allow service role full access" ON archon_settings;
+    DROP POLICY IF EXISTS "Allow authenticated users to read and update" ON archon_settings;
     
     -- Crawled pages policies
-    DROP POLICY IF EXISTS "Allow public read access to crawled_pages" ON crawled_pages;
+    DROP POLICY IF EXISTS "Allow public read access to archon_crawled_pages" ON archon_crawled_pages;
     
     -- Sources policies  
-    DROP POLICY IF EXISTS "Allow public read access to sources" ON sources;
+    DROP POLICY IF EXISTS "Allow public read access to archon_sources" ON archon_sources;
     
     -- Code examples policies
-    DROP POLICY IF EXISTS "Allow public read access to code_examples" ON code_examples;
+    DROP POLICY IF EXISTS "Allow public read access to archon_code_examples" ON archon_code_examples;
     
     -- Projects policies
-    DROP POLICY IF EXISTS "Allow service role full access to projects" ON projects;
-    DROP POLICY IF EXISTS "Allow authenticated users to read and update projects" ON projects;
+    DROP POLICY IF EXISTS "Allow service role full access to archon_projects" ON archon_projects;
+    DROP POLICY IF EXISTS "Allow authenticated users to read and update archon_projects" ON archon_projects;
     
     -- Tasks policies
-    DROP POLICY IF EXISTS "Allow service role full access to tasks" ON tasks;
-    DROP POLICY IF EXISTS "Allow authenticated users to read and update tasks" ON tasks;
+    DROP POLICY IF EXISTS "Allow service role full access to archon_tasks" ON archon_tasks;
+    DROP POLICY IF EXISTS "Allow authenticated users to read and update archon_tasks" ON archon_tasks;
     
     -- Project sources policies
-    DROP POLICY IF EXISTS "Allow service role full access to project_sources" ON project_sources;
-    DROP POLICY IF EXISTS "Allow authenticated users to read and update project_sources" ON project_sources;
+    DROP POLICY IF EXISTS "Allow service role full access to archon_project_sources" ON archon_project_sources;
+    DROP POLICY IF EXISTS "Allow authenticated users to read and update archon_project_sources" ON archon_project_sources;
     
     -- Document versions policies
-    DROP POLICY IF EXISTS "Allow service role full access to document_versions" ON document_versions;
-    DROP POLICY IF EXISTS "Allow authenticated users to read and update document_versions" ON document_versions;
+    DROP POLICY IF EXISTS "Allow service role full access to archon_document_versions" ON archon_document_versions;
+    DROP POLICY IF EXISTS "Allow authenticated users to read archon_document_versions" ON archon_document_versions;
     
     -- Prompts policies
+    DROP POLICY IF EXISTS "Allow service role full access to archon_prompts" ON archon_prompts;
+    DROP POLICY IF EXISTS "Allow authenticated users to read archon_prompts" ON archon_prompts;
+    
+    -- Legacy table policies (for migration from old schema)
+    DROP POLICY IF EXISTS "Allow service role full access" ON settings;
+    DROP POLICY IF EXISTS "Allow authenticated users to read and update" ON settings;
+    DROP POLICY IF EXISTS "Allow public read access to crawled_pages" ON crawled_pages;
+    DROP POLICY IF EXISTS "Allow public read access to sources" ON sources;
+    DROP POLICY IF EXISTS "Allow public read access to code_examples" ON code_examples;
+    DROP POLICY IF EXISTS "Allow service role full access to projects" ON projects;
+    DROP POLICY IF EXISTS "Allow authenticated users to read and update projects" ON projects;
+    DROP POLICY IF EXISTS "Allow service role full access to tasks" ON tasks;
+    DROP POLICY IF EXISTS "Allow authenticated users to read and update tasks" ON tasks;
+    DROP POLICY IF EXISTS "Allow service role full access to project_sources" ON project_sources;
+    DROP POLICY IF EXISTS "Allow authenticated users to read and update project_sources" ON project_sources;
+    DROP POLICY IF EXISTS "Allow service role full access to document_versions" ON document_versions;
+    DROP POLICY IF EXISTS "Allow authenticated users to read and update document_versions" ON document_versions;
+    DROP POLICY IF EXISTS "Allow authenticated users to read document_versions" ON document_versions;
     DROP POLICY IF EXISTS "Allow service role full access to prompts" ON prompts;
     DROP POLICY IF EXISTS "Allow authenticated users to read prompts" ON prompts;
-    
-    -- MCP clients policies
-    DROP POLICY IF EXISTS "Allow service role full access to mcp_clients" ON mcp_clients;
-    DROP POLICY IF EXISTS "Allow authenticated users to manage mcp_clients" ON mcp_clients;
     
     RAISE NOTICE 'RLS policies dropped successfully.';
     
@@ -86,19 +97,20 @@ BEGIN
     RAISE NOTICE 'Dropping triggers...';
     
     -- Settings table triggers
+    DROP TRIGGER IF EXISTS update_archon_settings_updated_at ON archon_settings;
     DROP TRIGGER IF EXISTS update_settings_updated_at ON settings;
     
     -- Projects table triggers
+    DROP TRIGGER IF EXISTS update_archon_projects_updated_at ON archon_projects;
     DROP TRIGGER IF EXISTS update_projects_updated_at ON projects;
     
     -- Tasks table triggers
+    DROP TRIGGER IF EXISTS update_archon_tasks_updated_at ON archon_tasks;
     DROP TRIGGER IF EXISTS update_tasks_updated_at ON tasks;
     
     -- Prompts table triggers
+    DROP TRIGGER IF EXISTS update_archon_prompts_updated_at ON archon_prompts;
     DROP TRIGGER IF EXISTS update_prompts_updated_at ON prompts;
-    
-    -- MCP clients table triggers
-    DROP TRIGGER IF EXISTS update_mcp_clients_updated_at ON mcp_clients;
     
     RAISE NOTICE 'Triggers dropped successfully.';
     
@@ -117,7 +129,11 @@ BEGIN
     -- Update timestamp function (used by triggers)
     DROP FUNCTION IF EXISTS update_updated_at_column() CASCADE;
     
-    -- Search functions
+    -- Search functions (new with archon_ prefix)
+    DROP FUNCTION IF EXISTS match_archon_crawled_pages(vector, int, jsonb, text) CASCADE;
+    DROP FUNCTION IF EXISTS match_archon_code_examples(vector, int, jsonb, text) CASCADE;
+    
+    -- Search functions (old without prefix)
     DROP FUNCTION IF EXISTS match_crawled_pages(vector, int, jsonb, text) CASCADE;
     DROP FUNCTION IF EXISTS match_code_examples(vector, int, jsonb, text) CASCADE;
     
@@ -140,22 +156,30 @@ BEGIN
     
     -- Drop in reverse dependency order to minimize cascade issues
     
-    -- MCP Client Management (no dependencies)
-    DROP TABLE IF EXISTS mcp_clients CASCADE;
+    -- Project System (complex dependencies) - new archon_ prefixed tables
+    DROP TABLE IF EXISTS archon_document_versions CASCADE;
+    DROP TABLE IF EXISTS archon_project_sources CASCADE;
+    DROP TABLE IF EXISTS archon_tasks CASCADE;
+    DROP TABLE IF EXISTS archon_projects CASCADE;
+    DROP TABLE IF EXISTS archon_prompts CASCADE;
     
-    -- Project System (complex dependencies)
+    -- Knowledge Base System - new archon_ prefixed tables
+    DROP TABLE IF EXISTS archon_code_examples CASCADE;
+    DROP TABLE IF EXISTS archon_crawled_pages CASCADE;
+    DROP TABLE IF EXISTS archon_sources CASCADE;
+    
+    -- Configuration System - new archon_ prefixed table
+    DROP TABLE IF EXISTS archon_settings CASCADE;
+    
+    -- Legacy tables (without archon_ prefix) - for migration purposes
     DROP TABLE IF EXISTS document_versions CASCADE;
     DROP TABLE IF EXISTS project_sources CASCADE;
     DROP TABLE IF EXISTS tasks CASCADE;
     DROP TABLE IF EXISTS projects CASCADE;
     DROP TABLE IF EXISTS prompts CASCADE;
-    
-    -- Knowledge Base System
     DROP TABLE IF EXISTS code_examples CASCADE;
     DROP TABLE IF EXISTS crawled_pages CASCADE;
     DROP TABLE IF EXISTS sources CASCADE;
-    
-    -- Configuration System (minimal dependencies)
     DROP TABLE IF EXISTS settings CASCADE;
     
     RAISE NOTICE 'Tables dropped successfully.';
@@ -197,7 +221,7 @@ BEGIN
         SELECT indexname 
         FROM pg_indexes 
         WHERE schemaname = 'public' 
-        AND indexname LIKE 'idx_%'
+        AND (indexname LIKE 'idx_%' OR indexname LIKE 'idx_archon_%')
     LOOP
         BEGIN
             EXECUTE 'DROP INDEX IF EXISTS ' || index_name || ' CASCADE';
@@ -277,9 +301,7 @@ BEGIN
     RAISE NOTICE '  - Custom types/enums: %', type_count;
     RAISE NOTICE '';
     RAISE NOTICE 'Next steps:';
-    RAISE NOTICE '  1. Run migration/1_initial_setup.sql';
-    RAISE NOTICE '  2. Run migration/2_archon_projects.sql';
-    RAISE NOTICE '  3. Run migration/3_mcp_client_management.sql (optional)';
+    RAISE NOTICE '  1. Run migration/complete_setup.sql';
     RAISE NOTICE '======================================================================';
     
 END $$;
@@ -288,4 +310,4 @@ COMMIT;
 
 -- ======================================================================
 -- END OF RESET SCRIPT
--- ====================================================================== 
+-- ======================================================================
