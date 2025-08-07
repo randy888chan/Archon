@@ -32,7 +32,7 @@ class VersioningService:
         """
         try:
             # Get current highest version number for this project/field
-            existing_versions = self.supabase_client.table("document_versions").select("version_number").eq("project_id", project_id).eq("field_name", field_name).order("version_number", desc=True).limit(1).execute()
+            existing_versions = self.supabase_client.table("archon_document_versions").select("version_number").eq("project_id", project_id).eq("field_name", field_name).order("version_number", desc=True).limit(1).execute()
             
             next_version = 1
             if existing_versions.data:
@@ -51,7 +51,7 @@ class VersioningService:
                 'created_at': datetime.now().isoformat()
             }
             
-            result = self.supabase_client.table("document_versions").insert(version_data).execute()
+            result = self.supabase_client.table("archon_document_versions").insert(version_data).execute()
             
             if result.data:
                 return True, {
@@ -76,7 +76,7 @@ class VersioningService:
         """
         try:
             # Build query
-            query = self.supabase_client.table("document_versions").select("*").eq("project_id", project_id)
+            query = self.supabase_client.table("archon_document_versions").select("*").eq("project_id", project_id)
             
             if field_name:
                 query = query.eq("field_name", field_name)
@@ -107,7 +107,7 @@ class VersioningService:
         """
         try:
             # Query for specific version
-            result = self.supabase_client.table("document_versions").select("*").eq("project_id", project_id).eq("field_name", field_name).eq("version_number", version_number).execute()
+            result = self.supabase_client.table("archon_document_versions").select("*").eq("project_id", project_id).eq("field_name", field_name).eq("version_number", version_number).execute()
             
             if result.data:
                 version = result.data[0]
@@ -134,7 +134,7 @@ class VersioningService:
         """
         try:
             # Get the version to restore
-            version_result = self.supabase_client.table("document_versions").select("*").eq("project_id", project_id).eq("field_name", field_name).eq("version_number", version_number).execute()
+            version_result = self.supabase_client.table("archon_document_versions").select("*").eq("project_id", project_id).eq("field_name", field_name).eq("version_number", version_number).execute()
             
             if not version_result.data:
                 return False, {"error": f"Version {version_number} not found for {field_name} in project {project_id}"}
@@ -143,7 +143,7 @@ class VersioningService:
             content_to_restore = version_to_restore['content']
             
             # Get current content to create backup
-            current_project = self.supabase_client.table("projects").select(field_name).eq("id", project_id).execute()
+            current_project = self.supabase_client.table("archon_projects").select(field_name).eq("id", project_id).execute()
             if current_project.data:
                 current_content = current_project.data[0].get(field_name, {})
                 
@@ -166,7 +166,7 @@ class VersioningService:
                 'updated_at': datetime.now().isoformat()
             }
             
-            restore_result = self.supabase_client.table("projects").update(update_data).eq("id", project_id).execute()
+            restore_result = self.supabase_client.table("archon_projects").update(update_data).eq("id", project_id).execute()
             
             if restore_result.data:
                 # Create restore version record

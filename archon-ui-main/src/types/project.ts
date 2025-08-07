@@ -25,8 +25,8 @@ export interface Project {
   github_repo?: string;
   created_at: string;
   updated_at: string;
-  technical_sources?: string[]; // Array of source IDs from project_sources table
-  business_sources?: string[]; // Array of source IDs from project_sources table
+  technical_sources?: string[]; // Array of source IDs from archon_project_sources table
+  business_sources?: string[]; // Array of source IDs from archon_project_sources table
   
   // Extended UI properties (stored in JSONB fields)
   description?: string;

@@ -122,7 +122,7 @@ class CredentialService:
             supabase = self._get_supabase_client()
             
             # Fetch all credentials
-            result = supabase.table("settings").select("*").execute()
+            result = supabase.table("archon_settings").select("*").execute()
             
             credentials = {}
             for item in result.data:
@@ -216,7 +216,7 @@ class CredentialService:
                 self._cache[key] = value
             
             # Upsert to database with proper conflict handling
-            result = supabase.table("settings").upsert(
+            result = supabase.table("archon_settings").upsert(
                 data, 
                 on_conflict="key"  # Specify the unique column for conflict resolution
             ).execute()
@@ -239,7 +239,7 @@ class CredentialService:
         try:
             supabase = self._get_supabase_client()
             
-            result = supabase.table("settings").delete().eq("key", key).execute()
+            result = supabase.table("archon_settings").delete().eq("key", key).execute()
             
             # Remove from cache
             if key in self._cache:
@@ -278,7 +278,7 @@ class CredentialService:
         
         try:
             supabase = self._get_supabase_client()
-            result = supabase.table("settings").select("*").eq("category", category).execute()
+            result = supabase.table("archon_settings").select("*").eq("category", category).execute()
             
             credentials = {}
             for item in result.data:
@@ -308,7 +308,7 @@ class CredentialService:
         """Get all credentials as a list of CredentialItem objects (for Settings UI)."""
         try:
             supabase = self._get_supabase_client()
-            result = supabase.table("settings").select("*").execute()
+            result = supabase.table("archon_settings").select("*").execute()
             
             credentials = []
             for item in result.data:

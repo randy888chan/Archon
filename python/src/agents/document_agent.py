@@ -143,7 +143,7 @@ class DocumentAgent(BaseAgent[DocumentDependencies, DocumentOperation]):
                     return "No project is currently selected. Please specify a project or create one first to manage documents."
                 
                 supabase = get_supabase_client()
-                response = supabase.table("projects").select("docs").eq("id", ctx.deps.project_id).execute()
+                response = supabase.table("archon_projects").select("docs").eq("id", ctx.deps.project_id).execute()
                 
                 if not response.data:
                     return "No project found with the given ID."
@@ -169,7 +169,7 @@ class DocumentAgent(BaseAgent[DocumentDependencies, DocumentOperation]):
             """Get the content of a specific document by title."""
             try:
                 supabase = get_supabase_client()
-                response = supabase.table("projects").select("docs").eq("id", ctx.deps.project_id).execute()
+                response = supabase.table("archon_projects").select("docs").eq("id", ctx.deps.project_id).execute()
                 
                 if not response.data:
                     return "No project found."

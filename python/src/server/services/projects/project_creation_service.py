@@ -70,7 +70,7 @@ class ProjectCreationService:
                     project_data[key] = kwargs[key]
             
             # Create the project in database
-            response = self.supabase_client.table('projects').insert(project_data).execute()
+            response = self.supabase_client.table('archon_projects').insert(project_data).execute()
             if not response.data:
                 raise Exception("Failed to create project in database")
             
@@ -92,7 +92,7 @@ class ProjectCreationService:
             )
             
             # Final success - fetch complete project data
-            final_project_response = self.supabase_client.table('projects').select('*').eq('id', project_id).execute()
+            final_project_response = self.supabase_client.table('archon_projects').select('*').eq('id', project_id).execute()
             if final_project_response.data:
                 final_project = final_project_response.data[0]
                 

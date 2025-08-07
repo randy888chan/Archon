@@ -220,7 +220,7 @@ class SearchService:
                 )
                 
                 # 2. Get keyword search results using ILIKE on both content and summary
-                keyword_query = self.supabase_client.from_('code_examples')\
+                keyword_query = self.supabase_client.from_('archon_code_examples')\
                     .select('id, url, chunk_number, content, summary, metadata, source_id')\
                     .or_(f'content.ilike.%{query}%,summary.ilike.%{query}%')
                 

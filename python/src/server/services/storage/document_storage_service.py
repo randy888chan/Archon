@@ -81,7 +81,7 @@ async def add_documents_to_supabase(
                         cancellation_check()
                     
                     batch_urls = unique_urls[i:i + delete_batch_size]
-                    client.table("crawled_pages").delete().in_("url", batch_urls).execute()
+                    client.table("archon_crawled_pages").delete().in_("url", batch_urls).execute()
                     # Yield control to allow Socket.IO to process messages
                     if i + delete_batch_size < len(unique_urls):
                         await asyncio.sleep(0.05)  # Reduced pause between delete batches
@@ -98,7 +98,7 @@ async def add_documents_to_supabase(
                 
                 batch_urls = unique_urls[i:i + 10]
                 try:
-                    client.table("crawled_pages").delete().in_("url", batch_urls).execute()
+                    client.table("archon_crawled_pages").delete().in_("url", batch_urls).execute()
                     await asyncio.sleep(0.05)  # Rate limit to prevent overwhelming
                 except Exception as inner_e:
                     search_logger.error(f"Error deleting batch of {len(batch_urls)} URLs: {inner_e}")
@@ -265,7 +265,7 @@ async def add_documents_to_supabase(
                     cancellation_check()
                 
                 try:
-                    client.table("crawled_pages").insert(batch_data).execute()
+                    client.table("archon_crawled_pages").insert(batch_data).execute()
                     
                     # Increment completed batches and report simple progress
                     completed_batches += 1
@@ -303,7 +303,7 @@ async def add_documents_to_supabase(
                                 cancellation_check()
                             
                             try:
-                                client.table("crawled_pages").insert(record).execute()
+                                client.table("archon_crawled_pages").insert(record).execute()
                                 successful_inserts += 1
                             except Exception as individual_error:
                                 search_logger.error(f"Failed individual insert for {record['url']}: {individual_error}")

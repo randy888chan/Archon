@@ -650,7 +650,7 @@ class CrawlOrchestrationService:
                     # Try a simpler approach with minimal data
                     try:
                         safe_logfire_info(f"Attempting fallback source creation for '{source_id}'")
-                        self.supabase_client.table('sources').upsert({
+                        self.supabase_client.table('archon_sources').upsert({
                             'source_id': source_id,
                             'title': source_id,  # Use source_id as title fallback
                             'summary': summary,
@@ -672,7 +672,7 @@ class CrawlOrchestrationService:
         if unique_source_ids:
             for source_id in unique_source_ids:
                 try:
-                    source_check = self.supabase_client.table('sources').select('source_id').eq('source_id', source_id).execute()
+                    source_check = self.supabase_client.table('archon_sources').select('source_id').eq('source_id', source_id).execute()
                     if not source_check.data:
                         raise Exception(f"Source record verification failed - '{source_id}' does not exist in sources table")
                     safe_logfire_info(f"Source record verified for '{source_id}'")
@@ -1150,7 +1150,7 @@ class CrawlOrchestrationService:
                     # Try a simpler approach with minimal data
                     try:
                         safe_logfire_info(f"Attempting fallback source creation for '{source_id}'")
-                        self.supabase_client.table('sources').upsert({
+                        self.supabase_client.table('archon_sources').upsert({
                             'source_id': source_id,
                             'title': source_id,  # Use source_id as title fallback
                             'summary': summary,
@@ -1172,7 +1172,7 @@ class CrawlOrchestrationService:
         if unique_source_ids:
             for source_id in unique_source_ids:
                 try:
-                    source_check = self.supabase_client.table('sources').select('source_id').eq('source_id', source_id).execute()
+                    source_check = self.supabase_client.table('archon_sources').select('source_id').eq('source_id', source_id).execute()
                     if not source_check.data:
                         raise Exception(f"Source record verification failed - '{source_id}' does not exist in sources table")
                     safe_logfire_info(f"Source record verified for '{source_id}'")

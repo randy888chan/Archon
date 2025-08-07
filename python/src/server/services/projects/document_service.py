@@ -33,7 +33,7 @@ class DocumentService:
         """
         try:
             # Get current project
-            project_response = self.supabase_client.table("projects").select("docs").eq("id", project_id).execute()
+            project_response = self.supabase_client.table("archon_projects").select("docs").eq("id", project_id).execute()
             if not project_response.data:
                 return False, {"error": f"Project with ID {project_id} not found"}
             
@@ -57,7 +57,7 @@ class DocumentService:
             updated_docs = current_docs + [new_doc]
             
             # Update project
-            response = self.supabase_client.table("projects").update({
+            response = self.supabase_client.table("archon_projects").update({
                 "docs": updated_docs
             }).eq("id", project_id).execute()
             
@@ -87,7 +87,7 @@ class DocumentService:
             Tuple of (success, result_dict)
         """
         try:
-            response = self.supabase_client.table("projects").select("docs").eq("id", project_id).execute()
+            response = self.supabase_client.table("archon_projects").select("docs").eq("id", project_id).execute()
             
             if not response.data:
                 return False, {"error": f"Project with ID {project_id} not found"}
@@ -127,7 +127,7 @@ class DocumentService:
             Tuple of (success, result_dict)
         """
         try:
-            response = self.supabase_client.table("projects").select("docs").eq("id", project_id).execute()
+            response = self.supabase_client.table("archon_projects").select("docs").eq("id", project_id).execute()
             
             if not response.data:
                 return False, {"error": f"Project with ID {project_id} not found"}
@@ -160,7 +160,7 @@ class DocumentService:
         """
         try:
             # Get current project docs
-            project_response = self.supabase_client.table("projects").select("docs").eq("id", project_id).execute()
+            project_response = self.supabase_client.table("archon_projects").select("docs").eq("id", project_id).execute()
             if not project_response.data:
                 return False, {"error": f"Project with ID {project_id} not found"}
             
@@ -214,7 +214,7 @@ class DocumentService:
                 return False, {"error": f"Document with ID {doc_id} not found in project {project_id}"}
             
             # Update the project
-            response = self.supabase_client.table("projects").update({
+            response = self.supabase_client.table("archon_projects").update({
                 "docs": docs,
                 "updated_at": datetime.now().isoformat()
             }).eq("id", project_id).execute()
@@ -244,7 +244,7 @@ class DocumentService:
         """
         try:
             # Get current project docs
-            project_response = self.supabase_client.table("projects").select("docs").eq("id", project_id).execute()
+            project_response = self.supabase_client.table("archon_projects").select("docs").eq("id", project_id).execute()
             if not project_response.data:
                 return False, {"error": f"Project with ID {project_id} not found"}
             
@@ -258,7 +258,7 @@ class DocumentService:
                 return False, {"error": f"Document with ID {doc_id} not found in project {project_id}"}
             
             # Update the project
-            response = self.supabase_client.table("projects").update({
+            response = self.supabase_client.table("archon_projects").update({
                 "docs": docs,
                 "updated_at": datetime.now().isoformat()
             }).eq("id", project_id).execute()

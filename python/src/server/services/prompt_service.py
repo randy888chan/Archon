@@ -37,7 +37,7 @@ class PromptService:
             logger.info("Loading prompts from database...")
             supabase = get_supabase_client()
             
-            response = supabase.table('prompts').select('*').execute()
+            response = supabase.table('archon_prompts').select('*').execute()
             
             if response.data:
                 self._prompts = {

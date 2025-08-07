@@ -86,9 +86,9 @@ def search_documents(
             
             # Call the RPC function
             with safe_span("supabase_rpc_call"):
-                logger.debug(f"Calling Supabase RPC function: match_crawled_pages, params: {list(rpc_params.keys())}")
+                logger.debug(f"Calling Supabase RPC function: match_archon_crawled_pages, params: {list(rpc_params.keys())}")
                 
-                response = client.rpc("match_crawled_pages", rpc_params).execute()
+                response = client.rpc("match_archon_crawled_pages", rpc_params).execute()
                 
                 # Apply threshold filtering to results
                 filtered_results = []
@@ -194,9 +194,9 @@ async def search_documents_async(
             
             # Call the RPC function
             with safe_span("supabase_rpc_call"):
-                logger.debug(f"Calling Supabase RPC function: match_crawled_pages, params: {list(rpc_params.keys())}")
+                logger.debug(f"Calling Supabase RPC function: match_archon_crawled_pages, params: {list(rpc_params.keys())}")
                 
-                response = client.rpc("match_crawled_pages", rpc_params).execute()
+                response = client.rpc("match_archon_crawled_pages", rpc_params).execute()
                 
                 # Apply threshold filtering to results
                 filtered_results = []
@@ -256,7 +256,7 @@ def search_code_examples(
     # Create embedding for the enhanced query
     query_embedding = create_embedding(enhanced_query)
     
-    # Execute the search using the match_code_examples function
+    # Execute the search using the match_archon_code_examples function
     try:
         # Only include filter parameter if filter_metadata is provided and not empty
         params = {
@@ -272,7 +272,7 @@ def search_code_examples(
         if source_id:
             params['source_filter'] = source_id
         
-        result = client.rpc('match_code_examples', params).execute()
+        result = client.rpc('match_archon_code_examples', params).execute()
         
         return result.data
     except Exception as e:
