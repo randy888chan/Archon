@@ -38,7 +38,7 @@ jobs:
         timeout-minutes: 15
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          
+
           # Custom trigger phrase for review workflow
           trigger_phrase: "@claude-review"
 
@@ -195,7 +195,7 @@ jobs:
             const comment = {
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: `❌ @${context.actor} - You are not authorized to trigger Claude reviews.\n\nOnly the following users can trigger Claude:\n- @Wirasm\n- @coleam00\n- @sean-eskerium\n\nPlease ask a maintainer for review.`
+              body: `❌ @${context.actor} - You are not authorized to trigger Claude reviews.\n\nOnly the maintainers can trigger Claude: Please ask a maintainer for review.`
             };
 
             if (context.eventName === 'issue_comment') {
