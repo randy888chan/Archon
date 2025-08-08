@@ -169,16 +169,15 @@ jobs:
 
             **Merge Decision:**
             - [ ] Ready to merge as-is
-            - [ ] Merge after addressing critical issues only
             - [ ] Requires fixes before merging
 
             **Priority Actions:**
             1. [Most important fix needed, if any]
             2. [Second priority, if applicable]
-            3. [Third priority, if applicable]
+            3. ...
 
             **Rationale:**
-            [Brief explanation of why these specific issues should be addressed now vs later, considering this is an alpha project focused on rapid iteration]
+            [Brief explanation rationale for above recommendations, considering this is an alpha project focused on rapid iteration]
 
             ---
             *Review based on Archon V2 Alpha guidelines and CLAUDE.md principles*
