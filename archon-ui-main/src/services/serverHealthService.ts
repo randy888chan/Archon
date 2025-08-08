@@ -5,6 +5,9 @@ interface HealthCheckCallback {
   onReconnected: () => void;
 }
 
+// Health check interval constant - 30 seconds for reasonable balance
+const HEALTH_CHECK_INTERVAL_MS = 30000; // 30 seconds
+
 class ServerHealthService {
   private healthCheckInterval: number | null = null;
   private isConnected: boolean = true;
@@ -14,8 +17,8 @@ class ServerHealthService {
   // Settings
   private disconnectScreenEnabled: boolean = true;
   private disconnectScreenDelay: number = 10000; // 10 seconds
-  private maxMissedChecks: number = 2; // Show disconnect after 2 missed checks (10 seconds max)
-  private checkInterval: number = 5000; // Check every 5 seconds (reduced frequency for heavy operations)
+  private maxMissedChecks: number = 2; // Show disconnect after 2 missed checks (60 seconds max with 30s interval)
+  private checkInterval: number = HEALTH_CHECK_INTERVAL_MS; // Use constant for health check interval
 
   async loadSettings() {
     try {
@@ -29,21 +32,21 @@ class ServerHealthService {
 
   async checkHealth(): Promise<boolean> {
     try {
-      console.log('🏥 [Health] Checking server health at /api/health');
+      // console.log('🏥 [Health] Checking server health at /api/health');
       // Use the proxied /api/health endpoint which works in both dev and Docker
       const response = await fetch('/api/health', {
         method: 'GET',
         signal: AbortSignal.timeout(10000) // 10 second timeout (increased for heavy operations)
       });
       
-      console.log('🏥 [Health] Response:', response.status, response.statusText);
+      // console.log('🏥 [Health] Response:', response.status, response.statusText);
       
       if (response.ok) {
         const data = await response.json();
-        console.log('🏥 [Health] Health data:', data);
+        // console.log('🏥 [Health] Health data:', data);
         // Accept healthy, online, or initializing (server is starting up)
         const isHealthy = data.status === 'healthy' || data.status === 'online' || data.status === 'initializing';
-        console.log('🏥 [Health] Is healthy:', isHealthy);
+        // console.log('🏥 [Health] Is healthy:', isHealthy);
         return isHealthy;
       }
       console.error('🏥 [Health] Response not OK:', response.status);
@@ -56,6 +59,12 @@ class ServerHealthService {
   }
 
   startMonitoring(callbacks: HealthCheckCallback) {
+    // Guard: Prevent multiple intervals by clearing any existing one
+    if (this.healthCheckInterval) {
+      console.warn('🏥 [Health] Health monitoring already active, stopping previous monitor');
+      this.stopMonitoring();
+    }
+
     this.callbacks = callbacks;
     this.missedChecks = 0;
     this.isConnected = true;
