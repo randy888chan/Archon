@@ -12,6 +12,14 @@ from ...config.logfire_config import search_logger, safe_span
 from ..threading_service import get_threading_service
 from ..llm_provider_service import get_llm_client, get_embedding_model
 from ..credential_service import credential_service
+from .embedding_exceptions import (
+    EmbeddingError,
+    EmbeddingQuotaExhaustedError,
+    EmbeddingRateLimitError,
+    EmbeddingAsyncContextError,
+    EmbeddingAPIError,
+    EmbeddingValidationError
+)
 
 
 # Use the new provider-aware client factory
@@ -35,28 +43,40 @@ def create_embedding(text: str, provider: Optional[str] = None) -> List[float]:
         # Check if we're in an async context
         try:
             loop = asyncio.get_running_loop()
-            # If we're already in an async context, we can't run sync - return zero embedding
-            search_logger.warning("create_embedding called from async context - using zero embedding fallback")
-            search_logger.warning(f"Text preview for zero embedding: {text[:100]}...")
-            return [0.0] * 1536
+            # If we're already in an async context, we can't run sync - must use async version
+            raise EmbeddingAsyncContextError(
+                "create_embedding (sync) called from async context - use create_embedding_async instead",
+                text_preview=text
+            )
         except RuntimeError:
             # No running loop, safe to use asyncio.run
             return asyncio.run(create_embedding_async(text, provider=provider))
+    except EmbeddingError:
+        # Re-raise our custom exceptions as-is
+        raise
     except Exception as e:
-        # Enhanced logging for zero embedding fallback
-        search_logger.warning(f"Embedding creation failed, using zero fallback: {str(e)}")
-        search_logger.warning(f"Failed text preview: {text[:100]}...")
+        # Convert other exceptions to EmbeddingAPIError
+        error_msg = str(e)
+        search_logger.error(f"Embedding creation failed: {error_msg}")
+        search_logger.error(f"Failed text preview: {text[:100]}...")
         
-        # Track failure metrics
-        if "insufficient_quota" in str(e):
-            search_logger.error("OpenAI quota exhausted - zero embeddings returned")
-        elif "rate_limit" in str(e).lower():
-            search_logger.warning("Rate limit hit - zero embeddings returned")
+        # Check for specific error types
+        if "insufficient_quota" in error_msg:
+            raise EmbeddingQuotaExhaustedError(
+                f"OpenAI quota exhausted: {error_msg}",
+                text_preview=text
+            )
+        elif "rate_limit" in error_msg.lower():
+            raise EmbeddingRateLimitError(
+                f"Rate limit hit: {error_msg}",
+                text_preview=text
+            )
         else:
-            search_logger.error(f"Unexpected embedding error: {type(e).__name__}")
-        
-        # Continue with zero embeddings to keep process working
-        return [0.0] * 1536
+            raise EmbeddingAPIError(
+                f"Unexpected embedding error: {error_msg}",
+                text_preview=text,
+                original_error=e
+            )
 
 
 async def create_embedding_async(text: str, provider: Optional[str] = None) -> List[float]:
@@ -72,21 +92,37 @@ async def create_embedding_async(text: str, provider: Optional[str] = None) -> L
     """
     try:
         embeddings = await create_embeddings_batch_async([text], provider=provider)
-        return embeddings[0] if embeddings else [0.0] * 1536
+        if not embeddings:
+            raise EmbeddingAPIError(
+                "No embeddings returned from batch creation",
+                text_preview=text
+            )
+        return embeddings[0]
+    except EmbeddingError:
+        # Re-raise our custom exceptions
+        raise
     except Exception as e:
-        # Enhanced logging for zero embedding fallback
-        search_logger.warning(f"Async embedding creation failed, using zero fallback: {str(e)}")
-        search_logger.warning(f"Failed text preview: {text[:100]}...")
+        # Convert to appropriate exception type
+        error_msg = str(e)
+        search_logger.error(f"Async embedding creation failed: {error_msg}")
+        search_logger.error(f"Failed text preview: {text[:100]}...")
         
-        # Track failure metrics
-        if "insufficient_quota" in str(e):
-            search_logger.error("OpenAI quota exhausted - zero embeddings returned")
-        elif "rate_limit" in str(e).lower():
-            search_logger.warning("Rate limit hit - zero embeddings returned")
+        if "insufficient_quota" in error_msg:
+            raise EmbeddingQuotaExhaustedError(
+                f"OpenAI quota exhausted: {error_msg}",
+                text_preview=text
+            )
+        elif "rate_limit" in error_msg.lower():
+            raise EmbeddingRateLimitError(
+                f"Rate limit hit: {error_msg}",
+                text_preview=text
+            )
         else:
-            search_logger.error(f"Unexpected embedding error: {type(e).__name__}")
-        
-        return [0.0] * 1536
+            raise EmbeddingAPIError(
+                f"Async embedding error: {error_msg}",
+                text_preview=text,
+                original_error=e
+            )
 
 
 def create_embeddings_batch(texts: List[str], provider: Optional[str] = None) -> List[List[float]]:
@@ -109,28 +145,40 @@ def create_embeddings_batch(texts: List[str], provider: Optional[str] = None) ->
         # Check if we're in an async context
         try:
             loop = asyncio.get_running_loop()
-            # If we're already in an async context, we can't run sync - return zero embeddings
-            search_logger.warning("create_embeddings_batch called from async context - using zero embedding fallback")
-            search_logger.warning(f"Batch size: {len(texts)}, first text preview: {texts[0][:100] if texts else 'empty'}...")
-            return [[0.0] * 1536 for _ in texts]
+            # If we're already in an async context, we can't run sync - must use async version
+            raise EmbeddingAsyncContextError(
+                f"create_embeddings_batch (sync) called from async context - use create_embeddings_batch_async instead. Batch size: {len(texts)}",
+                text_preview=texts[0] if texts else None
+            )
         except RuntimeError:
             # No running loop, safe to use asyncio.run
             return asyncio.run(create_embeddings_batch_async(texts, provider=provider))
+    except EmbeddingError:
+        # Re-raise our custom exceptions
+        raise
     except Exception as e:
-        # Enhanced logging for zero embedding fallback
-        search_logger.warning(f"Batch embedding creation failed, using zero fallback: {str(e)}")
-        search_logger.warning(f"Batch size: {len(texts)}, first text preview: {texts[0][:100] if texts else 'empty'}...")
+        # Convert to appropriate exception type
+        error_msg = str(e)
+        search_logger.error(f"Batch embedding creation failed: {error_msg}")
+        search_logger.error(f"Batch size: {len(texts)}, first text preview: {texts[0][:100] if texts else 'empty'}...")
         
-        # Track failure metrics
-        if "insufficient_quota" in str(e):
-            search_logger.error("OpenAI quota exhausted - zero embeddings returned")
-        elif "rate_limit" in str(e).lower():
-            search_logger.warning("Rate limit hit - zero embeddings returned")
+        if "insufficient_quota" in error_msg:
+            raise EmbeddingQuotaExhaustedError(
+                f"OpenAI quota exhausted during batch processing: {error_msg}",
+                text_preview=texts[0] if texts else None
+            )
+        elif "rate_limit" in error_msg.lower():
+            raise EmbeddingRateLimitError(
+                f"Rate limit hit during batch processing: {error_msg}",
+                text_preview=texts[0] if texts else None
+            )
         else:
-            search_logger.error(f"Unexpected embedding error: {type(e).__name__}")
-        
-        # Return zero embeddings as fallback
-        return [[0.0] * 1536 for _ in texts]
+            raise EmbeddingAPIError(
+                f"Batch embedding error: {error_msg}",
+                text_preview=texts[0] if texts else None,
+                original_error=e,
+                batch_size=len(texts)
+            )
 
 
 async def create_embeddings_batch_async(
@@ -230,18 +278,20 @@ async def create_embeddings_batch_async(
                                     span.set_attribute("quota_exhausted", True)
                                     span.set_attribute("tokens_used_before_quota", tokens_so_far)
                                     
-                                    # Return zero embeddings for remaining texts
-                                    remaining = len(texts) - len(all_embeddings)
-                                    all_embeddings.extend([[0.0] * 1536 for _ in range(remaining)])
-                                    
-                                    # Notify via progress callback
+                                    # Notify via progress callback before raising
                                     if progress_callback:
                                         await progress_callback(
                                             f"❌ QUOTA EXHAUSTED - Add credits to OpenAI account! (used {tokens_so_far:,} tokens ≈${cost_so_far:.4f})",
                                             100
                                         )
                                     
-                                    return all_embeddings
+                                    # Raise exception to stop process - this is critical
+                                    raise EmbeddingQuotaExhaustedError(
+                                        f"OpenAI billing quota exhausted after {tokens_so_far:,} tokens (≈${cost_so_far:.4f}). Add credits to continue.",
+                                        tokens_used=tokens_so_far,
+                                        text_preview=batch[0] if batch else None,
+                                        batch_index=i // batch_size
+                                    )
                                 else:
                                     retry_count += 1
                                     if retry_count < max_retries:
@@ -249,9 +299,13 @@ async def create_embeddings_batch_async(
                                         search_logger.warning(f"Rate limit hit (not quota), waiting {wait_time}s before retry {retry_count}/{max_retries}")
                                         await asyncio.sleep(wait_time)
                                     else:
-                                        search_logger.error(f"Max retries exceeded for batch {i//batch_size + 1}")
-                                        # Add zero embeddings for this batch
-                                        all_embeddings.extend([[0.0] * 1536 for _ in batch])
+                                        # Max retries exceeded - raise error for this batch
+                                        raise EmbeddingRateLimitError(
+                                            f"Max retries ({max_retries}) exceeded for batch {i//batch_size + 1} after rate limiting",
+                                            retry_count=retry_count,
+                                            text_preview=batch[0] if batch else None,
+                                            batch_index=i // batch_size
+                                        )
                         
                         # Progress reporting with cost estimation
                         if progress_callback:
@@ -281,13 +335,21 @@ async def create_embeddings_batch_async(
                 
                 return all_embeddings
                     
+        except EmbeddingError:
+            # Re-raise our custom exceptions with span info
+            span.set_attribute("success", False)
+            raise
         except Exception as e:
             span.set_attribute("success", False)
             span.set_attribute("error", str(e))
             search_logger.error(f"Failed to create embeddings batch: {e}")
             
-            # Return zero embeddings as fallback
-            return [[0.0] * 1536 for _ in texts]
+            # Raise as API error
+            raise EmbeddingAPIError(
+                f"Failed to create embeddings batch: {str(e)}",
+                original_error=e,
+                batch_size=len(texts)
+            )
 
 
 # Deprecated functions - kept for backward compatibility
