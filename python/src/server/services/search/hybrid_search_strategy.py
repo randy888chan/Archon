@@ -262,26 +262,3 @@ class HybridSearchStrategy:
         return final_results
 
 
-# Utility functions for backward compatibility
-def perform_hybrid_document_search(
-    client: Client,
-    query: str,
-    query_embedding: List[float],
-    match_count: int,
-    filter_metadata: Optional[dict] = None
-) -> List[Dict[str, Any]]:
-    """Standalone function for hybrid document search"""
-    strategy = HybridSearchStrategy(client)
-    return strategy.search_documents_hybrid(query, query_embedding, match_count, filter_metadata)
-
-
-def perform_hybrid_code_search(
-    client: Client,
-    query: str,
-    match_count: int,
-    filter_metadata: Optional[dict] = None,
-    source_id: Optional[str] = None
-) -> List[Dict[str, Any]]:
-    """Standalone function for hybrid code example search"""
-    strategy = HybridSearchStrategy(client)
-    return strategy.search_code_examples_hybrid(query, match_count, filter_metadata, source_id)

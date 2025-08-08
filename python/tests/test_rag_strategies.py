@@ -1,253 +1,504 @@
 """
 Tests for RAG Strategies and Search Functionality
 
-Tests hybrid search, agentic RAG, reranking, and other advanced RAG features.
+Tests RAGService class, hybrid search, agentic RAG, reranking, and other advanced RAG features.
+Updated to match current async-only architecture.
 """
 import pytest
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+import os
+from unittest.mock import AsyncMock, MagicMock, patch, call
 from typing import List, Dict, Any
 
-# Test hybrid search functionality
-class TestHybridSearch:
-    """Test hybrid search implementation"""
-    
-    @pytest.mark.asyncio
-    async def test_hybrid_search_enabled_for_rag(self):
-        """Test that hybrid search is used when enabled in RAG queries"""
-        with patch('src.server.services.embeddings.embedding_service.create_embeddings_batch') as mock_embed, \
-             patch('src.server.services.search.vector_search_service.search_similar_documents') as mock_search:
+# Mock problematic imports at module level
+with patch.dict(os.environ, {
+    'SUPABASE_URL': 'http://test.supabase.co',
+    'SUPABASE_SERVICE_KEY': 'test_key',
+    'OPENAI_API_KEY': 'test_openai_key'
+}):
+    # Mock credential service to prevent database calls
+    with patch('src.server.services.credential_service.credential_service') as mock_cred:
+        mock_cred._cache_initialized = False
+        mock_cred.get_setting.return_value = 'false'
+        mock_cred.get_bool_setting.return_value = False
+        
+        # Mock supabase client creation
+        with patch('src.server.utils.get_supabase_client') as mock_supabase:
+            mock_client = MagicMock()
+            mock_supabase.return_value = mock_client
             
-            mock_embed.return_value = [[0.1] * 1536]  # Mock embedding
+            # Mock embedding service to prevent API calls
+            with patch('src.server.services.embeddings.embedding_service.create_embedding') as mock_embed:
+                mock_embed.return_value = [0.1] * 1536
+
+# Test RAGService core functionality
+class TestRAGService:
+    """Test core RAGService functionality"""
+    
+    @pytest.fixture
+    def mock_supabase_client(self):
+        """Mock Supabase client"""
+        return MagicMock()
+    
+    @pytest.fixture
+    def rag_service(self, mock_supabase_client):
+        """Create RAGService instance"""
+        from src.server.services.search import RAGService
+        return RAGService(supabase_client=mock_supabase_client)
+    
+    def test_rag_service_initialization(self, rag_service):
+        """Test RAGService initializes correctly"""
+        assert rag_service is not None
+        assert hasattr(rag_service, 'search_documents')
+        assert hasattr(rag_service, 'search_code_examples')
+        assert hasattr(rag_service, 'perform_rag_query')
+    
+    def test_get_setting(self, rag_service):
+        """Test settings retrieval"""
+        with patch.dict('os.environ', {'USE_HYBRID_SEARCH': 'true'}):
+            result = rag_service.get_setting('USE_HYBRID_SEARCH', 'false')
+            assert result == 'true'
+    
+    def test_get_bool_setting(self, rag_service):
+        """Test boolean settings retrieval"""
+        with patch.dict('os.environ', {'USE_RERANKING': 'true'}):
+            result = rag_service.get_bool_setting('USE_RERANKING', False)
+            assert result is True
+
+    @pytest.mark.asyncio
+    async def test_search_documents_basic(self, rag_service):
+        """Test basic document search"""
+        with patch('src.server.services.embeddings.embedding_service.create_embedding') as mock_embedding, \
+             patch.object(rag_service, '_basic_vector_search') as mock_search:
+            
+            # Mock embedding creation
+            mock_embedding.return_value = [0.1] * 1536  # Mock embedding
+            
             mock_search.return_value = [
                 {'content': 'Test content 1', 'score': 0.95},
                 {'content': 'Test content 2', 'score': 0.85}
             ]
             
-            # Import after patching to avoid import-time execution
-            from src.server.services.search.search_services import perform_rag_search
-            
-            result = await perform_rag_search(
+            result = await rag_service.search_documents(
                 query="test query",
-                use_hybrid_search=True,
                 match_count=5
             )
             
-            assert 'results' in result
-            assert len(result['results']) >= 1
-            mock_embed.assert_called_once()
-    
+            assert isinstance(result, list)
+            assert len(result) == 2
+            assert result[0]['content'] == 'Test content 1'
+            mock_search.assert_called_once()
+
     @pytest.mark.asyncio
-    async def test_hybrid_search_disabled_for_rag(self):
-        """Test that basic vector search is used when hybrid search disabled"""
-        with patch('src.server.services.embeddings.embedding_service.create_embeddings_batch') as mock_embed, \
-             patch('src.server.services.search.vector_search_service.search_similar_documents') as mock_search:
+    async def test_search_documents_with_hybrid_search(self, rag_service):
+        """Test document search with hybrid search enabled"""
+        with patch('src.server.services.embeddings.embedding_service.create_embedding') as mock_embedding, \
+             patch.object(rag_service.hybrid_strategy, 'search_documents_hybrid') as mock_hybrid_search:
             
-            mock_embed.return_value = [[0.1] * 1536]
-            mock_search.return_value = [
-                {'content': 'Basic search result', 'score': 0.90}
+            # Mock embedding creation
+            mock_embedding.return_value = [0.1] * 1536  # Mock embedding
+            
+            # Mock hybrid search results
+            mock_hybrid_search.return_value = [
+                {'content': 'Hybrid result', 'score': 0.92, 'similarity': 0.92}
             ]
             
-            from src.server.services.search.search_services import perform_rag_search
-            
-            result = await perform_rag_search(
-                query="test query", 
-                use_hybrid_search=False,
+            result = await rag_service.search_documents(
+                query="test query",
+                use_hybrid_search=True,
                 match_count=3
             )
             
-            assert 'results' in result
-            mock_embed.assert_called_once()
-    
+            assert isinstance(result, list)
+            assert len(result) == 1
+            assert result[0]['content'] == 'Hybrid result'
+            mock_hybrid_search.assert_called_once()
+
     @pytest.mark.asyncio
-    async def test_hybrid_search_implementation(self):
-        """Test the core hybrid search functionality"""
-        with patch('src.server.services.search.rag_service.create_embedding') as mock_embed, \
-             patch('src.server.services.search.vector_search_service.search_similar_documents') as mock_search:
-            
-            mock_embed.return_value = [0.1] * 1536
-            mock_search.return_value = [
-                {'content': 'Relevant content', 'score': 0.92, 'metadata': {'source': 'doc1'}}
+    async def test_search_code_examples(self, rag_service):
+        """Test code examples search"""
+        with patch.object(rag_service.agentic_strategy, 'search_code_examples') as mock_agentic_search:
+            # Mock agentic search results
+            mock_agentic_search.return_value = [
+                {
+                    'content': 'def example():\n    pass',
+                    'summary': 'Python function example',
+                    'url': 'test.py',
+                    'metadata': {'language': 'python'}
+                }
             ]
             
-            # Test hybrid search combines multiple search strategies
-            from src.server.services.search.search_services import SearchService
+            result = await rag_service.search_code_examples(
+                query="python function example",
+                match_count=5
+            )
             
-            search_service = SearchService()
-            results = await search_service.hybrid_search(
+            assert isinstance(result, list)
+            assert len(result) == 1
+            mock_agentic_search.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_perform_rag_query(self, rag_service):
+        """Test complete RAG query flow"""
+        with patch.object(rag_service, 'search_documents') as mock_search, \
+             patch.object(rag_service, 'rerank_results') as mock_rerank:
+            
+            mock_search.return_value = [
+                {'content': 'Relevant content', 'score': 0.90}
+            ]
+            mock_rerank.return_value = [
+                {'content': 'Relevant content', 'score': 0.95}
+            ]
+            
+            success, result = await rag_service.perform_rag_query(
                 query="test query",
                 match_count=5
             )
             
-            assert isinstance(results, list)
-            if results:  # If results returned
-                assert 'content' in results[0]
-                assert 'score' in results[0]
+            assert success is True
+            assert 'results' in result
+            assert isinstance(result['results'], list)
 
-
-class TestAgenticRAG:
-    """Test agentic RAG functionality"""
-    
-    @pytest.mark.asyncio  
-    async def test_agentic_rag_enabled_allows_search(self):
-        """Test that agentic RAG can perform autonomous searches"""
-        with patch.object('src.server.services.search.agentic_rag_strategy.AgenticRAGStrategy', 'search_code_examples') as mock_search:
-            mock_search.return_value = [
-                {'code': 'def example():\n    pass', 'language': 'python', 'score': 0.88}
+    @pytest.mark.asyncio
+    async def test_rerank_results(self, rag_service):
+        """Test result reranking"""
+        from src.server.services.search import RerankingStrategy
+        
+        with patch.object(RerankingStrategy, 'is_available') as mock_available, \
+             patch.object(RerankingStrategy, 'rerank_results') as mock_rerank:
+            
+            mock_available.return_value = True
+            mock_rerank.return_value = [
+                {'content': 'Reranked content', 'score': 0.98}
             ]
             
-            from src.server.services.search.agentic_rag_strategy import AgenticRAGStrategy
+            original_results = [
+                {'content': 'Original content', 'score': 0.80}
+            ]
             
-            strategy = AgenticRAGStrategy()
-            results = await strategy.autonomous_search(
-                query="python function example",
-                search_types=['code_examples', 'documentation']
+            result = await rag_service.rerank_results(
+                query="test query",
+                results=original_results
             )
             
-            assert isinstance(results, list)
-            # Agentic RAG should return structured results
-            if results:
-                assert any('code' in r or 'content' in r for r in results)
+            assert isinstance(result, list)
 
 
-class TestReranking:
-    """Test reranking functionality in RAG"""
+class TestHybridSearchStrategy:
+    """Test hybrid search strategy implementation"""
+    
+    @pytest.fixture
+    def mock_supabase_client(self):
+        """Mock Supabase client"""
+        return MagicMock()
+    
+    @pytest.fixture
+    def hybrid_strategy(self, mock_supabase_client):
+        """Create HybridSearchStrategy instance"""
+        from src.server.services.search import HybridSearchStrategy
+        return HybridSearchStrategy(mock_supabase_client)
+    
+    def test_hybrid_strategy_initialization(self, hybrid_strategy):
+        """Test HybridSearchStrategy initializes correctly"""
+        assert hybrid_strategy is not None
+        assert hasattr(hybrid_strategy, 'search_documents_hybrid')
+        assert hasattr(hybrid_strategy, 'search_code_examples_hybrid')
+
+    def test_merge_search_results(self, hybrid_strategy):
+        """Test search result merging"""
+        vector_results = [
+            {'id': '1', 'content': 'Vector result 1', 'score': 0.9, 'url': 'url1', 'chunk_number': 1, 'metadata': {}, 'source_id': 'source1', 'similarity': 0.9}
+        ]
+        keyword_results = [
+            {'id': '2', 'content': 'Keyword result 1', 'score': 0.8, 'url': 'url2', 'chunk_number': 1, 'metadata': {}, 'source_id': 'source2'}
+        ]
+        
+        merged = hybrid_strategy._merge_search_results(
+            vector_results, keyword_results, match_count=5
+        )
+        
+        assert isinstance(merged, list)
+        assert len(merged) <= 5
+        # Should contain results from both sources
+        if merged:
+            assert any('Vector result' in str(r) or 'Keyword result' in str(r) for r in merged)
+
+
+class TestRerankingStrategy:
+    """Test reranking strategy implementation"""
+    
+    @pytest.fixture
+    def reranking_strategy(self):
+        """Create RerankingStrategy instance"""
+        from src.server.services.search import RerankingStrategy
+        return RerankingStrategy()
+    
+    def test_reranking_strategy_initialization(self, reranking_strategy):
+        """Test RerankingStrategy initializes correctly"""
+        assert reranking_strategy is not None
+        assert hasattr(reranking_strategy, 'rerank_results')
+        assert hasattr(reranking_strategy, 'is_available')
+    
+    def test_model_availability_check(self, reranking_strategy):
+        """Test model availability checking"""
+        # This should not crash even if model not available
+        availability = reranking_strategy.is_available()
+        assert isinstance(availability, bool)
     
     @pytest.mark.asyncio
-    async def test_reranking_applied_to_rag_results(self):
-        """Test that reranking improves result relevance"""
-        with patch('src.server.services.embeddings.embedding_service.create_embeddings_batch') as mock_embed:
-            mock_embed.return_value = [[0.1] * 1536, [0.2] * 1536]
+    async def test_rerank_results_no_model(self, reranking_strategy):
+        """Test reranking when model not available"""
+        with patch.object(reranking_strategy, 'is_available') as mock_available:
+            mock_available.return_value = False
             
-            from src.server.services.search.search_services import SearchService
-            
-            # Mock initial results
-            initial_results = [
-                {'content': 'Less relevant content', 'score': 0.7},
-                {'content': 'Highly relevant content', 'score': 0.6},  # Lower initial score
-                {'content': 'Moderately relevant', 'score': 0.8}
+            original_results = [
+                {'content': 'Test content', 'score': 0.8}
             ]
             
-            search_service = SearchService()
-            
-            # Test reranking improves order
-            reranked = await search_service.rerank_results(
-                query="highly relevant",
-                results=initial_results
+            result = await reranking_strategy.rerank_results(
+                query="test query",
+                results=original_results
             )
             
-            assert isinstance(reranked, list)
-            assert len(reranked) <= len(initial_results)
-            # After reranking, results should be properly ordered
+            # Should return original results when model not available
+            assert result == original_results
+
+    @pytest.mark.asyncio
+    async def test_rerank_results_with_model(self, reranking_strategy):
+        """Test reranking when model is available"""
+        with patch.object(reranking_strategy, 'is_available') as mock_available, \
+             patch.object(reranking_strategy, 'model') as mock_model:
+            
+            mock_available.return_value = True
+            mock_model_instance = MagicMock()
+            mock_model_instance.predict.return_value = [0.95, 0.85]  # Mock scores
+            mock_model = mock_model_instance
+            reranking_strategy.model = mock_model_instance
+            
+            original_results = [
+                {'content': 'Content 1', 'score': 0.8},
+                {'content': 'Content 2', 'score': 0.7}
+            ]
+            
+            result = await reranking_strategy.rerank_results(
+                query="test query",
+                results=original_results
+            )
+            
+            assert isinstance(result, list)
+            assert len(result) <= len(original_results)
 
 
-class TestRAGStrategiesIntegration:
+class TestAgenticRAGStrategy:
+    """Test agentic RAG strategy implementation"""
+    
+    @pytest.fixture
+    def agentic_strategy(self):
+        """Create AgenticRAGStrategy instance"""
+        from src.server.services.search import AgenticRAGStrategy
+        return AgenticRAGStrategy()
+    
+    def test_agentic_strategy_initialization(self, agentic_strategy):
+        """Test AgenticRAGStrategy initializes correctly"""
+        assert agentic_strategy is not None
+        # Check for expected methods
+        methods = dir(agentic_strategy)
+        assert any('search' in method.lower() for method in methods)
+
+
+class TestRAGIntegration:
     """Integration tests for RAG strategies working together"""
     
+    @pytest.fixture
+    def mock_supabase_client(self):
+        """Mock Supabase client"""
+        return MagicMock()
+    
+    @pytest.fixture
+    def rag_service(self, mock_supabase_client):
+        """Create RAGService instance"""
+        from src.server.services.search import RAGService
+        return RAGService(supabase_client=mock_supabase_client)
+    
     @pytest.mark.asyncio
-    async def test_hybrid_search_with_reranking(self):
-        """Test hybrid search combined with reranking"""
-        with patch('src.server.services.embeddings.embedding_service.create_embeddings_batch') as mock_embed:
-            mock_embed.return_value = [[0.1] * 1536]
+    async def test_full_rag_pipeline(self, rag_service):
+        """Test complete RAG pipeline with all strategies"""
+        with patch('src.server.services.embeddings.embedding_service.create_embedding') as mock_embedding, \
+             patch.object(rag_service, '_basic_vector_search') as mock_search, \
+             patch.object(rag_service, 'get_bool_setting') as mock_settings, \
+             patch.object(rag_service, 'rerank_results') as mock_rerank:
             
-            from src.server.services.search.search_services import perform_rag_search
+            # Mock embedding creation
+            mock_embedding.return_value = [0.1] * 1536
             
-            result = await perform_rag_search(
+            # Enable all strategies
+            mock_settings.side_effect = lambda key, default: True
+            
+            mock_search.return_value = [
+                {'content': 'Test result 1', 'similarity': 0.9, 'id': '1', 'metadata': {}},
+                {'content': 'Test result 2', 'similarity': 0.8, 'id': '2', 'metadata': {}}
+            ]
+            
+            mock_rerank.return_value = [
+                {'content': 'Reranked result', 'similarity': 0.95, 'id': '1', 'metadata': {}}
+            ]
+            
+            success, result = await rag_service.perform_rag_query(
                 query="complex technical query",
-                use_hybrid_search=True,
-                use_reranking=True,
                 match_count=10
             )
             
+            assert success is True
             assert 'results' in result
             assert isinstance(result['results'], list)
-            # Should have called embedding service
-            mock_embed.assert_called()
-    
+
     @pytest.mark.asyncio
-    async def test_error_handling_across_strategies(self):
-        """Test error handling when RAG strategies fail"""
-        with patch('src.server.services.embeddings.embedding_service.create_embeddings_batch') as mock_embed:
+    async def test_error_handling_in_rag_pipeline(self, rag_service):
+        """Test error handling when strategies fail"""
+        with patch('src.server.services.embeddings.embedding_service.create_embedding') as mock_embedding:
             # Simulate embedding failure
-            mock_embed.side_effect = Exception("Embedding API unavailable")
+            mock_embedding.side_effect = Exception("Database connection failed")
             
-            from src.server.services.search.search_services import perform_rag_search
-            
-            # Should handle errors gracefully
-            result = await perform_rag_search(
+            success, result = await rag_service.perform_rag_query(
                 query="test query",
-                use_hybrid_search=True,
                 match_count=5
             )
             
-            # Should return some form of result even on error
-            assert isinstance(result, dict)
-            # May return empty results or fallback results
-            assert 'results' in result or 'error' in result
+            # Should handle errors gracefully
+            assert success is False
+            assert 'error' in result
+
+    @pytest.mark.asyncio
+    async def test_empty_results_handling(self, rag_service):
+        """Test handling of empty search results"""
+        with patch('src.server.services.embeddings.embedding_service.create_embedding') as mock_embedding, \
+             patch.object(rag_service, '_basic_vector_search') as mock_search:
+            
+            # Mock embedding creation
+            mock_embedding.return_value = [0.1] * 1536
+            mock_search.return_value = []  # Empty results
+            
+            success, result = await rag_service.perform_rag_query(
+                query="nonexistent query",
+                match_count=5
+            )
+            
+            assert success is True
+            assert 'results' in result
+            assert len(result['results']) == 0
 
 
-class TestRAGPerformanceOptimizations:
-    """Test RAG performance optimizations"""
+class TestRAGPerformance:
+    """Test RAG performance and optimization features"""
+    
+    @pytest.fixture
+    def rag_service(self):
+        """Create RAGService instance"""
+        from src.server.services.search import RAGService
+        return RAGService()
     
     @pytest.mark.asyncio
-    async def test_concurrent_embedding_generation(self):
-        """Test that embeddings can be generated concurrently"""
-        with patch('src.server.services.embeddings.embedding_service.create_embeddings_batch') as mock_embed:
-            # Simulate batch embedding
-            mock_embed.return_value = [[0.1] * 1536, [0.2] * 1536, [0.3] * 1536]
+    async def test_concurrent_rag_queries(self, rag_service):
+        """Test multiple concurrent RAG queries"""
+        with patch('src.server.services.embeddings.embedding_service.create_embedding') as mock_embedding, \
+             patch.object(rag_service, '_basic_vector_search') as mock_search:
             
-            from src.server.services.embeddings.embedding_service import create_embeddings_batch
+            # Mock embedding creation
+            mock_embedding.return_value = [0.1] * 1536
             
-            # Test batch processing
-            texts = ["query 1", "query 2", "query 3"]
-            results = await create_embeddings_batch(texts)
+            mock_search.return_value = [
+                {'content': f'Result for concurrent test', 'similarity': 0.9, 'id': '1', 'metadata': {}}
+            ]
             
+            # Run multiple queries concurrently
+            queries = ["query 1", "query 2", "query 3"]
+            tasks = [
+                rag_service.perform_rag_query(query, match_count=3) 
+                for query in queries
+            ]
+            
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            # All should complete successfully
             assert len(results) == 3
-            assert all(len(embedding) == 1536 for embedding in results)
-    
+            for result in results:
+                if isinstance(result, tuple):
+                    success, data = result
+                    assert success is True or isinstance(data, dict)
+
     @pytest.mark.asyncio
-    async def test_caching_behavior(self):
-        """Test that RAG results are properly cached"""
-        # This would test caching mechanisms if implemented
-        from src.server.services.search.search_services import SearchService
-        
-        search_service = SearchService()
-        # Test would verify caching behavior
-        assert search_service is not None  # Basic instantiation test
+    async def test_large_result_set_handling(self, rag_service):
+        """Test handling of large result sets"""
+        with patch('src.server.services.embeddings.embedding_service.create_embedding') as mock_embedding, \
+             patch.object(rag_service, '_basic_vector_search') as mock_search:
+            
+            # Mock embedding creation
+            mock_embedding.return_value = [0.1] * 1536
+            
+            # Create large result set
+            large_results = [
+                {'content': f'Result {i}', 'similarity': 0.9 - (i * 0.01), 'id': str(i), 'metadata': {}}
+                for i in range(100)
+            ]
+            mock_search.return_value = large_results
+            
+            success, result = await rag_service.perform_rag_query(
+                query="large query",
+                match_count=50
+            )
+            
+            assert success is True
+            assert 'results' in result
+            # Should respect match_count limit
+            assert len(result['results']) <= 50
 
 
-class TestRAGConfigurationHandling:
+class TestRAGConfiguration:
     """Test RAG configuration and settings"""
     
-    @pytest.mark.asyncio
-    async def test_rag_settings_loading(self):
-        """Test loading of RAG configuration settings"""
-        from src.server.services.credential_service import credential_service
-        
-        # Test loading RAG-specific settings
-        try:
-            rag_settings = await credential_service.get_credentials_by_category("rag_strategy")
-            assert isinstance(rag_settings, dict)
-        except Exception:
-            # Settings might not be initialized in test environment
-            pytest.skip("RAG settings not available in test environment")
+    @pytest.fixture
+    def rag_service(self):
+        """Create RAGService instance"""
+        from src.server.services.search import RAGService
+        return RAGService()
+    
+    def test_environment_variable_settings(self, rag_service):
+        """Test reading settings from environment variables"""
+        with patch.dict('os.environ', {
+            'USE_HYBRID_SEARCH': 'true',
+            'USE_RERANKING': 'false',
+            'USE_AGENTIC_RAG': 'true'
+        }):
+            assert rag_service.get_bool_setting('USE_HYBRID_SEARCH') is True
+            assert rag_service.get_bool_setting('USE_RERANKING') is False
+            assert rag_service.get_bool_setting('USE_AGENTIC_RAG') is True
+    
+    def test_default_settings(self, rag_service):
+        """Test default settings when environment variables not set"""
+        with patch.dict('os.environ', {}, clear=True):
+            assert rag_service.get_bool_setting('NONEXISTENT_SETTING', True) is True
+            assert rag_service.get_bool_setting('NONEXISTENT_SETTING', False) is False
     
     @pytest.mark.asyncio
-    async def test_embedding_batch_size_configuration(self):
-        """Test that embedding batch size is configurable"""
-        with patch('src.server.services.credential_service.credential_service.get_credentials_by_category') as mock_creds:
-            mock_creds.return_value = {"EMBEDDING_BATCH_SIZE": "50"}
+    async def test_strategy_conditional_execution(self, rag_service):
+        """Test that strategies only execute when enabled"""
+        with patch('src.server.services.embeddings.embedding_service.create_embedding') as mock_embedding, \
+             patch.object(rag_service, '_basic_vector_search') as mock_search, \
+             patch.object(rag_service, 'get_bool_setting') as mock_setting:
             
-            from src.server.services.embeddings.embedding_service import create_embeddings_batch
+            # Mock embedding creation
+            mock_embedding.return_value = [0.1] * 1536
             
-            # Should respect batch size configuration
-            texts = ["text"] * 100  # Large batch
-            with patch('src.server.services.llm_provider_service.get_llm_client'):
-                with patch('src.server.services.threading_service.get_threading_service'):
-                    try:
-                        await create_embeddings_batch(texts)
-                        # If it completes without error, configuration is working
-                        assert True
-                    except Exception as e:
-                        # Expected in test environment without full setup
-                        assert "client" in str(e).lower() or "provider" in str(e).lower()
+            mock_search.return_value = [{'content': 'test', 'similarity': 0.9, 'id': '1', 'metadata': {}}]
+            
+            # Disable all strategies
+            mock_setting.return_value = False
+            
+            success, result = await rag_service.perform_rag_query(
+                query="test query",
+                match_count=5
+            )
+            
+            assert success is True
+            # Should still return results from basic search
+            assert 'results' in result

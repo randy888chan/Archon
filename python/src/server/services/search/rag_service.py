@@ -27,7 +27,7 @@ from ...config.logfire_config import safe_span, get_logger
 
 # Import all strategies
 from .hybrid_search_strategy import HybridSearchStrategy
-from .reranking_strategy import RerankingStrategy, create_reranking_strategy
+from .reranking_strategy import RerankingStrategy
 from .agentic_rag_strategy import AgenticRAGStrategy
 
 logger = get_logger(__name__)
@@ -152,7 +152,7 @@ class RAGService:
         
         return results
 
-    async def search_documents_async(
+    async def search_documents(
         self,
         query: str,
         match_count: int = 5,
@@ -161,7 +161,7 @@ class RAGService:
         cached_api_key: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """
-        Async document search with hybrid search capability.
+        Document search with hybrid search capability.
         
         Args:
             query: Search query string
@@ -173,7 +173,7 @@ class RAGService:
         Returns:
             List of matching documents
         """
-        with safe_span("rag_search_documents_async", 
+        with safe_span("rag_search_documents", 
                        query_length=len(query),
                        match_count=match_count,
                        hybrid_enabled=use_hybrid_search) as span:
@@ -252,33 +252,6 @@ class RAGService:
             logger.error(f"Basic vector search failed: {e}")
             return []
 
-    def search_documents(
-        self,
-        query: str,
-        match_count: int = 5,
-        filter_metadata: Optional[dict] = None,
-        use_hybrid_search: bool = False,
-        cached_api_key: Optional[str] = None
-    ) -> List[Dict[str, Any]]:
-        """
-        Sync version of document search - delegates to async implementation.
-        
-        This method exists for backward compatibility with existing sync code.
-        """
-        import asyncio
-        
-        # Check if we're already in an async context
-        try:
-            loop = asyncio.get_running_loop()
-            # If we get here, we're in an async context - need to handle differently
-            logger.warning("search_documents called from async context - results may be limited")
-            # Return empty results rather than causing issues
-            return []
-        except RuntimeError:
-            # Not in async context, safe to run
-            return asyncio.run(self.search_documents_async(
-                query, match_count, filter_metadata, use_hybrid_search, cached_api_key
-            ))
 
     async def search_code_examples(
         self,
@@ -339,7 +312,7 @@ class RAGService:
                 use_reranking = self.get_bool_setting("USE_RERANKING", False)
                 
                 # Step 1 & 2: Get results (with hybrid search if enabled)
-                results = await self.search_documents_async(
+                results = await self.search_documents(
                     query=query,
                     match_count=match_count,
                     filter_metadata=filter_metadata,
@@ -454,7 +427,7 @@ class RAGService:
                     )
                 else:
                     # Use standard agentic search
-                    results = await self.agentic_strategy.search_code_examples_async(
+                    results = await self.agentic_strategy.search_code_examples(
                         query=query,
                         match_count=match_count,
                         filter_metadata=filter_metadata,
@@ -509,29 +482,3 @@ class RAGService:
                 }
 
 
-# Legacy function wrappers for backward compatibility
-def search_documents(
-    client, query: str, match_count: int = 5, filter_metadata: Optional[dict] = None,
-    use_hybrid_search: bool = False, cached_api_key: Optional[str] = None
-) -> List[Dict[str, Any]]:
-    """Legacy wrapper for RAGService.search_documents"""
-    service = RAGService(supabase_client=client)
-    return service.search_documents(query, match_count, filter_metadata, use_hybrid_search, cached_api_key)
-
-
-async def search_documents_async(
-    client, query: str, match_count: int = 5, filter_metadata: Optional[dict] = None,
-    use_hybrid_search: bool = False, cached_api_key: Optional[str] = None
-) -> List[Dict[str, Any]]:
-    """Legacy wrapper for RAGService.search_documents_async"""
-    service = RAGService(supabase_client=client)
-    return await service.search_documents_async(query, match_count, filter_metadata, use_hybrid_search, cached_api_key)
-
-
-async def search_code_examples(
-    client, query: str, match_count: int = 10, filter_metadata: Optional[Dict[str, Any]] = None,
-    source_id: Optional[str] = None
-) -> List[Dict[str, Any]]:
-    """Legacy wrapper for RAGService.search_code_examples"""
-    service = RAGService(supabase_client=client)
-    return await service.search_code_examples(query, match_count, filter_metadata, source_id)
