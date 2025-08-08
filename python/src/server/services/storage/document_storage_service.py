@@ -225,10 +225,17 @@ async def add_documents_to_supabase(
             
             # Create embeddings for the batch - no progress reporting
             # Don't pass websocket to avoid Socket.IO issues
-            batch_embeddings = await create_embeddings_batch_async(
-                contextual_contents,
-                provider=provider
-            )
+            try:
+                batch_embeddings = await create_embeddings_batch_async(
+                    contextual_contents,
+                    provider=provider
+                )
+            except Exception as e:
+                search_logger.error(f"Failed to create embeddings for batch {batch_num}: {e}")
+                # Skip this batch entirely - don't store documents without embeddings
+                search_logger.warning(f"Skipping batch {batch_num} ({len(batch_contents)} chunks) due to embedding failure")
+                completed_batches += 1
+                continue
             
             # Prepare batch data
             batch_data = []
