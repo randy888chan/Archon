@@ -1,19 +1,37 @@
 """
 Search Services
 
-Handles vector search operations for documents and code.
+Consolidated search and RAG functionality with strategy pattern support.
 """
-from .vector_search_service import (
+# Main RAG service
+from .rag_service import (
+    RAGService,
     search_documents,
+    search_documents_async,
     search_code_examples
 )
-from .search_services import SearchService
+
+# Strategy implementations
+from .hybrid_search_strategy import HybridSearchStrategy
+from .reranking_strategy import RerankingStrategy, create_reranking_strategy
+from .agentic_rag_strategy import AgenticRAGStrategy
+
+# Legacy compatibility
+from .rag_service import RAGService as SearchService
 
 __all__ = [
-    # Service classes
-    'SearchService',
+    # Main service classes
+    'RAGService',
+    'SearchService',  # Legacy compatibility
     
-    # Search utilities
+    # Strategy classes
+    'HybridSearchStrategy',
+    'RerankingStrategy', 
+    'AgenticRAGStrategy',
+    
+    # Utility functions
     'search_documents',
-    'search_code_examples'
+    'search_documents_async',
+    'search_code_examples',
+    'create_reranking_strategy'
 ]

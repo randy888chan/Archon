@@ -20,7 +20,7 @@ from pydantic import BaseModel
 
 from ..utils import get_supabase_client
 from ..services.storage import DocumentStorageService
-from ..services.search import SearchService
+from ..services.search.rag_service import RAGService
 from ..services.knowledge import CrawlOrchestrationService, KnowledgeItemService, DatabaseMetricsService
 from ..services.crawler_manager import get_crawler
 
@@ -632,8 +632,8 @@ async def perform_rag_query(request: RagQueryRequest):
         raise HTTPException(status_code=422, detail="Query cannot be empty")
     
     try:
-        # Use SearchService for RAG query
-        search_service = SearchService(get_supabase_client())
+        # Use RAGService for RAG query
+        search_service = RAGService(get_supabase_client())
         success, result = await search_service.perform_rag_query(
             query=request.query,
             source=request.source,
@@ -659,8 +659,8 @@ async def perform_rag_query(request: RagQueryRequest):
 async def search_code_examples(request: RagQueryRequest):
     """Search for code examples relevant to the query using dedicated code examples service."""
     try:
-        # Use SearchService for code examples search
-        search_service = SearchService(get_supabase_client())
+        # Use RAGService for code examples search
+        search_service = RAGService(get_supabase_client())
         success, result = await search_service.search_code_examples_service(
             query=request.query,
             source_id=request.source,  # This is Optional[str] which matches the method signature

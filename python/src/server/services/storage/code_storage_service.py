@@ -13,25 +13,24 @@ from urllib.parse import urlparse
 from supabase import Client
 
 from ...config.logfire_config import search_logger
-from ..embeddings.embedding_service import create_embeddings_batch_async, create_embedding_async
+from ..embeddings.embedding_service import create_embeddings_batch, create_embedding
 from ..embeddings.contextual_embedding_service import generate_contextual_embeddings_batch
-from ..llm_provider_service import get_llm_client_sync
+from ..llm_provider_service import get_llm_client
 
 
 def _get_model_choice() -> str:
-    """Get MODEL_CHOICE from credential service using proper methods (sync version)."""
+    """Get MODEL_CHOICE with direct fallback (sync version - deprecated)."""
     try:
-        # Import the sync helper from llm_provider_service
-        from ..llm_provider_service import _get_active_provider_sync
-        
-        provider_config = _get_active_provider_sync()
-        model = provider_config["chat_model"]
-        provider = provider_config["provider"]
-        
-        search_logger.debug(f"Using model from provider config: {model} with provider: {provider}")
+        # Direct cache/env fallback since sync function was removed
+        from ..credential_service import credential_service
+        if credential_service._cache_initialized and "MODEL_CHOICE" in credential_service._cache:
+            model = credential_service._cache["MODEL_CHOICE"]
+        else:
+            model = os.getenv("MODEL_CHOICE", "gpt-4.1-nano")
+        search_logger.debug(f"Using model choice: {model}")
         return model
     except Exception as e:
-        search_logger.warning(f"Error getting provider config: {e}, using default")
+        search_logger.warning(f"Error getting model choice: {e}, using default")
         return "gpt-4.1-nano"
 
 
@@ -165,21 +164,26 @@ def extract_code_blocks(markdown_content: str, min_length: int = None) -> List[D
     Returns:
         List of dictionaries containing code blocks and their context
     """
-    # Load all code extraction settings
+    # Load all code extraction settings with direct fallback
     try:
-        from ...services.credential_service import get_credential_sync
+        from ...services.credential_service import credential_service
+        
+        def _get_setting_fallback(key: str, default: str) -> str:
+            if credential_service._cache_initialized and key in credential_service._cache:
+                return credential_service._cache[key]
+            return os.getenv(key, default)
         
         # Get all relevant settings with defaults
         if min_length is None:
-            min_length = int(get_credential_sync('MIN_CODE_BLOCK_LENGTH', 250))
+            min_length = int(_get_setting_fallback('MIN_CODE_BLOCK_LENGTH', '250'))
         
-        max_length = int(get_credential_sync('MAX_CODE_BLOCK_LENGTH', 5000))
-        enable_prose_filtering = get_credential_sync('ENABLE_PROSE_FILTERING', 'true').lower() == 'true'
-        max_prose_ratio = float(get_credential_sync('MAX_PROSE_RATIO', '0.15'))
-        min_code_indicators = int(get_credential_sync('MIN_CODE_INDICATORS', 3))
-        enable_diagram_filtering = get_credential_sync('ENABLE_DIAGRAM_FILTERING', 'true').lower() == 'true'
-        enable_contextual_length = get_credential_sync('ENABLE_CONTEXTUAL_LENGTH', 'true').lower() == 'true'
-        context_window_size = int(get_credential_sync('CONTEXT_WINDOW_SIZE', 1000))
+        max_length = int(_get_setting_fallback('MAX_CODE_BLOCK_LENGTH', '5000'))
+        enable_prose_filtering = _get_setting_fallback('ENABLE_PROSE_FILTERING', 'true').lower() == 'true'
+        max_prose_ratio = float(_get_setting_fallback('MAX_PROSE_RATIO', '0.15'))
+        min_code_indicators = int(_get_setting_fallback('MIN_CODE_INDICATORS', '3'))
+        enable_diagram_filtering = _get_setting_fallback('ENABLE_DIAGRAM_FILTERING', 'true').lower() == 'true'
+        enable_contextual_length = _get_setting_fallback('ENABLE_CONTEXTUAL_LENGTH', 'true').lower() == 'true'
+        context_window_size = int(_get_setting_fallback('CONTEXT_WINDOW_SIZE', '1000'))
         
     except Exception as e:
         # Fallback to defaults if settings retrieval fails
@@ -461,12 +465,30 @@ Format your response as JSON:
 """
     
     try:
-        # Get LLM client using the provider service
-        # Note: Sync version has limited provider support
+        # Get LLM client using fallback since sync version was removed
+        # TODO: Convert this function to async in Phase 2A
         try:
-            client = get_llm_client_sync()
+            import openai
+            import os
+            api_key = os.getenv("OPENAI_API_KEY")
+            if not api_key:
+                # Try to get from credential service with direct fallback
+                from ..credential_service import credential_service
+                if credential_service._cache_initialized and "OPENAI_API_KEY" in credential_service._cache:
+                    cached_key = credential_service._cache["OPENAI_API_KEY"]
+                    if isinstance(cached_key, dict) and cached_key.get("is_encrypted"):
+                        api_key = credential_service._decrypt_value(cached_key["encrypted_value"])
+                    else:
+                        api_key = cached_key
+                else:
+                    api_key = os.getenv("OPENAI_API_KEY", "")
+            
+            if not api_key:
+                raise ValueError("No OpenAI API key available")
+            
+            client = openai.OpenAI(api_key=api_key)
         except Exception as e:
-            search_logger.error(f"Failed to create LLM client: {e} - returning default values")
+            search_logger.error(f"Failed to create LLM client fallback: {e} - returning default values")
             return {
                 "example_name": f"Code Example{f' ({language})' if language else ''}",
                 "summary": "Code example for demonstration purposes."
@@ -532,8 +554,11 @@ async def generate_code_summaries_batch(code_blocks: List[Dict[str, Any]], max_w
     # Get max_workers from settings if not provided
     if max_workers is None:
         try:
-            from ...services.credential_service import get_credential_sync
-            max_workers = int(get_credential_sync('CODE_SUMMARY_MAX_WORKERS', 3))
+            from ...services.credential_service import credential_service
+            if credential_service._cache_initialized and 'CODE_SUMMARY_MAX_WORKERS' in credential_service._cache:
+                max_workers = int(credential_service._cache['CODE_SUMMARY_MAX_WORKERS'])
+            else:
+                max_workers = int(os.getenv('CODE_SUMMARY_MAX_WORKERS', '3'))
         except:
             max_workers = 3  # Default fallback
     
@@ -721,7 +746,7 @@ async def add_code_examples_to_supabase(
             batch_texts = combined_texts
         
         # Create embeddings for the batch
-        embeddings = await create_embeddings_batch_async(batch_texts, provider=provider)
+        embeddings = await create_embeddings_batch(batch_texts, provider=provider)
         
         # Check if embeddings are valid (not all zeros)
         valid_embeddings = []
@@ -731,7 +756,7 @@ async def add_code_examples_to_supabase(
             else:
                 search_logger.warning("Zero or invalid embedding detected, creating new one...")
                 # Try to create a single embedding as fallback using async version
-                single_embedding = await create_embedding_async(batch_texts[idx], provider=provider)
+                single_embedding = await create_embedding(batch_texts[idx], provider=provider)
                 valid_embeddings.append(single_embedding)
         
         # Prepare batch data

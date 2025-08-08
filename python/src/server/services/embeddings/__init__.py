@@ -6,37 +6,27 @@ Handles all embedding-related operations.
 from .embedding_service import (
     create_embedding,
     create_embeddings_batch,
-    create_embedding_async,
-    create_embeddings_batch_async,
     get_openai_client,
-    get_openai_api_key,
-    get_openai_api_key_sync
+    get_openai_api_key
 )
 
 from .contextual_embedding_service import (
     generate_contextual_embedding,
-    generate_contextual_embedding_async,
     generate_contextual_embeddings_batch,
-    process_chunk_with_context,
-    process_chunk_with_context_async
+    process_chunk_with_context
 )
 
 __all__ = [
-    # Embedding functions
+    # Embedding functions (now async-only)
     'create_embedding',
     'create_embeddings_batch',
-    'create_embedding_async',
-    'create_embeddings_batch_async',
     'get_openai_client',
     
-    # Deprecated functions
+    # Deprecated function (kept for compatibility)
     'get_openai_api_key',
-    'get_openai_api_key_sync',
     
-    # Contextual embedding functions
+    # Contextual embedding functions (now async-only)
     'generate_contextual_embedding',
-    'generate_contextual_embedding_async',
     'generate_contextual_embeddings_batch',
-    'process_chunk_with_context',
-    'process_chunk_with_context_async'
+    'process_chunk_with_context'
 ]

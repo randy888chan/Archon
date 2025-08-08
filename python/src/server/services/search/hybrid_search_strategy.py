@@ -1,0 +1,287 @@
+"""
+Hybrid Search Strategy
+
+Implements hybrid search combining vector similarity search with keyword search
+for improved recall and precision in document and code example retrieval.
+
+Strategy combines:
+1. Vector/semantic search for conceptual matches
+2. Keyword search for exact term matches  
+3. Score boosting for results appearing in both searches
+4. Intelligent result merging with preference ordering
+"""
+
+from typing import List, Dict, Any, Optional, Set
+from supabase import Client
+
+from ..embeddings.embedding_service import create_embedding
+from ...config.logfire_config import safe_span, get_logger
+
+logger = get_logger(__name__)
+
+# Fixed similarity threshold for vector results
+SIMILARITY_THRESHOLD = 0.15
+
+
+class HybridSearchStrategy:
+    """Strategy class implementing hybrid search combining vector and keyword search"""
+
+    def __init__(self, supabase_client: Client):
+        self.supabase_client = supabase_client
+
+    def search_documents_hybrid(
+        self,
+        query: str,
+        query_embedding: List[float],
+        match_count: int,
+        filter_metadata: Optional[dict] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Perform hybrid search on crawled_pages table combining vector and keyword search.
+        
+        Args:
+            query: Original search query text
+            query_embedding: Pre-computed query embedding
+            match_count: Number of results to return
+            filter_metadata: Optional metadata filter dict
+            
+        Returns:
+            List of matching documents with boosted scores for dual matches
+        """
+        with safe_span("hybrid_search_documents") as span:
+            try:
+                # Prepare RPC parameters for vector search
+                rpc_params = {
+                    "query_embedding": query_embedding,
+                    "match_count": match_count * 2  # Get more vector results for filtering
+                }
+                
+                # Add filter to RPC params if provided
+                if filter_metadata:
+                    if "source" in filter_metadata:
+                        rpc_params["source_filter"] = filter_metadata["source"]
+                        rpc_params["filter"] = {}
+                    else:
+                        rpc_params["filter"] = filter_metadata
+                else:
+                    rpc_params["filter"] = {}
+
+                # 1. Get vector search results
+                vector_response = self.supabase_client.rpc("match_crawled_pages", rpc_params).execute()
+                vector_results = []
+                if vector_response.data:
+                    for result in vector_response.data:
+                        similarity = float(result.get("similarity", 0.0))
+                        if similarity >= SIMILARITY_THRESHOLD:
+                            vector_results.append(result)
+
+                # 2. Get keyword search results using ILIKE
+                keyword_query = self.supabase_client.from_('crawled_pages')\
+                    .select('id, url, chunk_number, content, metadata, source_id')\
+                    .ilike('content', f'%{query}%')
+
+                # Apply source filter if provided
+                if filter_metadata and "source" in filter_metadata:
+                    keyword_query = keyword_query.eq('source_id', filter_metadata["source"])
+
+                # Execute keyword search
+                keyword_response = keyword_query.limit(match_count * 2).execute()
+                keyword_results = keyword_response.data if keyword_response.data else []
+
+                # 3. Combine and merge results intelligently
+                combined_results = self._merge_search_results(
+                    vector_results, keyword_results, match_count
+                )
+
+                span.set_attribute("vector_results_count", len(vector_results))
+                span.set_attribute("keyword_results_count", len(keyword_results))
+                span.set_attribute("final_results_count", len(combined_results))
+
+                logger.debug(f"Hybrid document search: {len(vector_results)} vector + {len(keyword_results)} keyword → {len(combined_results)} final")
+                
+                return combined_results
+
+            except Exception as e:
+                logger.error(f"Hybrid document search failed: {e}")
+                span.set_attribute("error", str(e))
+                return []
+
+    async def search_code_examples_hybrid(
+        self,
+        query: str,
+        match_count: int,
+        filter_metadata: Optional[dict] = None,
+        source_id: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Perform hybrid search on code_examples table combining vector and keyword search.
+        
+        Args:
+            query: Search query text
+            match_count: Number of results to return
+            filter_metadata: Optional metadata filter dict
+            source_id: Optional source ID to filter results
+            
+        Returns:
+            List of matching code examples with boosted scores for dual matches
+        """
+        with safe_span("hybrid_search_code_examples") as span:
+            try:
+                # Create enhanced query embedding for code examples
+                enhanced_query = f"Code example for {query}\\n\\nSummary: Example code showing {query}"
+                query_embedding = await create_embedding(enhanced_query)
+                
+                if not query_embedding:
+                    logger.error("Failed to create embedding for code example query")
+                    return []
+
+                # 1. Get vector search results
+                vector_params = {
+                    'query_embedding': query_embedding,
+                    'match_count': match_count * 2
+                }
+                
+                if filter_metadata:
+                    vector_params['filter'] = filter_metadata
+                if source_id:
+                    vector_params['source_filter'] = source_id
+                    
+                vector_response = self.supabase_client.rpc('match_code_examples', vector_params).execute()
+                vector_results = vector_response.data if vector_response.data else []
+
+                # 2. Get keyword search results using ILIKE on both content and summary
+                keyword_query = self.supabase_client.from_('code_examples')\
+                    .select('id, url, chunk_number, content, summary, metadata, source_id')\
+                    .or_(f'content.ilike.%{query}%,summary.ilike.%{query}%')
+
+                # Apply source filter if provided
+                if source_id and source_id.strip():
+                    keyword_query = keyword_query.eq('source_id', source_id)
+
+                # Execute keyword search
+                keyword_response = keyword_query.limit(match_count * 2).execute()
+                keyword_results = keyword_response.data if keyword_response.data else []
+
+                # 3. Combine and merge results intelligently
+                combined_results = self._merge_search_results(
+                    vector_results, keyword_results, match_count
+                )
+
+                span.set_attribute("vector_results_count", len(vector_results))
+                span.set_attribute("keyword_results_count", len(keyword_results))
+                span.set_attribute("final_results_count", len(combined_results))
+
+                logger.debug(f"Hybrid code search: {len(vector_results)} vector + {len(keyword_results)} keyword → {len(combined_results)} final")
+                
+                return combined_results
+
+            except Exception as e:
+                logger.error(f"Hybrid code example search failed: {e}")
+                span.set_attribute("error", str(e))
+                return []
+
+    def _merge_search_results(
+        self,
+        vector_results: List[Dict[str, Any]],
+        keyword_results: List[Dict[str, Any]],
+        match_count: int
+    ) -> List[Dict[str, Any]]:
+        """
+        Intelligently merge vector and keyword search results with preference ordering.
+        
+        Priority order:
+        1. Results appearing in BOTH searches (highest relevance) - get score boost
+        2. Vector-only results (semantic matches)  
+        3. Keyword-only results (exact term matches)
+        
+        Args:
+            vector_results: Results from vector/semantic search
+            keyword_results: Results from keyword search
+            match_count: Maximum number of final results to return
+            
+        Returns:
+            Merged and prioritized list of results
+        """
+        seen_ids: Set[str] = set()
+        combined_results: List[Dict[str, Any]] = []
+
+        # Create lookup for vector results by ID for efficient matching
+        vector_lookup = {r.get('id'): r for r in vector_results if r.get('id')}
+
+        # Phase 1: Add items that appear in BOTH searches (boost their scores)
+        for keyword_result in keyword_results:
+            result_id = keyword_result.get('id')
+            if result_id and result_id in vector_lookup and result_id not in seen_ids:
+                vector_result = vector_lookup[result_id]
+                # Boost similarity score for dual matches (cap at 1.0)
+                boosted_similarity = min(1.0, vector_result.get('similarity', 0) * 1.2)
+                vector_result['similarity'] = boosted_similarity
+                vector_result['match_type'] = 'hybrid'  # Mark as hybrid match
+                
+                combined_results.append(vector_result)
+                seen_ids.add(result_id)
+
+        # Phase 2: Add remaining vector results (semantic matches without exact keywords)
+        for vector_result in vector_results:
+            result_id = vector_result.get('id')
+            if result_id and result_id not in seen_ids and len(combined_results) < match_count:
+                vector_result['match_type'] = 'vector'
+                combined_results.append(vector_result)
+                seen_ids.add(result_id)
+
+        # Phase 3: Add pure keyword matches if we need more results
+        for keyword_result in keyword_results:
+            result_id = keyword_result.get('id')
+            if result_id and result_id not in seen_ids and len(combined_results) < match_count:
+                # Convert keyword result to match vector result format
+                standardized_result = {
+                    'id': keyword_result['id'],
+                    'url': keyword_result['url'],
+                    'chunk_number': keyword_result['chunk_number'],
+                    'content': keyword_result['content'],
+                    'metadata': keyword_result['metadata'],
+                    'source_id': keyword_result['source_id'],
+                    'similarity': 0.5,  # Default similarity for keyword-only matches
+                    'match_type': 'keyword'
+                }
+                
+                # Include summary if present (for code examples)
+                if 'summary' in keyword_result:
+                    standardized_result['summary'] = keyword_result['summary']
+                    
+                combined_results.append(standardized_result)
+                seen_ids.add(result_id)
+
+        # Return only up to the requested match count
+        final_results = combined_results[:match_count]
+        
+        logger.debug(f"Merge stats - Hybrid: {sum(1 for r in final_results if r.get('match_type') == 'hybrid')}, "
+                    f"Vector: {sum(1 for r in final_results if r.get('match_type') == 'vector')}, "
+                    f"Keyword: {sum(1 for r in final_results if r.get('match_type') == 'keyword')}")
+        
+        return final_results
+
+
+# Utility functions for backward compatibility
+def perform_hybrid_document_search(
+    client: Client,
+    query: str,
+    query_embedding: List[float],
+    match_count: int,
+    filter_metadata: Optional[dict] = None
+) -> List[Dict[str, Any]]:
+    """Standalone function for hybrid document search"""
+    strategy = HybridSearchStrategy(client)
+    return strategy.search_documents_hybrid(query, query_embedding, match_count, filter_metadata)
+
+
+def perform_hybrid_code_search(
+    client: Client,
+    query: str,
+    match_count: int,
+    filter_metadata: Optional[dict] = None,
+    source_id: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    """Standalone function for hybrid code example search"""
+    strategy = HybridSearchStrategy(client)
+    return strategy.search_code_examples_hybrid(query, match_count, filter_metadata, source_id)
