@@ -14,9 +14,31 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Error Handling
 
-- Let errors bubble up with full stack traces
-- Keep detailed error messages for all system components
-- Fail fast and loud - better than silent failures
+**Core Principle**: In alpha, we want detailed errors that help us fix issues fast, not graceful failures that hide problems.
+
+#### When to Fail Fast and Loud (Let it Crash!)
+These errors should stop execution and bubble up immediately:
+- **Service startup failures** - If credentials, database, or any service can't initialize, the system should crash with a clear error
+- **Missing configuration** - Missing environment variables or invalid settings should stop the system
+- **Database connection failures** - Don't hide connection issues, expose them
+- **Authentication/authorization failures** - Security errors must be visible and halt the operation
+- **Data corruption or validation errors** - Never silently accept bad data, Pydantic should raise
+- **Critical dependencies unavailable** - If a required service is down, fail immediately
+
+#### When to Complete but Log Detailed Errors
+These operations should continue but log every failure clearly:
+- **Batch processing** - When crawling websites or processing documents, complete what you can and report detailed failures for each item
+- **Background tasks** - Embedding generation, async jobs should finish the queue but log failures
+- **WebSocket events** - Don't crash on a single event failure, log it and continue serving other clients
+- **Optional features** - If projects/tasks are disabled, log and skip rather than crash
+- **External API calls** - Retry with exponential backoff, then fail with a clear message about what service failed and why
+
+#### Error Message Guidelines
+- Include context about what was being attempted when the error occurred
+- Preserve full stack traces with `exc_info=True` in Python logging
+- Use specific exception types, not generic Exception catching
+- Include relevant IDs, URLs, or data that helps debug the issue
+- Never return None/null to indicate failure - raise an exception with details
 
 ### Code Quality
 

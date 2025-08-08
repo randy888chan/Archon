@@ -1,7 +1,7 @@
 __pycache__
 .env
 .serena
-.claude
+.claude/settings.local.json
 
 # Security reports should not be committed to public repositories
 security-report.md
