@@ -15,11 +15,11 @@ class ConfigurationError(Exception):
 @dataclass
 class EnvironmentConfig:
     """Configuration loaded from environment variables."""
-    openai_api_key: Optional[str]
     supabase_url: str
     supabase_service_key: str
-    host: str = "0.0.0.0"
     port: int  # Required - no default
+    openai_api_key: Optional[str] = None
+    host: str = "0.0.0.0"
     transport: str = "sse"
 
 

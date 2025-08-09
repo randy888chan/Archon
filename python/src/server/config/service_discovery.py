@@ -182,25 +182,39 @@ class ServiceDiscovery:
         return self.environment == Environment.LOCAL
 
 
-# Global instance for convenience
-discovery = ServiceDiscovery()
+# Global instance for convenience - lazy loaded
+_discovery = None
+
+def get_discovery() -> ServiceDiscovery:
+    """Get or create the global ServiceDiscovery instance"""
+    global _discovery
+    if _discovery is None:
+        _discovery = ServiceDiscovery()
+    return _discovery
+
+# For backward compatibility - create a property that lazy-loads
+class _LazyDiscovery:
+    def __getattr__(self, name):
+        return getattr(get_discovery(), name)
+
+discovery = _LazyDiscovery()
 
 # Convenience functions
 def get_api_url() -> str:
     """Get the API service URL"""
-    return discovery.get_service_url("api")
+    return get_discovery().get_service_url("api")
 
 def get_mcp_url() -> str:
     """Get the MCP service URL"""
-    return discovery.get_service_url("mcp")
+    return get_discovery().get_service_url("mcp")
 
 def get_agents_url() -> str:
     """Get the Agents service URL"""
-    return discovery.get_service_url("agents")
+    return get_discovery().get_service_url("agents")
 
 async def is_service_healthy(service: str) -> bool:
     """Check if a service is healthy"""
-    return await discovery.health_check(service)
+    return await get_discovery().health_check(service)
 
 # Export key functions and classes
 __all__ = [
