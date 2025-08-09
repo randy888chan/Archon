@@ -110,21 +110,24 @@ class TestNoZeroEmbeddings:
             
             with patch('src.server.services.embeddings.embedding_service.get_embedding_model', 
                       new_callable=AsyncMock, return_value="text-embedding-ada-002"):
-                
-                # Process 4 texts (batch size will be 2)
-                texts = ["text1", "text2", "text3", "text4"]
-                result = await create_embeddings_batch_with_fallback(texts)
-                
-                # Check result structure
-                assert isinstance(result, EmbeddingBatchResult)
-                assert result.success_count == 2  # First batch succeeded
-                assert result.failure_count == 2  # Second batch failed
-                assert len(result.embeddings) == 2
-                assert len(result.failed_items) == 2
-                
-                # Verify no zero embeddings were created
-                for embedding in result.embeddings:
-                    assert not all(v == 0.0 for v in embedding)
+                # Mock credential service to return batch size of 2
+                with patch('src.server.services.embeddings.embedding_service.credential_service.get_credentials_by_category',
+                          new_callable=AsyncMock, return_value={"EMBEDDING_BATCH_SIZE": "2"}):
+                    
+                    # Process 4 texts (batch size will be 2)
+                    texts = ["text1", "text2", "text3", "text4"]
+                    result = await create_embeddings_batch_with_fallback(texts)
+                    
+                    # Check result structure
+                    assert isinstance(result, EmbeddingBatchResult)
+                    assert result.success_count == 2  # First batch succeeded
+                    assert result.failure_count == 2  # Second batch failed
+                    assert len(result.embeddings) == 2
+                    assert len(result.failed_items) == 2
+                    
+                    # Verify no zero embeddings were created
+                    for embedding in result.embeddings:
+                        assert not all(v == 0.0 for v in embedding)
     
     @pytest.mark.asyncio  
     async def test_batch_with_fallback_quota_exhausted_stops_process(self) -> None:
