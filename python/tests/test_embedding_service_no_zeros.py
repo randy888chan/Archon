@@ -87,7 +87,7 @@ class TestNoZeroEmbeddings:
             with pytest.raises(EmbeddingAPIError) as exc_info:
                 await create_embedding_async("test text")
             
-            assert "embedding error" in str(exc_info.value).lower()
+            assert "failed to create embeddings batch" in str(exc_info.value).lower()
     
     @pytest.mark.asyncio
     async def test_batch_with_fallback_handles_partial_failures(self) -> None:
