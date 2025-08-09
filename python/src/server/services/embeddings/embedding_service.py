@@ -14,6 +14,57 @@ from ..llm_provider_service import get_llm_client, get_embedding_model
 from ..credential_service import credential_service
 
 
+def get_embedding_dimensions(model_name: str) -> int:
+    """
+    Get the number of dimensions for a given embedding model.
+    
+    Args:
+        model_name: Name of the embedding model
+        
+    Returns:
+        Number of dimensions for the model
+    """
+    # OpenAI models
+    if model_name in ['text-embedding-3-large']:
+        return 3072
+    elif model_name in ['text-embedding-3-small', 'text-embedding-ada-002']:
+        return 1536
+    # Sentence-transformers models (common dimensions)
+    elif 'all-MiniLM-L6-v2' in model_name:
+        return 384
+    elif 'all-mpnet-base-v2' in model_name:
+        return 768
+    elif 'all-MiniLM-L12-v2' in model_name:
+        return 384
+    # Default fallback
+    else:
+        search_logger.warning(f"Unknown model dimensions for {model_name}, defaulting to 1536")
+        return 1536
+
+
+def get_dimension_column_name(dimensions: int) -> str:
+    """
+    Get the appropriate database column name for given dimensions.
+    
+    Args:
+        dimensions: Number of embedding dimensions
+        
+    Returns:
+        Column name to use for storage
+    """
+    if dimensions == 768:
+        return "embedding_768"
+    elif dimensions == 1024:
+        return "embedding_1024"
+    elif dimensions == 1536:
+        return "embedding_1536"
+    elif dimensions == 3072:
+        return "embedding_3072"
+    else:
+        search_logger.warning(f"Unsupported dimensions {dimensions}, defaulting to embedding_1536")
+        return "embedding_1536"
+
+
 # Use the new provider-aware client factory
 get_openai_client = get_llm_client
 
