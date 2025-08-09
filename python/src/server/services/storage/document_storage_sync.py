@@ -190,7 +190,7 @@ def add_documents_to_supabase_sync(
         except Exception as e:
             search_logger.error(f"Error creating embeddings for batch {batch_num}: {e}")
             # Skip this batch entirely - don't store documents with failed embeddings
-            search_logger.error(f"Skipping batch {batch_num} due to embedding failure: {e}")
+            search_logger.warning(f"Skipping batch {batch_num} due to embedding failure: {e}")
             continue  # Skip to next batch
         
         # Prepare batch data

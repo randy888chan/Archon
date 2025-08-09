@@ -28,7 +28,7 @@ from src.server.services.embeddings.embedding_exceptions import (
 class TestNoZeroEmbeddings:
     """Test that no zero embeddings are ever returned."""
     
-    def test_sync_from_async_context_raises_exception(self):
+    def test_sync_from_async_context_raises_exception(self) -> None:
         """Test that calling sync function from async context raises exception."""
         async def async_function():
             # This should raise EmbeddingAsyncContextError
@@ -40,7 +40,7 @@ class TestNoZeroEmbeddings:
         asyncio.run(async_function())
     
     @pytest.mark.asyncio
-    async def test_async_quota_exhausted_raises_exception(self):
+    async def test_async_quota_exhausted_raises_exception(self) -> None:
         """Test that quota exhaustion raises exception instead of returning zeros."""
         with patch('src.server.services.embeddings.embedding_service.get_llm_client') as mock_client:
             # Mock the client to raise quota error
@@ -58,7 +58,7 @@ class TestNoZeroEmbeddings:
             assert "quota exhausted" in str(exc_info.value).lower()
     
     @pytest.mark.asyncio
-    async def test_async_rate_limit_raises_exception(self):
+    async def test_async_rate_limit_raises_exception(self) -> None:
         """Test that rate limit errors raise exception after retries."""
         with patch('src.server.services.embeddings.embedding_service.get_llm_client') as mock_client:
             # Mock the client to raise rate limit error
@@ -76,7 +76,7 @@ class TestNoZeroEmbeddings:
             assert "rate limit" in str(exc_info.value).lower()
     
     @pytest.mark.asyncio
-    async def test_async_api_error_raises_exception(self):
+    async def test_async_api_error_raises_exception(self) -> None:
         """Test that API errors raise exception instead of returning zeros."""
         with patch('src.server.services.embeddings.embedding_service.get_llm_client') as mock_client:
             # Mock the client to raise generic error
@@ -90,7 +90,7 @@ class TestNoZeroEmbeddings:
             assert "embedding error" in str(exc_info.value).lower()
     
     @pytest.mark.asyncio
-    async def test_batch_with_fallback_handles_partial_failures(self):
+    async def test_batch_with_fallback_handles_partial_failures(self) -> None:
         """Test that batch processing can handle partial failures gracefully."""
         with patch('src.server.services.embeddings.embedding_service.get_llm_client') as mock_client:
             # Mock successful response for first batch, failure for second
@@ -127,7 +127,7 @@ class TestNoZeroEmbeddings:
                     assert not all(v == 0.0 for v in embedding)
     
     @pytest.mark.asyncio  
-    async def test_batch_with_fallback_quota_exhausted_stops_process(self):
+    async def test_batch_with_fallback_quota_exhausted_stops_process(self) -> None:
         """Test that quota exhaustion stops processing remaining batches."""
         with patch('src.server.services.embeddings.embedding_service.get_llm_client') as mock_client:
             # Mock quota exhaustion
@@ -154,7 +154,7 @@ class TestNoZeroEmbeddings:
                     for item in result.failed_items
                 )
     
-    def test_no_zero_vectors_in_results(self):
+    def test_no_zero_vectors_in_results(self) -> None:
         """Test that no function ever returns a zero vector [0.0] * 1536."""
         # This is a meta-test to ensure our implementation never creates zero vectors
         
@@ -189,7 +189,7 @@ class TestNoZeroEmbeddings:
 class TestEmbeddingBatchResult:
     """Test the EmbeddingBatchResult dataclass."""
     
-    def test_batch_result_initialization(self):
+    def test_batch_result_initialization(self) -> None:
         """Test that EmbeddingBatchResult initializes correctly."""
         result = EmbeddingBatchResult()
         assert result.success_count == 0
@@ -198,7 +198,7 @@ class TestEmbeddingBatchResult:
         assert result.failed_items == []
         assert not result.has_failures
     
-    def test_batch_result_add_success(self):
+    def test_batch_result_add_success(self) -> None:
         """Test adding successful embeddings."""
         result = EmbeddingBatchResult()
         embedding = [0.1] * 1536
@@ -213,7 +213,7 @@ class TestEmbeddingBatchResult:
         assert result.texts_processed[0] == text
         assert not result.has_failures
     
-    def test_batch_result_add_failure(self):
+    def test_batch_result_add_failure(self) -> None:
         """Test adding failed items."""
         result = EmbeddingBatchResult()
         error = EmbeddingAPIError("Test error", text_preview="test")
@@ -231,7 +231,7 @@ class TestEmbeddingBatchResult:
         # batch_index comes from the error's to_dict() method which includes it
         assert "batch_index" in failed_item  # Just check it exists
     
-    def test_batch_result_mixed_results(self):
+    def test_batch_result_mixed_results(self) -> None:
         """Test batch result with both successes and failures."""
         result = EmbeddingBatchResult()
         
