@@ -133,6 +133,10 @@ BEGIN
     DROP FUNCTION IF EXISTS match_archon_crawled_pages(vector, int, jsonb, text) CASCADE;
     DROP FUNCTION IF EXISTS match_archon_code_examples(vector, int, jsonb, text) CASCADE;
     
+    -- Multi-dimensional search functions
+    DROP FUNCTION IF EXISTS match_archon_crawled_pages_dynamic(vector, vector, vector, vector, int, jsonb, text) CASCADE;
+    DROP FUNCTION IF EXISTS match_archon_code_examples_dynamic(vector, vector, vector, vector, int, jsonb, text) CASCADE;
+    
     -- Search functions (old without prefix)
     DROP FUNCTION IF EXISTS match_crawled_pages(vector, int, jsonb, text) CASCADE;
     DROP FUNCTION IF EXISTS match_code_examples(vector, int, jsonb, text) CASCADE;
