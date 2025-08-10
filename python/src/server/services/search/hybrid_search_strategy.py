@@ -16,6 +16,7 @@ from supabase import Client
 
 from ..embeddings.embedding_service import create_embedding
 from ...config.logfire_config import safe_span, get_logger
+from .keyword_extractor import extract_keywords, build_search_terms
 
 logger = get_logger(__name__)
 
@@ -39,7 +40,10 @@ class HybridSearchStrategy:
         select_fields: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """
-        Perform keyword search using ILIKE on specified table.
+        Perform intelligent keyword search using extracted keywords.
+        
+        This method extracts keywords from the query and searches for documents
+        containing any of those keywords, ranking results by the number of matches.
         
         Args:
             query: The search query text
@@ -49,36 +53,82 @@ class HybridSearchStrategy:
             select_fields: Optional specific fields to select (default: all)
             
         Returns:
-            List of matching documents
+            List of matching documents ranked by keyword relevance
         """
         try:
-            # Build the query with appropriate fields
-            if select_fields:
-                query_builder = self.supabase_client.from_(table_name).select(select_fields)
-            else:
-                query_builder = self.supabase_client.from_(table_name).select("*")
+            # Extract keywords from the query
+            keywords = extract_keywords(query, min_length=2, max_keywords=8)
             
-            # Add keyword search condition
-            search_pattern = f"%{query}%"
+            if not keywords:
+                # Fallback to original query if no keywords extracted
+                keywords = [query]
             
-            # Handle different search patterns based on table
-            if table_name == "code_examples":
-                # Search both content and summary for code examples
-                query_builder = query_builder.or_(f'content.ilike.{search_pattern},summary.ilike.{search_pattern}')
-            else:
-                query_builder = query_builder.ilike("content", search_pattern)
+            logger.debug(f"Extracted keywords from '{query}': {keywords}")
             
-            # Add metadata filters if provided
-            if filter_metadata:
-                if "source" in filter_metadata and table_name in ["documents", "crawled_pages"]:
-                    query_builder = query_builder.eq("source_id", filter_metadata["source"])
-                elif "source_id" in filter_metadata:
-                    query_builder = query_builder.eq("source_id", filter_metadata["source_id"])
+            # Build search terms including variations
+            search_terms = build_search_terms(keywords)[:12]  # Limit total search terms
             
-            # Execute query with limit
-            response = query_builder.limit(match_count).execute()
+            # For now, we'll search for documents containing ANY of the keywords
+            # and then rank them by how many keywords they contain
+            all_results = []
+            seen_ids = set()
             
-            return response.data if response.data else []
+            # Search for each keyword individually to get better coverage
+            for keyword in search_terms[:6]:  # Limit to avoid too many queries
+                # Build the query with appropriate fields
+                if select_fields:
+                    query_builder = self.supabase_client.from_(table_name).select(select_fields)
+                else:
+                    query_builder = self.supabase_client.from_(table_name).select("*")
+                
+                # Add keyword search condition with wildcards
+                search_pattern = f"%{keyword}%"
+                
+                # Handle different search patterns based on table
+                if table_name == "code_examples":
+                    # Search both content and summary for code examples
+                    query_builder = query_builder.or_(f'content.ilike.{search_pattern},summary.ilike.{search_pattern}')
+                else:
+                    query_builder = query_builder.ilike("content", search_pattern)
+                
+                # Add metadata filters if provided
+                if filter_metadata:
+                    if "source" in filter_metadata and table_name in ["documents", "crawled_pages"]:
+                        query_builder = query_builder.eq("source_id", filter_metadata["source"])
+                    elif "source_id" in filter_metadata:
+                        query_builder = query_builder.eq("source_id", filter_metadata["source_id"])
+                
+                # Execute query with limit
+                response = query_builder.limit(match_count * 2).execute()
+                
+                if response.data:
+                    for result in response.data:
+                        result_id = result.get('id')
+                        if result_id and result_id not in seen_ids:
+                            # Count how many keywords match in this result
+                            content = result.get('content', '').lower()
+                            summary = result.get('summary', '').lower() if table_name == "code_examples" else ''
+                            combined_text = f"{content} {summary}"
+                            
+                            # Count keyword matches
+                            match_score = sum(1 for kw in keywords if kw.lower() in combined_text)
+                            
+                            # Add match score to result
+                            result['keyword_match_score'] = match_score
+                            result['matched_keyword'] = keyword
+                            
+                            all_results.append(result)
+                            seen_ids.add(result_id)
+            
+            # Sort results by keyword match score (descending)
+            all_results.sort(key=lambda x: x.get('keyword_match_score', 0), reverse=True)
+            
+            # Return top N results
+            final_results = all_results[:match_count]
+            
+            logger.debug(f"Keyword search found {len(final_results)} results from {len(all_results)} total matches")
+            
+            return final_results
             
         except Exception as e:
             logger.error(f"Keyword search failed: {e}")
@@ -265,6 +315,11 @@ class HybridSearchStrategy:
             result_id = keyword_result.get('id')
             if result_id and result_id not in seen_ids and len(combined_results) < match_count:
                 # Convert keyword result to match vector result format
+                # Use keyword match score to influence similarity score
+                keyword_score = keyword_result.get('keyword_match_score', 1)
+                # Scale keyword score to similarity range (0.3 to 0.7 based on matches)
+                scaled_similarity = min(0.7, 0.3 + (keyword_score * 0.1))
+                
                 standardized_result = {
                     'id': keyword_result['id'],
                     'url': keyword_result['url'],
@@ -272,8 +327,9 @@ class HybridSearchStrategy:
                     'content': keyword_result['content'],
                     'metadata': keyword_result['metadata'],
                     'source_id': keyword_result['source_id'],
-                    'similarity': 0.5,  # Default similarity for keyword-only matches
-                    'match_type': 'keyword'
+                    'similarity': scaled_similarity,
+                    'match_type': 'keyword',
+                    'keyword_match_score': keyword_score
                 }
                 
                 # Include summary if present (for code examples)
