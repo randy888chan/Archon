@@ -26,6 +26,7 @@ from ..embeddings.embedding_service import create_embedding
 from ...config.logfire_config import safe_span, get_logger
 
 # Import all strategies
+from .base_search_strategy import BaseSearchStrategy
 from .hybrid_search_strategy import HybridSearchStrategy
 from .reranking_strategy import RerankingStrategy
 from .agentic_rag_strategy import AgenticRAGStrategy
@@ -44,41 +45,27 @@ class RAGService:
     based on configuration settings.
     """
 
-    def __init__(self, supabase_client=None, reranking_model=None):
-        """Initialize with optional supabase client and reranking model"""
+    def __init__(self, supabase_client=None):
+        """Initialize RAG service as a coordinator for search strategies"""
         self.supabase_client = supabase_client or get_supabase_client()
         
-        # Initialize strategies
-        self.hybrid_strategy = HybridSearchStrategy(self.supabase_client)
+        # Initialize base strategy (always needed)
+        self.base_strategy = BaseSearchStrategy(self.supabase_client)
         
-        # Initialize reranking strategy with proper settings integration
-        if reranking_model is not None:
-            # Direct model passed (for tests)
-            if hasattr(reranking_model, 'rerank_results'):
-                self.reranking_strategy = reranking_model
-                self.reranking_model = getattr(reranking_model, 'model', reranking_model)
-            else:
-                # It's a raw model, create strategy wrapper
-                from .reranking_strategy import RerankingStrategy
-                self.reranking_strategy = RerankingStrategy(model_instance=reranking_model)
-                self.reranking_model = reranking_model
-        else:
-            # Load based on settings
-            use_reranking = self.get_bool_setting("USE_RERANKING", False)
-            if use_reranking:
-                from .reranking_strategy import RerankingStrategy
-                try:
-                    self.reranking_strategy = RerankingStrategy()
-                    self.reranking_model = getattr(self.reranking_strategy, 'model', None)
-                except Exception as e:
-                    logger.warning(f"Failed to load reranking strategy: {e}")
-                    self.reranking_strategy = None
-                    self.reranking_model = None
-            else:
+        # Initialize optional strategies
+        self.hybrid_strategy = HybridSearchStrategy(self.supabase_client, self.base_strategy)
+        self.agentic_strategy = AgenticRAGStrategy(self.supabase_client, self.base_strategy)
+        
+        # Initialize reranking strategy based on settings
+        self.reranking_strategy = None
+        use_reranking = self.get_bool_setting("USE_RERANKING", False)
+        if use_reranking:
+            try:
+                self.reranking_strategy = RerankingStrategy()
+                logger.info("Reranking strategy loaded successfully")
+            except Exception as e:
+                logger.warning(f"Failed to load reranking strategy: {e}")
                 self.reranking_strategy = None
-                self.reranking_model = None
-        
-        self.agentic_strategy = AgenticRAGStrategy(self.supabase_client)
 
     def get_setting(self, key: str, default: str = "false") -> str:
         """Get a setting from the credential service or fall back to environment variable."""
@@ -104,54 +91,7 @@ class RAGService:
         """Get a boolean setting from credential service."""
         value = self.get_setting(key, "false" if not default else "true")
         return value.lower() in ("true", "1", "yes", "on")
-
-    async def rerank_results(self, query: str, results: List[Dict[str, Any]], content_key: str = "content") -> List[Dict[str, Any]]:
-        """
-        Backward compatibility method - delegates to reranking strategy.
-        
-        Args:
-            query: The search query
-            results: List of search results to rerank
-            content_key: The key in each result dict containing text content
-            
-        Returns:
-            Reranked list of results
-        """
-        if self.reranking_strategy:
-            # Check if it's actually a RerankingStrategy instance
-            from .reranking_strategy import RerankingStrategy
-            if isinstance(self.reranking_strategy, RerankingStrategy):
-                # It's a proper strategy object
-                return await self.reranking_strategy.rerank_results(query, results, content_key)
-            elif hasattr(self.reranking_strategy, 'predict'):
-                # It's a raw model for tests - implement reranking inline
-                if not results:
-                    return results
-                
-                try:
-                    # Extract texts from results
-                    texts = [result.get(content_key, "") for result in results]
-                    
-                    # Create query-document pairs
-                    pairs = [[query, text] for text in texts]
-                    
-                    # Get reranking scores
-                    scores = self.reranking_strategy.predict(pairs)
-                    
-                    # Add scores to results and sort
-                    for i, result in enumerate(results):
-                        result["rerank_score"] = float(scores[i])
-                    
-                    # Sort by rerank score descending
-                    reranked = sorted(results, key=lambda x: x.get("rerank_score", 0), reverse=True)
-                    
-                    return reranked
-                except Exception as e:
-                    logger.error(f"Error during raw model reranking: {e}")
-                    return results
-        
-        return results
-
+    
     async def search_documents(
         self,
         query: str,
@@ -187,7 +127,7 @@ class RAGService:
                 
                 if use_hybrid_search:
                     # Use hybrid strategy
-                    results = self.hybrid_strategy.search_documents_hybrid(
+                    results = await self.hybrid_strategy.search_documents_hybrid(
                         query=query,
                         query_embedding=query_embedding,
                         match_count=match_count,
@@ -195,8 +135,8 @@ class RAGService:
                     )
                     span.set_attribute("search_mode", "hybrid")
                 else:
-                    # Use basic vector search
-                    results = await self._basic_vector_search(
+                    # Use basic vector search from base strategy
+                    results = await self.base_strategy.vector_search(
                         query_embedding=query_embedding,
                         match_count=match_count,
                         filter_metadata=filter_metadata
@@ -211,46 +151,6 @@ class RAGService:
                 span.set_attribute("error", str(e))
                 return []
 
-    async def _basic_vector_search(
-        self,
-        query_embedding: List[float],
-        match_count: int,
-        filter_metadata: Optional[dict] = None
-    ) -> List[Dict[str, Any]]:
-        """Perform basic vector search using RPC function."""
-        try:
-            # Build RPC parameters
-            rpc_params = {
-                "query_embedding": query_embedding,
-                "match_count": match_count
-            }
-            
-            # Add filter parameters
-            if filter_metadata:
-                if "source" in filter_metadata:
-                    rpc_params["source_filter"] = filter_metadata["source"]
-                    rpc_params["filter"] = {}
-                else:
-                    rpc_params["filter"] = filter_metadata
-            else:
-                rpc_params["filter"] = {}
-            
-            # Execute search
-            response = self.supabase_client.rpc("match_crawled_pages", rpc_params).execute()
-            
-            # Filter by similarity threshold
-            filtered_results = []
-            if response.data:
-                for result in response.data:
-                    similarity = float(result.get("similarity", 0.0))
-                    if similarity >= SIMILARITY_THRESHOLD:
-                        filtered_results.append(result)
-            
-            return filtered_results
-            
-        except Exception as e:
-            logger.error(f"Basic vector search failed: {e}")
-            return []
 
 
     async def search_code_examples(
@@ -341,7 +241,7 @@ class RAGService:
                 reranking_applied = False
                 if self.reranking_strategy and formatted_results:
                     try:
-                        formatted_results = await self.rerank_results(query, formatted_results, content_key="content")
+                        formatted_results = await self.reranking_strategy.rerank_results(query, formatted_results, content_key="content")
                         reranking_applied = True
                         logger.debug(f"Reranking applied to {len(formatted_results)} results")
                     except Exception as e:
@@ -419,7 +319,7 @@ class RAGService:
                 
                 if use_hybrid_search:
                     # Use hybrid search for code examples
-                    results = self.hybrid_strategy.search_code_examples_hybrid(
+                    results = await self.hybrid_strategy.search_code_examples_hybrid(
                         query=query,
                         match_count=match_count,
                         filter_metadata=filter_metadata,
@@ -431,14 +331,13 @@ class RAGService:
                         query=query,
                         match_count=match_count,
                         filter_metadata=filter_metadata,
-                        source_id=source_id,
-                        use_enhancement=True
+                        source_id=source_id
                     )
                 
                 # Apply reranking if we have a strategy
                 if self.reranking_strategy and results:
                     try:
-                        results = await self.rerank_results(query, results, content_key="content")
+                        results = await self.reranking_strategy.rerank_results(query, results, content_key="content")
                     except Exception as e:
                         logger.warning(f"Code reranking failed: {e}")
                 

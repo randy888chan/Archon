@@ -7,6 +7,7 @@ Consolidated search and RAG functionality with strategy pattern support.
 from .rag_service import RAGService
 
 # Strategy implementations
+from .base_search_strategy import BaseSearchStrategy
 from .hybrid_search_strategy import HybridSearchStrategy
 from .reranking_strategy import RerankingStrategy
 from .agentic_rag_strategy import AgenticRAGStrategy
@@ -16,6 +17,7 @@ __all__ = [
     'RAGService',
     
     # Strategy classes
+    'BaseSearchStrategy',
     'HybridSearchStrategy',
     'RerankingStrategy', 
     'AgenticRAGStrategy'

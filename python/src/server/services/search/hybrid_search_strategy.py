@@ -26,10 +26,65 @@ SIMILARITY_THRESHOLD = 0.15
 class HybridSearchStrategy:
     """Strategy class implementing hybrid search combining vector and keyword search"""
 
-    def __init__(self, supabase_client: Client):
+    def __init__(self, supabase_client: Client, base_strategy):
         self.supabase_client = supabase_client
+        self.base_strategy = base_strategy
+    
+    async def keyword_search(
+        self,
+        query: str,
+        match_count: int,
+        table_name: str = "documents",
+        filter_metadata: Optional[dict] = None,
+        select_fields: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Perform keyword search using ILIKE on specified table.
+        
+        Args:
+            query: The search query text
+            match_count: Number of results to return
+            table_name: The table to search (documents, crawled_pages, or code_examples)
+            filter_metadata: Optional metadata filters
+            select_fields: Optional specific fields to select (default: all)
+            
+        Returns:
+            List of matching documents
+        """
+        try:
+            # Build the query with appropriate fields
+            if select_fields:
+                query_builder = self.supabase_client.from_(table_name).select(select_fields)
+            else:
+                query_builder = self.supabase_client.from_(table_name).select("*")
+            
+            # Add keyword search condition
+            search_pattern = f"%{query}%"
+            
+            # Handle different search patterns based on table
+            if table_name == "code_examples":
+                # Search both content and summary for code examples
+                query_builder = query_builder.or_(f'content.ilike.{search_pattern},summary.ilike.{search_pattern}')
+            else:
+                query_builder = query_builder.ilike("content", search_pattern)
+            
+            # Add metadata filters if provided
+            if filter_metadata:
+                if "source" in filter_metadata and table_name in ["documents", "crawled_pages"]:
+                    query_builder = query_builder.eq("source_id", filter_metadata["source"])
+                elif "source_id" in filter_metadata:
+                    query_builder = query_builder.eq("source_id", filter_metadata["source_id"])
+            
+            # Execute query with limit
+            response = query_builder.limit(match_count).execute()
+            
+            return response.data if response.data else []
+            
+        except Exception as e:
+            logger.error(f"Keyword search failed: {e}")
+            return []
 
-    def search_documents_hybrid(
+    async def search_documents_hybrid(
         self,
         query: str,
         query_embedding: List[float],
@@ -50,43 +105,22 @@ class HybridSearchStrategy:
         """
         with safe_span("hybrid_search_documents") as span:
             try:
-                # Prepare RPC parameters for vector search
-                rpc_params = {
-                    "query_embedding": query_embedding,
-                    "match_count": match_count * 2  # Get more vector results for filtering
-                }
-                
-                # Add filter to RPC params if provided
-                if filter_metadata:
-                    if "source" in filter_metadata:
-                        rpc_params["source_filter"] = filter_metadata["source"]
-                        rpc_params["filter"] = {}
-                    else:
-                        rpc_params["filter"] = filter_metadata
-                else:
-                    rpc_params["filter"] = {}
+                # 1. Get vector search results using base strategy
+                vector_results = await self.base_strategy.vector_search(
+                    query_embedding=query_embedding,
+                    match_count=match_count * 2,  # Get more for filtering
+                    filter_metadata=filter_metadata,
+                    table_rpc="match_crawled_pages"
+                )
 
-                # 1. Get vector search results
-                vector_response = self.supabase_client.rpc("match_crawled_pages", rpc_params).execute()
-                vector_results = []
-                if vector_response.data:
-                    for result in vector_response.data:
-                        similarity = float(result.get("similarity", 0.0))
-                        if similarity >= SIMILARITY_THRESHOLD:
-                            vector_results.append(result)
-
-                # 2. Get keyword search results using ILIKE
-                keyword_query = self.supabase_client.from_('crawled_pages')\
-                    .select('id, url, chunk_number, content, metadata, source_id')\
-                    .ilike('content', f'%{query}%')
-
-                # Apply source filter if provided
-                if filter_metadata and "source" in filter_metadata:
-                    keyword_query = keyword_query.eq('source_id', filter_metadata["source"])
-
-                # Execute keyword search
-                keyword_response = keyword_query.limit(match_count * 2).execute()
-                keyword_results = keyword_response.data if keyword_response.data else []
+                # 2. Get keyword search results
+                keyword_results = await self.keyword_search(
+                    query=query,
+                    match_count=match_count * 2,
+                    table_name="crawled_pages",
+                    filter_metadata=filter_metadata,
+                    select_fields="id, url, chunk_number, content, metadata, source_id"
+                )
 
                 # 3. Combine and merge results intelligently
                 combined_results = self._merge_search_results(
@@ -127,40 +161,37 @@ class HybridSearchStrategy:
         """
         with safe_span("hybrid_search_code_examples") as span:
             try:
-                # Create enhanced query embedding for code examples
-                enhanced_query = f"Code example for {query}\\n\\nSummary: Example code showing {query}"
-                query_embedding = await create_embedding(enhanced_query)
+                # Create query embedding (no enhancement needed)
+                query_embedding = await create_embedding(query)
                 
                 if not query_embedding:
                     logger.error("Failed to create embedding for code example query")
                     return []
 
-                # 1. Get vector search results
-                vector_params = {
-                    'query_embedding': query_embedding,
-                    'match_count': match_count * 2
-                }
-                
-                if filter_metadata:
-                    vector_params['filter'] = filter_metadata
+                # 1. Get vector search results using base strategy
+                combined_filter = filter_metadata or {}
                 if source_id:
-                    vector_params['source_filter'] = source_id
-                    
-                vector_response = self.supabase_client.rpc('match_code_examples', vector_params).execute()
-                vector_results = vector_response.data if vector_response.data else []
+                    combined_filter['source'] = source_id
+                
+                vector_results = await self.base_strategy.vector_search(
+                    query_embedding=query_embedding,
+                    match_count=match_count * 2,
+                    filter_metadata=combined_filter,
+                    table_rpc="match_code_examples"
+                )
 
-                # 2. Get keyword search results using ILIKE on both content and summary
-                keyword_query = self.supabase_client.from_('code_examples')\
-                    .select('id, url, chunk_number, content, summary, metadata, source_id')\
-                    .or_(f'content.ilike.%{query}%,summary.ilike.%{query}%')
-
-                # Apply source filter if provided
-                if source_id and source_id.strip():
-                    keyword_query = keyword_query.eq('source_id', source_id)
-
-                # Execute keyword search
-                keyword_response = keyword_query.limit(match_count * 2).execute()
-                keyword_results = keyword_response.data if keyword_response.data else []
+                # 2. Get keyword search results
+                keyword_filter = filter_metadata or {}
+                if source_id:
+                    keyword_filter['source_id'] = source_id
+                
+                keyword_results = await self.keyword_search(
+                    query=query,
+                    match_count=match_count * 2,
+                    table_name="code_examples",
+                    filter_metadata=keyword_filter,
+                    select_fields="id, url, chunk_number, content, summary, metadata, source_id"
+                )
 
                 # 3. Combine and merge results intelligently
                 combined_results = self._merge_search_results(

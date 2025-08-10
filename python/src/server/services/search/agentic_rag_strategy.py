@@ -25,114 +25,90 @@ logger = get_logger(__name__)
 class AgenticRAGStrategy:
     """Strategy class implementing agentic RAG for code example search and extraction"""
 
-    def __init__(self, supabase_client: Client):
+    def __init__(self, supabase_client: Client, base_strategy):
         """
         Initialize agentic RAG strategy.
         
         Args:
             supabase_client: Supabase client for database operations
+            base_strategy: Base strategy for vector search
         """
         self.supabase_client = supabase_client
-
-    def get_setting(self, key: str, default: str = "false") -> str:
-        """Get a setting from the credential service or fall back to environment variable."""
+        self.base_strategy = base_strategy
+    
+    def is_enabled(self) -> bool:
+        """Check if agentic RAG is enabled via configuration."""
         try:
             from ..credential_service import credential_service
             if hasattr(credential_service, '_cache') and credential_service._cache_initialized:
-                cached_value = credential_service._cache.get(key)
-                if isinstance(cached_value, dict) and cached_value.get("is_encrypted"):
-                    encrypted_value = cached_value.get("encrypted_value")
-                    if encrypted_value:
-                        try:
-                            return credential_service._decrypt_value(encrypted_value)
-                        except Exception:
-                            pass
-                elif cached_value:
-                    return str(cached_value)
-            # Fallback to environment variable
-            return os.getenv(key, default)
-        except Exception:
-            return os.getenv(key, default)
-
-    def get_bool_setting(self, key: str, default: bool = False) -> bool:
-        """Get a boolean setting from credential service."""
-        value = self.get_setting(key, "false" if not default else "true")
-        return value.lower() in ("true", "1", "yes", "on")
-
-    def is_enabled(self) -> bool:
-        """Check if agentic RAG is enabled via configuration."""
-        return self.get_bool_setting("USE_AGENTIC_RAG", False)
-
-    def enhance_code_query(self, query: str) -> str:
-        """
-        Enhance a code search query for better embedding matching.
-        
-        Args:
-            query: Original search query
+                cached_value = credential_service._cache.get("USE_AGENTIC_RAG")
+                if cached_value:
+                    # Handle both direct values and encrypted values
+                    if isinstance(cached_value, dict) and cached_value.get("is_encrypted"):
+                        encrypted_value = cached_value.get("encrypted_value")
+                        if encrypted_value:
+                            try:
+                                value = credential_service._decrypt_value(encrypted_value)
+                            except Exception:
+                                return False
+                        else:
+                            return False
+                    else:
+                        value = str(cached_value)
+                    
+                    return value.lower() in ("true", "1", "yes", "on")
             
-        Returns:
-            Enhanced query optimized for code example search
-        """
-        # Create a more descriptive query for better embedding match
-        # Since code examples are embedded with their summaries, make the query more descriptive
-        enhanced_query = f"Code example for {query}\\n\\nSummary: Example code showing {query}"
-        return enhanced_query
+            # Default to false if not found in settings
+            return False
+        except Exception:
+            # Default to false on any error
+            return False
+
 
     async def search_code_examples(
         self,
         query: str,
         match_count: int = 10,
         filter_metadata: Optional[Dict[str, Any]] = None,
-        source_id: Optional[str] = None,
-        use_enhancement: bool = True
+        source_id: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """
-        Search for code examples using vector similarity with agentic query enhancement.
+        Search for code examples using vector similarity.
         
         Args:
             query: Search query text
             match_count: Maximum number of results to return
             filter_metadata: Optional metadata filter
             source_id: Optional source ID to filter results
-            use_enhancement: Whether to apply query enhancement for better matching
             
         Returns:
             List of matching code examples
         """
         with safe_span("agentic_code_search",
                       query_length=len(query),
-                      match_count=match_count,
-                      enhanced=use_enhancement) as span:
+                      match_count=match_count) as span:
             try:
-                # Enhance query if requested
-                search_query = self.enhance_code_query(query) if use_enhancement else query
-                
-                # Create embedding for the search query
-                query_embedding = await create_embedding(search_query)
+                # Create embedding for the query (no enhancement)
+                query_embedding = await create_embedding(query)
                 
                 if not query_embedding:
                     logger.error("Failed to create embedding for code example query")
                     return []
 
-                # Prepare parameters for vector search
-                params = {
-                    'query_embedding': query_embedding,
-                    'match_count': match_count
-                }
-
-                # Add filters if provided
-                if filter_metadata:
-                    params['filter'] = filter_metadata
+                # Prepare filters
+                combined_filter = filter_metadata or {}
                 if source_id:
-                    params['source_filter'] = source_id
+                    combined_filter['source'] = source_id
 
-                # Execute the search using match_code_examples RPC function
-                result = self.supabase_client.rpc('match_code_examples', params).execute()
-                
-                results = result.data if result.data else []
+                # Use base strategy for vector search
+                results = await self.base_strategy.vector_search(
+                    query_embedding=query_embedding,
+                    match_count=match_count,
+                    filter_metadata=combined_filter,
+                    table_rpc='match_code_examples'
+                )
                 
                 span.set_attribute("results_found", len(results))
-                span.set_attribute("query_enhanced", use_enhancement)
                 
                 logger.debug(f"Agentic code search found {len(results)} results for query: {query[:50]}...")
                 
