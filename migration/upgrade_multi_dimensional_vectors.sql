@@ -73,7 +73,62 @@ EXCEPTION WHEN OTHERS THEN
 END $$;
 
 -- =====================================================
--- SECTION 2: CREATE OPTIMIZED VECTOR INDEXES
+-- SECTION 2: MIGRATE EXISTING EMBEDDING DATA
+-- =====================================================
+
+DO $$ 
+BEGIN
+    RAISE NOTICE 'Migrating existing embedding data to embedding_1536 columns...';
+    
+    -- Migrate existing 1536-dimension embeddings from legacy 'embedding' column
+    -- to the new 'embedding_1536' column for archon_crawled_pages
+    UPDATE archon_crawled_pages 
+    SET embedding_1536 = embedding 
+    WHERE embedding IS NOT NULL AND embedding_1536 IS NULL;
+    
+    -- Migrate existing 1536-dimension embeddings from legacy 'embedding' column
+    -- to the new 'embedding_1536' column for archon_code_examples
+    UPDATE archon_code_examples 
+    SET embedding_1536 = embedding 
+    WHERE embedding IS NOT NULL AND embedding_1536 IS NULL;
+    
+    RAISE NOTICE 'Embedding data migration completed.';
+    
+EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'Error during embedding data migration: %', SQLERRM;
+    ROLLBACK;
+    RETURN;
+END $$;
+
+-- =====================================================
+-- SECTION 3: DROP LEGACY EMBEDDING COLUMNS AND INDEXES
+-- =====================================================
+
+DO $$ 
+BEGIN
+    RAISE NOTICE 'Dropping legacy embedding columns and indexes...';
+    
+    -- Drop legacy indexes first
+    DROP INDEX IF EXISTS archon_crawled_pages_embedding_idx;
+    DROP INDEX IF EXISTS archon_code_examples_embedding_idx;
+    -- Try different possible index names that might exist
+    DROP INDEX IF EXISTS idx_archon_crawled_pages_embedding;
+    DROP INDEX IF EXISTS idx_archon_code_examples_embedding;
+    
+    -- Drop legacy embedding columns
+    ALTER TABLE archon_crawled_pages DROP COLUMN IF EXISTS embedding;
+    ALTER TABLE archon_code_examples DROP COLUMN IF EXISTS embedding;
+    
+    RAISE NOTICE 'Legacy embedding columns and indexes dropped successfully.';
+    
+EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'Error dropping legacy embedding columns: %', SQLERRM;
+    -- Don't rollback here as this might fail due to missing columns/indexes
+    -- which is expected for fresh installations
+END $$;
+
+-- =====================================================
+-- SECTION 4: CREATE OPTIMIZED VECTOR INDEXES
 -- =====================================================
 
 DO $$
@@ -129,7 +184,99 @@ EXCEPTION WHEN OTHERS THEN
 END $$;
 
 -- =====================================================
--- SECTION 3: DYNAMIC SEARCH FUNCTIONS
+-- SECTION 5: UPDATE LEGACY SEARCH FUNCTIONS
+-- =====================================================
+
+DO $$
+BEGIN
+    RAISE NOTICE 'Updating legacy search functions to use embedding_1536...';
+    
+    -- Update the legacy match_archon_crawled_pages function to use embedding_1536
+    CREATE OR REPLACE FUNCTION match_archon_crawled_pages (
+      query_embedding VECTOR(1536),
+      match_count INT DEFAULT 10,
+      filter JSONB DEFAULT '{}'::jsonb,
+      source_filter TEXT DEFAULT NULL
+    ) RETURNS TABLE (
+      id BIGINT,
+      url VARCHAR,
+      chunk_number INTEGER,
+      content TEXT,
+      metadata JSONB,
+      source_id TEXT,
+      similarity FLOAT
+    )
+    LANGUAGE plpgsql
+    AS $$
+    #variable_conflict use_column
+    BEGIN
+      RETURN QUERY
+      SELECT
+        id,
+        url,
+        chunk_number,
+        content,
+        metadata,
+        source_id,
+        1 - (archon_crawled_pages.embedding_1536 <=> query_embedding) AS similarity
+      FROM archon_crawled_pages
+      WHERE metadata @> filter
+        AND (source_filter IS NULL OR source_id = source_filter)
+        AND embedding_1536 IS NOT NULL
+      ORDER BY archon_crawled_pages.embedding_1536 <=> query_embedding
+      LIMIT match_count;
+    END;
+    $$;
+    
+    -- Update the legacy match_archon_code_examples function to use embedding_1536
+    CREATE OR REPLACE FUNCTION match_archon_code_examples (
+      query_embedding VECTOR(1536),
+      match_count INT DEFAULT 10,
+      filter JSONB DEFAULT '{}'::jsonb,
+      source_filter TEXT DEFAULT NULL
+    ) RETURNS TABLE (
+      id BIGINT,
+      url VARCHAR,
+      chunk_number INTEGER,
+      content TEXT,
+      summary TEXT,
+      metadata JSONB,
+      source_id TEXT,
+      similarity FLOAT
+    )
+    LANGUAGE plpgsql
+    AS $$
+    #variable_conflict use_column
+    BEGIN
+      RETURN QUERY
+      SELECT
+        id,
+        url,
+        chunk_number,
+        content,
+        summary,
+        metadata,
+        source_id,
+        1 - (archon_code_examples.embedding_1536 <=> query_embedding) AS similarity
+      FROM archon_code_examples
+      WHERE metadata @> filter
+        AND (source_filter IS NULL OR source_id = source_filter)
+        AND embedding_1536 IS NOT NULL
+      ORDER BY archon_code_examples.embedding_1536 <=> query_embedding
+      LIMIT match_count;
+    END;
+    $$;
+    
+    RAISE NOTICE 'Legacy search functions updated successfully.';
+    
+EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'Error updating legacy search functions: %', SQLERRM;
+    ROLLBACK;
+    RETURN;
+END $$;
+
+-- =====================================================
+-- SECTION 6: DYNAMIC SEARCH FUNCTIONS
 -- =====================================================
 
 DO $$

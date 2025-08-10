@@ -195,7 +195,6 @@ CREATE TABLE IF NOT EXISTS archon_crawled_pages (
     content TEXT NOT NULL,
     metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
     source_id TEXT NOT NULL,
-    embedding VECTOR(1536),  -- Legacy 1536 dimension embeddings (default)
     embedding_768 VECTOR(768),   -- For text-embedding-3-small with reduced dimensions
     embedding_1024 VECTOR(1024), -- For custom models requiring 1024 dimensions
     embedding_1536 VECTOR(1536), -- For text-embedding-3-small (default) and text-embedding-ada-002
@@ -210,7 +209,6 @@ CREATE TABLE IF NOT EXISTS archon_crawled_pages (
 );
 
 -- Create indexes for better performance
-CREATE INDEX ON archon_crawled_pages USING ivfflat (embedding vector_cosine_ops);
 CREATE INDEX idx_archon_crawled_pages_metadata ON archon_crawled_pages USING GIN (metadata);
 CREATE INDEX idx_archon_crawled_pages_source_id ON archon_crawled_pages (source_id);
 
@@ -243,7 +241,6 @@ CREATE TABLE IF NOT EXISTS archon_code_examples (
     summary TEXT NOT NULL,  -- Summary of the code example
     metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
     source_id TEXT NOT NULL,
-    embedding VECTOR(1536),  -- Legacy 1536 dimension embeddings (default)
     embedding_768 VECTOR(768),   -- For text-embedding-3-small with reduced dimensions
     embedding_1024 VECTOR(1024), -- For custom models requiring 1024 dimensions
     embedding_1536 VECTOR(1536), -- For text-embedding-3-small (default) and text-embedding-ada-002
@@ -258,7 +255,6 @@ CREATE TABLE IF NOT EXISTS archon_code_examples (
 );
 
 -- Create indexes for better performance
-CREATE INDEX ON archon_code_examples USING ivfflat (embedding vector_cosine_ops);
 CREATE INDEX idx_archon_code_examples_metadata ON archon_code_examples USING GIN (metadata);
 CREATE INDEX idx_archon_code_examples_source_id ON archon_code_examples (source_id);
 
@@ -313,11 +309,12 @@ BEGIN
     content,
     metadata,
     source_id,
-    1 - (archon_crawled_pages.embedding <=> query_embedding) AS similarity
+    1 - (archon_crawled_pages.embedding_1536 <=> query_embedding) AS similarity
   FROM archon_crawled_pages
   WHERE metadata @> filter
     AND (source_filter IS NULL OR source_id = source_filter)
-  ORDER BY archon_crawled_pages.embedding <=> query_embedding
+    AND embedding_1536 IS NOT NULL
+  ORDER BY archon_crawled_pages.embedding_1536 <=> query_embedding
   LIMIT match_count;
 END;
 $$;
@@ -351,11 +348,12 @@ BEGIN
     summary,
     metadata,
     source_id,
-    1 - (archon_code_examples.embedding <=> query_embedding) AS similarity
+    1 - (archon_code_examples.embedding_1536 <=> query_embedding) AS similarity
   FROM archon_code_examples
   WHERE metadata @> filter
     AND (source_filter IS NULL OR source_id = source_filter)
-  ORDER BY archon_code_examples.embedding <=> query_embedding
+    AND embedding_1536 IS NOT NULL
+  ORDER BY archon_code_examples.embedding_1536 <=> query_embedding
   LIMIT match_count;
 END;
 $$;
