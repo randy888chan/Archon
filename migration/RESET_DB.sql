@@ -93,29 +93,31 @@ END $$;
 -- ======================================================================
 
 DO $$
+DECLARE
+    trigger_record RECORD;
 BEGIN
-    RAISE NOTICE 'Dropping triggers...';
+    RAISE NOTICE 'Dropping all triggers on Archon tables...';
     
-    -- Settings table triggers
-    DROP TRIGGER IF EXISTS update_archon_settings_updated_at ON archon_settings;
-    DROP TRIGGER IF EXISTS update_settings_updated_at ON settings;
+    -- Drop all triggers on all Archon tables dynamically
+    FOR trigger_record IN 
+        SELECT schemaname, tablename, triggername
+        FROM pg_triggers 
+        WHERE schemaname = 'public' 
+        AND (tablename LIKE 'archon_%' OR tablename IN ('settings', 'projects', 'tasks', 'prompts', 'crawled_pages', 'code_examples', 'sources', 'document_versions', 'project_sources'))
+    LOOP
+        BEGIN
+            EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I.%I CASCADE', 
+                trigger_record.triggername, trigger_record.schemaname, trigger_record.tablename);
+            RAISE NOTICE 'Dropped trigger % on %.%', trigger_record.triggername, trigger_record.schemaname, trigger_record.tablename;
+        EXCEPTION WHEN OTHERS THEN
+            RAISE NOTICE 'Could not drop trigger %: %', trigger_record.triggername, SQLERRM;
+        END;
+    END LOOP;
     
-    -- Projects table triggers
-    DROP TRIGGER IF EXISTS update_archon_projects_updated_at ON archon_projects;
-    DROP TRIGGER IF EXISTS update_projects_updated_at ON projects;
-    
-    -- Tasks table triggers
-    DROP TRIGGER IF EXISTS update_archon_tasks_updated_at ON archon_tasks;
-    DROP TRIGGER IF EXISTS update_tasks_updated_at ON tasks;
-    
-    -- Prompts table triggers
-    DROP TRIGGER IF EXISTS update_archon_prompts_updated_at ON archon_prompts;
-    DROP TRIGGER IF EXISTS update_prompts_updated_at ON prompts;
-    
-    RAISE NOTICE 'Triggers dropped successfully.';
+    RAISE NOTICE 'All triggers cleanup completed.';
     
 EXCEPTION WHEN OTHERS THEN
-    RAISE NOTICE 'Some triggers may not exist: %', SQLERRM;
+    RAISE NOTICE 'Trigger cleanup had warnings: %', SQLERRM;
 END $$;
 
 -- ======================================================================
@@ -123,29 +125,34 @@ END $$;
 -- ======================================================================
 
 DO $$
+DECLARE
+    function_record RECORD;
 BEGIN
-    RAISE NOTICE 'Dropping functions...';
+    RAISE NOTICE 'Dropping all custom functions...';
     
-    -- Update timestamp function (used by triggers)
-    DROP FUNCTION IF EXISTS update_updated_at_column() CASCADE;
+    -- Drop all custom functions in public schema (excluding system functions)
+    FOR function_record IN 
+        SELECT p.proname, n.nspname, 
+               pg_get_function_identity_arguments(p.oid) as args
+        FROM pg_proc p
+        JOIN pg_namespace n ON p.pronamespace = n.oid
+        WHERE n.nspname = 'public'
+        AND p.proname NOT LIKE 'pg_%'
+        AND p.proname NOT LIKE 'sql_%'
+    LOOP
+        BEGIN
+            EXECUTE format('DROP FUNCTION IF EXISTS %I.%I(%s) CASCADE', 
+                function_record.nspname, function_record.proname, function_record.args);
+            RAISE NOTICE 'Dropped function %.%(%s)', function_record.nspname, function_record.proname, function_record.args;
+        EXCEPTION WHEN OTHERS THEN
+            RAISE NOTICE 'Could not drop function %.%: %', function_record.nspname, function_record.proname, SQLERRM;
+        END;
+    END LOOP;
     
-    -- Search functions (new with archon_ prefix)
-    DROP FUNCTION IF EXISTS match_archon_crawled_pages(vector, int, jsonb, text) CASCADE;
-    DROP FUNCTION IF EXISTS match_archon_code_examples(vector, int, jsonb, text) CASCADE;
-    
-
-    
-    -- Search functions (old without prefix)
-    DROP FUNCTION IF EXISTS match_crawled_pages(vector, int, jsonb, text) CASCADE;
-    DROP FUNCTION IF EXISTS match_code_examples(vector, int, jsonb, text) CASCADE;
-    
-    -- Task management functions
-    DROP FUNCTION IF EXISTS archive_task(UUID, TEXT) CASCADE;
-    
-    RAISE NOTICE 'Functions dropped successfully.';
+    RAISE NOTICE 'All functions cleanup completed.';
     
 EXCEPTION WHEN OTHERS THEN
-    RAISE NOTICE 'Some functions may not exist: %', SQLERRM;
+    RAISE NOTICE 'Function cleanup had warnings: %', SQLERRM;
 END $$;
 
 -- ======================================================================
