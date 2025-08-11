@@ -81,7 +81,7 @@ class TestRAGServiceSearch:
         
         # Test the search
         query_embedding = [0.1] * 1536
-        results = await rag_service._basic_vector_search(
+        results = await rag_service.base_strategy.vector_search(
             query_embedding=query_embedding,
             match_count=5
         )
@@ -100,7 +100,7 @@ class TestRAGServiceSearch:
         """Test document search with mocked embedding"""
         # Patch at the module level where it's called from RAGService
         with patch('src.server.services.search.rag_service.create_embedding') as mock_embed, \
-             patch.object(rag_service, '_basic_vector_search') as mock_search:
+             patch.object(rag_service.base_strategy, 'vector_search') as mock_search:
             
             # Setup mocks
             mock_embed.return_value = [0.1] * 1536
@@ -171,7 +171,9 @@ class TestHybridSearchCore:
     def hybrid_strategy(self, mock_supabase):
         """Create hybrid search strategy"""
         from src.server.services.search.hybrid_search_strategy import HybridSearchStrategy
-        return HybridSearchStrategy(mock_supabase)
+        from src.server.services.search.base_search_strategy import BaseSearchStrategy
+        base_strategy = BaseSearchStrategy(mock_supabase)
+        return HybridSearchStrategy(mock_supabase, base_strategy)
     
     def test_initialization(self, hybrid_strategy):
         """Test hybrid strategy initializes"""
@@ -274,7 +276,9 @@ class TestAgenticRAGCore:
     def agentic_strategy(self, mock_supabase):
         """Create agentic RAG strategy"""
         from src.server.services.search.agentic_rag_strategy import AgenticRAGStrategy
-        return AgenticRAGStrategy(mock_supabase)
+        from src.server.services.search.base_search_strategy import BaseSearchStrategy
+        base_strategy = BaseSearchStrategy(mock_supabase)
+        return AgenticRAGStrategy(mock_supabase, base_strategy)
     
     def test_initialization(self, agentic_strategy):
         """Test agentic strategy initializes"""
@@ -285,11 +289,14 @@ class TestAgenticRAGCore:
     def test_query_enhancement(self, agentic_strategy):
         """Test code query enhancement"""
         original_query = "python function"
-        enhanced = agentic_strategy.enhance_code_query(original_query)
+        analysis = agentic_strategy.analyze_code_query(original_query)
         
-        assert isinstance(enhanced, str)
-        assert len(enhanced) > len(original_query)
-        assert "Code example" in enhanced
+        assert isinstance(analysis, dict)
+        assert 'is_code_query' in analysis
+        assert 'confidence' in analysis
+        assert 'languages' in analysis
+        assert analysis['is_code_query'] is True
+        assert 'python' in analysis['languages']
 
 
 class TestRAGIntegrationSimple:
