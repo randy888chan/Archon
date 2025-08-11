@@ -4,6 +4,8 @@
  * Handles automatic context collection and GitHub issue creation for bug reports.
  */
 
+import { getApiUrl } from '../config/api';
+
 export interface BugContext {
   error: {
     message: string;
@@ -159,7 +161,7 @@ class BugReportService {
         context: bugReport.context
       };
 
-      const response = await fetch('http://localhost:8181/api/bug-report/github', {
+      const response = await fetch(`${getApiUrl()}/api/bug-report/github`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

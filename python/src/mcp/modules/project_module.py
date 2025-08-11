@@ -703,8 +703,8 @@ def register_project_tools(mcp: FastMCP):
                 ],
                 "level_3_integration": [
                     "pytest tests/integration/test_oauth_flow_complete.py -v",
-                    "curl -X GET http://localhost:8000/auth/oauth/google",
-                    "curl -X POST http://localhost:8000/auth/oauth/google/callback -d 'code=test&state=valid_state'"
+                    "curl -X GET http://localhost:8181/auth/oauth/google",
+                    "curl -X POST http://localhost:8181/auth/oauth/google/callback -d 'code=test&state=valid_state'"
                 ],
                 "level_4_end_to_end": [
                     "Start development server: uvicorn main:app --reload",
