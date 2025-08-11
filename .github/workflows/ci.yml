@@ -78,10 +78,6 @@ jobs:
       run:
         working-directory: ./python
 
-    strategy:
-      matrix:
-        test-type: [unit, integration]
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -119,39 +115,21 @@ jobs:
             echo "MyPy not found, skipping type checking"
           fi
 
-      - name: Run unit tests
-        if: matrix.test-type == 'unit'
+      - name: Run all tests
         run: |
-          uv run pytest tests/ -m unit --verbose --tb=short \
-            --cov=src --cov-report=xml --cov-report=html \
-            --cov-report=term-missing \
-            --junitxml=test-results-unit.xml || true
-
-      - name: Run integration tests
-        if: matrix.test-type == 'integration'
-        run: |
-          uv run pytest tests/ -m integration --verbose --tb=short \
-            --cov=src --cov-report=xml --cov-report=html \
-            --cov-report=term-missing \
-            --junitxml=test-results-integration.xml || true
-
-      - name: Run all tests (fallback if no markers)
-        if: matrix.test-type == 'unit'
-        continue-on-error: true
-        run: |
-          echo "Running all tests as fallback..."
+          echo "Running all unit tests..."
           uv run pytest tests/ --verbose --tb=short \
             --cov=src --cov-report=xml --cov-report=html \
             --cov-report=term-missing \
-            --junitxml=test-results-all.xml || true
+            --junitxml=test-results.xml || true
 
       - name: Upload backend test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: backend-test-results-${{ matrix.test-type }}
+          name: backend-test-results
           path: |
-            python/test-results-*.xml
+            python/test-results.xml
             python/htmlcov/
             python/coverage.xml
           retention-days: 30
@@ -161,8 +139,8 @@ jobs:
         uses: codecov/codecov-action@v4
         with:
           files: ./python/coverage.xml
-          flags: backend-${{ matrix.test-type }}
-          name: backend-${{ matrix.test-type }}-coverage
+          flags: backend
+          name: backend-coverage
           token: ${{ secrets.CODECOV_TOKEN }}
 
   # Job 3: Docker Build Test
@@ -218,19 +196,12 @@ jobs:
             --tag archon-frontend:test \
             archon-ui-main/
 
-      - name: Test container health check
-        if: matrix.service != 'frontend'
+      - name: Test container health check (for the containers that can run without proper env vars)
+        if: matrix.service != 'frontend' && matrix.service != 'server'
         run: |
-          # Start container in background
+          # Only test MCP and agents services (they don't require real Supabase connection)
+          # Skip server and frontend as they need real database
           case "${{ matrix.service }}" in
-            "server")
-              docker run -d --name test-${{ matrix.service }} \
-                -e SUPABASE_URL=${{ env.SUPABASE_URL }} \
-                -e SUPABASE_SERVICE_KEY=${{ env.SUPABASE_SERVICE_KEY }} \
-                -e ARCHON_SERVER_PORT=8181 \
-                -p 8181:8181 \
-                archon-${{ matrix.service }}:test
-              ;;
             "mcp")
               docker run -d --name test-${{ matrix.service }} \
                 -e SUPABASE_URL=${{ env.SUPABASE_URL }} \

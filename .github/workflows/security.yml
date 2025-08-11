@@ -88,14 +88,16 @@ jobs:
           echo "# Backend Security Audit Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
-          if uv run safety check --json --output safety-report.json; then
+          # Run safety check and save JSON output
+          if uv run safety check --output json > safety-report.json 2>&1; then
             echo "✅ No known vulnerabilities found" >> $GITHUB_STEP_SUMMARY
           else
             echo "⚠️ Known vulnerabilities detected" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "## Vulnerabilities Found:" >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
-            uv run safety check >> $GITHUB_STEP_SUMMARY || true
+            # Run again in text format for summary
+            uv run safety check --output text >> $GITHUB_STEP_SUMMARY 2>&1 || true
             echo '```' >> $GITHUB_STEP_SUMMARY
           fi
 
@@ -104,7 +106,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: backend-security-report
-          path: python/safety-report.json
+          path: safety-report.json
           retention-days: 30
 
   # Job 3: Secrets Scanning
