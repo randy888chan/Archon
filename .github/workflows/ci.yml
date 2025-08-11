@@ -2,9 +2,9 @@ name: Continuous Integration
 
 on:
   push:
-    branches: [ main, develop, rag-improvements ]
+    branches: [ main, unit-testing-ci ]
   pull_request:
-    branches: [ main, develop, rag-improvements ]
+    branches: [ main ]
   workflow_dispatch: # Allow manual triggering
 
 env:

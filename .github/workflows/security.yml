@@ -2,9 +2,9 @@ name: Security & Dependency Checks
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main, unit-testing-ci ]
   pull_request:
-    branches: [ main, develop ]
+    branches: [ main ]
   schedule:
     # Run weekly on Mondays at 2 AM UTC
     - cron: '0 2 * * 1'
