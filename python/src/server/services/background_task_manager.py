@@ -7,7 +7,7 @@ Uses pure async patterns for task execution.
 import asyncio
 from typing import Dict, Any, Optional, Callable
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from ..config.logfire_config import get_logger
 
@@ -17,12 +17,14 @@ logger = get_logger(__name__)
 class BackgroundTaskManager:
     """Manages async background task execution with progress tracking"""
     
-    def __init__(self, max_concurrent_tasks: int = 10):
+    def __init__(self, max_concurrent_tasks: int = 10, metadata_retention_hours: int = 1):
         self.active_tasks: Dict[str, asyncio.Task] = {}
         self.task_metadata: Dict[str, Dict[str, Any]] = {}
         self.max_concurrent_tasks = max_concurrent_tasks
+        self.metadata_retention_hours = metadata_retention_hours
         self._task_semaphore = asyncio.Semaphore(max_concurrent_tasks)
-        logger.info(f"BackgroundTaskManager initialized with max {max_concurrent_tasks} concurrent tasks")
+        self._cleanup_task: Optional[asyncio.Task] = None
+        logger.info(f"BackgroundTaskManager initialized with max {max_concurrent_tasks} concurrent tasks, {metadata_retention_hours}h metadata retention")
     
     def set_main_loop(self, loop: asyncio.AbstractEventLoop):
         """Set the main event loop for the task manager"""
@@ -46,6 +48,10 @@ class BackgroundTaskManager:
         }
         
         logger.info(f"Submitting async task {task_id} for background execution")
+        
+        # Start periodic cleanup if not already running
+        if self._cleanup_task is None or self._cleanup_task.done():
+            self._cleanup_task = asyncio.create_task(self._periodic_cleanup())
         
         # Create and start the async task with semaphore to limit concurrency
         async_task = asyncio.create_task(
@@ -167,9 +173,50 @@ class BackgroundTaskManager:
             return True
         return False
     
+    async def _periodic_cleanup(self):
+        """Periodically clean up old task metadata to prevent memory leaks"""
+        while True:
+            try:
+                await asyncio.sleep(300)  # Run cleanup every 5 minutes
+                
+                current_time = datetime.utcnow()
+                retention_cutoff = current_time - timedelta(hours=self.metadata_retention_hours)
+                
+                # Find and remove old completed/error/cancelled task metadata
+                tasks_to_remove = []
+                for task_id, metadata in self.task_metadata.items():
+                    # Only clean up completed/error/cancelled tasks
+                    if metadata.get('status') in ['complete', 'error', 'cancelled']:
+                        created_at = metadata.get('created_at')
+                        if created_at and created_at < retention_cutoff:
+                            tasks_to_remove.append(task_id)
+                
+                # Remove old metadata
+                for task_id in tasks_to_remove:
+                    del self.task_metadata[task_id]
+                    logger.debug(f"Cleaned up metadata for old task {task_id}")
+                
+                if tasks_to_remove:
+                    logger.info(f"Cleaned up metadata for {len(tasks_to_remove)} old tasks")
+                    
+            except asyncio.CancelledError:
+                logger.info("Periodic cleanup task cancelled")
+                break
+            except Exception as e:
+                logger.error(f"Error in periodic cleanup: {e}", exc_info=True)
+                await asyncio.sleep(60)  # Wait a bit before retrying on error
+    
     async def cleanup(self):
         """Cleanup resources and cancel remaining tasks"""
         logger.info("Shutting down BackgroundTaskManager")
+        
+        # Cancel the periodic cleanup task
+        if self._cleanup_task and not self._cleanup_task.done():
+            self._cleanup_task.cancel()
+            try:
+                await self._cleanup_task
+            except asyncio.CancelledError:
+                pass
         
         # Cancel all active tasks
         for task_id, task in list(self.active_tasks.items()):

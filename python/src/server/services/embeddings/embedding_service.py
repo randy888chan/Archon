@@ -118,7 +118,7 @@ async def create_embedding(text: str, provider: Optional[str] = None) -> List[fl
     except Exception as e:
         # Convert to appropriate exception type
         error_msg = str(e)
-        search_logger.error(f"Embedding creation failed: {error_msg}")
+        search_logger.error(f"Embedding creation failed: {error_msg}", exc_info=True)
         search_logger.error(f"Failed text preview: {text[:100]}...")
         
         if "insufficient_quota" in error_msg:
@@ -169,12 +169,12 @@ async def create_embeddings_batch(
     validated_texts = []
     for i, text in enumerate(texts):
         if not isinstance(text, str):
-            search_logger.error(f"Invalid text type at index {i}: {type(text)}, value: {text}")
+            search_logger.error(f"Invalid text type at index {i}: {type(text)}, value: {text}", exc_info=True)
             # Try to convert to string
             try:
                 validated_texts.append(str(text))
             except Exception as e:
-                search_logger.error(f"Failed to convert text at index {i} to string: {e}")
+                search_logger.error(f"Failed to convert text at index {i} to string: {e}", exc_info=True)
                 validated_texts.append("")  # Use empty string as fallback
         else:
             validated_texts.append(text)
@@ -241,7 +241,8 @@ async def create_embeddings_batch(
                                         
                                         search_logger.error(
                                             f"⚠️ QUOTA EXHAUSTED at batch {batch_index}! "
-                                            f"Processed {result.success_count} texts successfully."
+                                            f"Processed {result.success_count} texts successfully.",
+                                            exc_info=True
                                         )
                                         
                                         # Add remaining texts as failures
@@ -275,7 +276,7 @@ async def create_embeddings_batch(
                                             
                     except Exception as e:
                         # This batch failed - track failures but continue with next batch
-                        search_logger.error(f"Batch {batch_index} failed: {e}")
+                        search_logger.error(f"Batch {batch_index} failed: {e}", exc_info=True)
                         
                         for text in batch:
                             if isinstance(e, EmbeddingError):
@@ -327,7 +328,7 @@ async def create_embeddings_batch(
         except Exception as e:
             # Catastrophic failure - return what we have
             span.set_attribute("catastrophic_failure", True)
-            search_logger.error(f"Catastrophic failure in batch embedding: {e}")
+            search_logger.error(f"Catastrophic failure in batch embedding: {e}", exc_info=True)
             
             # Mark remaining texts as failed
             processed_count = result.success_count + result.failure_count
