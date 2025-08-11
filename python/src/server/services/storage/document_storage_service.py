@@ -225,21 +225,43 @@ async def add_documents_to_supabase(
             
             # Create embeddings for the batch - no progress reporting
             # Don't pass websocket to avoid Socket.IO issues
-            try:
-                batch_embeddings = await create_embeddings_batch_async(
-                    contextual_contents,
-                    provider=provider
+            result = await create_embeddings_batch_async(
+                contextual_contents,
+                provider=provider
+            )
+            
+            # Log any failures
+            if result.has_failures:
+                search_logger.error(
+                    f"Batch {batch_num}: Failed to create {result.failure_count} embeddings. "
+                    f"Successful: {result.success_count}. Errors: {[item['error'] for item in result.failed_items[:3]]}"
                 )
-            except Exception as e:
-                search_logger.error(f"Failed to create embeddings for batch {batch_num}: {e}")
-                # Skip this batch entirely - don't store documents without embeddings
-                search_logger.warning(f"Skipping batch {batch_num} ({len(batch_contents)} chunks) due to embedding failure")
+            
+            # Use only successful embeddings
+            batch_embeddings = result.embeddings
+            successful_texts = result.texts_processed
+            
+            if not batch_embeddings:
+                search_logger.warning(f"Skipping batch {batch_num} - no successful embeddings created")
                 completed_batches += 1
                 continue
             
-            # Prepare batch data
+            # Prepare batch data - only for successful embeddings
             batch_data = []
-            for j in range(len(contextual_contents)):
+            # Map successful texts back to their original indices
+            for j, (embedding, text) in enumerate(zip(batch_embeddings, successful_texts)):
+                # Find the original index of this text
+                orig_idx = None
+                for idx, orig_text in enumerate(contextual_contents):
+                    if orig_text == text:
+                        orig_idx = idx
+                        break
+                
+                if orig_idx is None:
+                    search_logger.warning(f"Could not map embedding back to original text")
+                    continue
+                    
+                j = orig_idx  # Use original index for metadata lookup
                 # Use source_id from metadata if available, otherwise extract from URL
                 if batch_metadatas[j].get('source_id'):
                     source_id = batch_metadatas[j]['source_id']
@@ -251,13 +273,13 @@ async def add_documents_to_supabase(
                 data = {
                     "url": batch_urls[j],
                     "chunk_number": batch_chunk_numbers[j],
-                    "content": contextual_contents[j],
+                    "content": text,  # Use the successful text
                     "metadata": {
-                        "chunk_size": len(contextual_contents[j]),
+                        "chunk_size": len(text),
                         **batch_metadatas[j]
                     },
                     "source_id": source_id,
-                    "embedding": batch_embeddings[j]
+                    "embedding": embedding  # Use the successful embedding
                 }
                 batch_data.append(data)
             

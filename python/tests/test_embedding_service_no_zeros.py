@@ -14,7 +14,6 @@ from src.server.services.embeddings.embedding_service import (
     create_embedding_async,
     create_embeddings_batch,
     create_embeddings_batch_async,
-    create_embeddings_batch_with_fallback,
     EmbeddingBatchResult
 )
 from src.server.services.embeddings.embedding_exceptions import (
@@ -40,8 +39,8 @@ class TestNoZeroEmbeddings:
         asyncio.run(async_function())
     
     @pytest.mark.asyncio
-    async def test_async_quota_exhausted_raises_exception(self) -> None:
-        """Test that quota exhaustion raises exception instead of returning zeros."""
+    async def test_async_quota_exhausted_returns_failure(self) -> None:
+        """Test that quota exhaustion returns failure result instead of zeros."""
         with patch('src.server.services.embeddings.embedding_service.get_llm_client') as mock_client:
             # Mock the client to raise quota error
             mock_ctx = AsyncMock()
@@ -52,6 +51,7 @@ class TestNoZeroEmbeddings:
             )
             mock_client.return_value = mock_ctx
             
+            # Single embedding still raises for backward compatibility
             with pytest.raises(EmbeddingQuotaExhaustedError) as exc_info:
                 await create_embedding_async("test text")
             
@@ -87,10 +87,10 @@ class TestNoZeroEmbeddings:
             with pytest.raises(EmbeddingAPIError) as exc_info:
                 await create_embedding_async("test text")
             
-            assert "failed to create embeddings batch" in str(exc_info.value).lower()
+            assert "failed to create embedding" in str(exc_info.value).lower()
     
     @pytest.mark.asyncio
-    async def test_batch_with_fallback_handles_partial_failures(self) -> None:
+    async def test_batch_handles_partial_failures(self) -> None:
         """Test that batch processing can handle partial failures gracefully."""
         with patch('src.server.services.embeddings.embedding_service.get_llm_client') as mock_client:
             # Mock successful response for first batch, failure for second
@@ -116,7 +116,7 @@ class TestNoZeroEmbeddings:
                     
                     # Process 4 texts (batch size will be 2)
                     texts = ["text1", "text2", "text3", "text4"]
-                    result = await create_embeddings_batch_with_fallback(texts)
+                    result = await create_embeddings_batch_async(texts)
                     
                     # Check result structure
                     assert isinstance(result, EmbeddingBatchResult)
@@ -130,7 +130,7 @@ class TestNoZeroEmbeddings:
                         assert not all(v == 0.0 for v in embedding)
     
     @pytest.mark.asyncio  
-    async def test_batch_with_fallback_quota_exhausted_stops_process(self) -> None:
+    async def test_batch_quota_exhausted_stops_process(self) -> None:
         """Test that quota exhaustion stops processing remaining batches."""
         with patch('src.server.services.embeddings.embedding_service.get_llm_client') as mock_client:
             # Mock quota exhaustion
@@ -146,7 +146,7 @@ class TestNoZeroEmbeddings:
                       new_callable=AsyncMock, return_value="text-embedding-ada-002"):
                 
                 texts = ["text1", "text2", "text3", "text4"]
-                result = await create_embeddings_batch_with_fallback(texts)
+                result = await create_embeddings_batch_async(texts)
                 
                 # All should fail due to quota
                 assert result.success_count == 0
@@ -180,13 +180,13 @@ class TestNoZeroEmbeddings:
                 # This line should never be reached
                 assert not is_zero_embedding(result)
         
-        # Test 2: Batch function with error should raise, not return zeros
+        # Test 2: Batch function with error should return failure result, not zeros
         with patch('src.server.services.embeddings.embedding_service.create_embeddings_batch_async',
-                  side_effect=Exception("Test error")):
-            with pytest.raises(Exception):
-                result = create_embeddings_batch([test_text])
-                # This line should never be reached
-                assert not any(is_zero_embedding(emb) for emb in result)
+                  return_value=EmbeddingBatchResult()):
+            result = create_embeddings_batch([test_text])
+            # Should return empty result, not zeros
+            assert isinstance(result, EmbeddingBatchResult)
+            assert len(result.embeddings) == 0
 
 
 class TestEmbeddingBatchResult:

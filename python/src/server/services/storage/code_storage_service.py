@@ -721,23 +721,38 @@ async def add_code_examples_to_supabase(
             batch_texts = combined_texts
         
         # Create embeddings for the batch
-        embeddings = await create_embeddings_batch_async(batch_texts, provider=provider)
+        result = await create_embeddings_batch_async(batch_texts, provider=provider)
         
-        # Check if embeddings are valid (not all zeros)
-        valid_embeddings = []
-        for idx, embedding in enumerate(embeddings):
-            if embedding and not all(v == 0.0 for v in embedding):
-                valid_embeddings.append(embedding)
-            else:
-                search_logger.warning("Zero or invalid embedding detected, creating new one...")
-                # Try to create a single embedding as fallback using async version
-                single_embedding = await create_embedding_async(batch_texts[idx], provider=provider)
-                valid_embeddings.append(single_embedding)
+        # Log any failures
+        if result.has_failures:
+            search_logger.error(
+                f"Failed to create {result.failure_count} code example embeddings. "
+                f"Successful: {result.success_count}"
+            )
         
-        # Prepare batch data
+        # Use only successful embeddings
+        valid_embeddings = result.embeddings
+        successful_texts = result.texts_processed
+        
+        if not valid_embeddings:
+            search_logger.warning(f"Skipping batch - no successful embeddings created")
+            continue
+        
+        # Prepare batch data - only for successful embeddings
         batch_data = []
-        for j, embedding in enumerate(valid_embeddings):
-            idx = i + j
+        for j, (embedding, text) in enumerate(zip(valid_embeddings, successful_texts)):
+            # Find the original index
+            orig_idx = None
+            for k, orig_text in enumerate(batch_texts):
+                if orig_text == text:
+                    orig_idx = k
+                    break
+            
+            if orig_idx is None:
+                search_logger.warning(f"Could not map embedding back to original code example")
+                continue
+                
+            idx = i + orig_idx  # Get the global index
             
             # Use source_id from metadata if available, otherwise extract from URL
             if metadatas[idx] and 'source_id' in metadatas[idx]:
