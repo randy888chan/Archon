@@ -129,9 +129,6 @@ class BackgroundTaskManager:
                 if task_id in self.active_tasks:
                     del self.active_tasks[task_id]
     
-    # Progress is now handled directly in _run_async_with_progress method
-    # No separate progress emitter needed for pure async tasks
-    
     async def get_task_status(self, task_id: str) -> Dict[str, Any]:
         """Get current status of a task"""
         metadata = self.task_metadata.get(task_id, {})

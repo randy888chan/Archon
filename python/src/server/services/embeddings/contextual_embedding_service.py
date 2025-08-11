@@ -82,11 +82,6 @@ Please give a short succinct context to situate this chunk within the overall do
             search_logger.error(f"Error generating contextual embedding: {e}")
         return chunk, False
 
-
-# REMOVED: process_chunk_with_context() sync function - use process_chunk_with_context() async with run_in_executor()
-# For ThreadPool usage: result = await loop.run_in_executor(None, lambda: asyncio.run(process_chunk_with_context_async(url, content, full_document)))
-
-
 async def process_chunk_with_context(url: str, content: str, full_document: str) -> Tuple[str, bool]:
     """
     Process a single chunk with contextual embedding using async/await.
@@ -114,9 +109,6 @@ async def _get_model_choice(provider: Optional[str] = None) -> str:
     search_logger.debug(f"Using model from credential service: {model}")
     
     return model
-
-# REMOVED: _get_model_choice() sync function - use async version only
-
 
 async def generate_contextual_embeddings_batch(full_documents: List[str], chunks: List[str], provider: str = None) -> List[Tuple[str, bool]]:
     """

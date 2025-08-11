@@ -20,9 +20,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Code Quality
 
-- Remove dead code immediately rather than maintaining it
+- Remove dead code immediately rather than maintaining it - no backward compatibility or legacy functions
 - Prioritize functionality over production-ready patterns
 - Focus on user experience and feature completeness
+- When updating code, don't reference what is changing (avoid keywords like LEGACY, CHANGED, REMOVED), instead focus on comments that document just the functionality of the code
 
 ## Architecture Overview
 
@@ -190,5 +191,5 @@ When connected to Cursor/Windsurf:
 - Python backend uses `uv` for dependency management
 - Docker Compose handles service orchestration
 
-ADDITIONAL CONTEXT FOR SPECIFICALLY HOW TO USE ARCHON ITSLEF:
+ADDITIONAL CONTEXT FOR SPECIFICALLY HOW TO USE ARCHON ITSELF:
 @CLAUDE-ARCHON.md

@@ -19,9 +19,9 @@ from ..llm_provider_service import get_llm_client
 
 
 def _get_model_choice() -> str:
-    """Get MODEL_CHOICE with direct fallback (sync version - deprecated)."""
+    """Get MODEL_CHOICE with direct fallback."""
     try:
-        # Direct cache/env fallback since sync function was removed
+        # Direct cache/env fallback
         from ..credential_service import credential_service
         if credential_service._cache_initialized and "MODEL_CHOICE" in credential_service._cache:
             model = credential_service._cache["MODEL_CHOICE"]
@@ -465,8 +465,7 @@ Format your response as JSON:
 """
     
     try:
-        # Get LLM client using fallback since sync version was removed
-        # TODO: Convert this function to async in Phase 2A
+        # Get LLM client using fallback
         try:
             import openai
             import os
@@ -755,7 +754,7 @@ async def add_code_examples_to_supabase(
                 valid_embeddings.append(embedding)
             else:
                 search_logger.warning("Zero or invalid embedding detected, creating new one...")
-                # Try to create a single embedding as fallback using async version
+                # Try to create a single embedding as fallback
                 single_embedding = await create_embedding(batch_texts[idx], provider=provider)
                 valid_embeddings.append(single_embedding)
         

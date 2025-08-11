@@ -14,7 +14,6 @@ from ...config.logfire_config import safe_logfire_info, safe_logfire_error
 from ..crawling.crawling_service import CrawlingService
 from ..storage.storage_services import DocumentStorageService
 from ..storage.document_storage_service import add_documents_to_supabase
-# Removed sync import - using async version only
 from .code_extraction_service import CodeExtractionService
 from ...fastapi.socketio_handlers import update_crawl_progress
 from ..source_management_service import update_source_info, extract_source_summary

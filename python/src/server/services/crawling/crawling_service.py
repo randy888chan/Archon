@@ -6,7 +6,6 @@ MCP tools and FastAPI endpoints. It handles web crawling operations including
 single page crawling, batch crawling, and recursive crawling.
 """
 
-# Removed direct logging import - using unified config
 import asyncio
 from typing import List, Dict, Any
 from urllib.parse import urlparse, urldefrag

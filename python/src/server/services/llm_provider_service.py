@@ -128,14 +128,6 @@ async def get_llm_client(provider: Optional[str] = None, use_embedding_provider:
         pass
 
 
-# REMOVED: _get_active_provider_sync() - use async credential_service.get_active_provider() with run_in_executor()
-# For ThreadPool usage: result = await loop.run_in_executor(None, lambda: asyncio.run(credential_service.get_active_provider("llm")))
-
-
-# REMOVED: get_llm_client_sync() - use async get_llm_client() with run_in_executor()
-# For ThreadPool usage: async with get_llm_client() as client: ...using async/await patterns
-
-
 async def get_embedding_model(provider: Optional[str] = None) -> str:
     """
     Get the configured embedding model based on the provider.
@@ -189,7 +181,3 @@ async def get_embedding_model(provider: Optional[str] = None) -> str:
         logger.error(f"Error getting embedding model: {e}")
         # Fallback to OpenAI default
         return "text-embedding-3-small"
-
-
-# REMOVED: get_embedding_model_sync() - use async get_embedding_model() with run_in_executor()
-# For ThreadPool usage: result = await loop.run_in_executor(None, lambda: asyncio.run(get_embedding_model(provider)))

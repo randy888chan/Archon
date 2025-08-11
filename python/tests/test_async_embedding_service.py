@@ -250,17 +250,6 @@ class TestAsyncEmbeddingService:
                         # Verify progress callback was called
                         progress_callback.assert_called()
 
-    def test_deprecated_functions_removed(self):
-        """Test that deprecated sync functions are no longer available"""
-        from src.server.services.embeddings import embedding_service
-        
-        # These functions should no longer exist
-        assert not hasattr(embedding_service, 'get_openai_api_key_sync')
-        
-        # The async versions should be the primary functions
-        assert hasattr(embedding_service, 'create_embedding')
-        assert hasattr(embedding_service, 'create_embeddings_batch')
-
     @pytest.mark.asyncio
     async def test_provider_override(self, mock_llm_client, mock_threading_service):
         """Test that provider override parameter is properly passed through"""

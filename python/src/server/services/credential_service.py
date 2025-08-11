@@ -463,9 +463,6 @@ async def get_credential(key: str, default: Any = None) -> Any:
     """Convenience function to get a credential."""
     return await credential_service.get_credential(key, default)
 
-
-# Direct cache access for simple cases: credential_service._cache.get(key, os.getenv(key, default))
-
 async def set_credential(key: str, value: str, is_encrypted: bool = False, 
                         category: str = None, description: str = None) -> bool:
     """Convenience function to set a credential."""

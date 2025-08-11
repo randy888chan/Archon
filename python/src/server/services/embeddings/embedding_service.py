@@ -204,15 +204,3 @@ async def create_embeddings_batch(
             
             # Return zero embeddings as fallback
             return [[0.0] * 1536 for _ in texts]
-
-
-# Deprecated functions - kept for backward compatibility
-async def get_openai_api_key() -> Optional[str]:
-    """
-    DEPRECATED: Use os.getenv("OPENAI_API_KEY") directly.
-    API key is loaded into environment at startup.
-    """
-    return os.getenv("OPENAI_API_KEY")
-
-
-# REMOVED: get_openai_api_key_sync() - use os.getenv("OPENAI_API_KEY") directly

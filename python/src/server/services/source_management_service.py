@@ -15,9 +15,9 @@ logger = get_logger(__name__)
 
 
 def _get_model_choice() -> str:
-    """Get MODEL_CHOICE with direct fallback (sync version - deprecated)."""
+    """Get MODEL_CHOICE with direct fallback."""
     try:
-        # Direct cache/env fallback since sync function was removed
+        # Direct cache/env fallback
         from .credential_service import credential_service
         if credential_service._cache_initialized and "MODEL_CHOICE" in credential_service._cache:
             model = credential_service._cache["MODEL_CHOICE"]
@@ -66,8 +66,6 @@ The above content is from the documentation for '{source_id}'. Please provide a 
 """
     
     try:
-        # Get LLM client using fallback since sync version was removed
-        # TODO: Convert this function to async in Phase 2A
         try:
             import openai
             import os
@@ -150,8 +148,6 @@ def generate_source_title_and_metadata(
     # Try to generate a better title from content
     if content and len(content.strip()) > 100:
         try:
-            # Get LLM client using fallback since sync version was removed
-            # TODO: Convert this function to async in Phase 2A
             try:
                 import openai
                 import os
