@@ -1,15 +1,13 @@
 """
 Background Task Manager
 
-Manages background task execution with progress tracking using ThreadPoolExecutor.
-Ensures long-running operations don't block the main event loop.
+Manages async background task execution with progress tracking.
+Uses pure async patterns for task execution.
 """
 import asyncio
-from concurrent.futures import ThreadPoolExecutor
-from queue import Queue
 from typing import Dict, Any, Optional, Callable
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from ..config.logfire_config import get_logger
 
@@ -17,37 +15,30 @@ logger = get_logger(__name__)
 
 
 class BackgroundTaskManager:
-    """Manages background task execution with progress tracking"""
+    """Manages async background task execution with progress tracking"""
     
-    def __init__(self, max_workers: int = 4):
-        self.executor = ThreadPoolExecutor(max_workers=max_workers)
-        self.active_tasks: Dict[str, asyncio.Future] = {}
-        self.progress_queues: Dict[str, Queue] = {}
+    def __init__(self, max_concurrent_tasks: int = 10, metadata_retention_hours: int = 1):
+        self.active_tasks: Dict[str, asyncio.Task] = {}
         self.task_metadata: Dict[str, Dict[str, Any]] = {}
-        self.main_loop: Optional[asyncio.AbstractEventLoop] = None
-        logger.info(f"BackgroundTaskManager initialized with {max_workers} workers")
+        self.max_concurrent_tasks = max_concurrent_tasks
+        self.metadata_retention_hours = metadata_retention_hours
+        self._task_semaphore = asyncio.Semaphore(max_concurrent_tasks)
+        self._cleanup_task: Optional[asyncio.Task] = None
+        logger.info(f"BackgroundTaskManager initialized with max {max_concurrent_tasks} concurrent tasks, {metadata_retention_hours}h metadata retention")
     
     def set_main_loop(self, loop: asyncio.AbstractEventLoop):
         """Set the main event loop for the task manager"""
-        self.main_loop = loop
-        # Also set it in blocking_helpers for global access
-        from .blocking_helpers import set_main_event_loop
-        set_main_event_loop(loop)
-        logger.info("Main event loop set in BackgroundTaskManager")
+        logger.info("BackgroundTaskManager uses pure async - main loop setting not required")
     
     async def submit_task(
         self,
-        task_func: Callable,
+        async_task_func: Callable,
         task_args: tuple,
         task_id: Optional[str] = None,
         progress_callback: Optional[Callable] = None
     ) -> str:
-        """Submit a blocking task for background execution"""
+        """Submit an async task for background execution"""
         task_id = task_id or str(uuid.uuid4())
-        
-        # Create progress queue
-        progress_queue = Queue()
-        self.progress_queues[task_id] = progress_queue
         
         # Store metadata
         self.task_metadata[task_id] = {
@@ -56,147 +47,110 @@ class BackgroundTaskManager:
             'progress': 0
         }
         
-        logger.info(f"Submitting task {task_id} for background execution")
+        logger.info(f"Submitting async task {task_id} for background execution")
         
-        # Start progress emitter if callback provided
-        if progress_callback:
-            asyncio.create_task(
-                self._emit_progress(task_id, progress_queue, progress_callback)
+        # Start periodic cleanup if not already running
+        if self._cleanup_task is None or self._cleanup_task.done():
+            self._cleanup_task = asyncio.create_task(self._periodic_cleanup())
+        
+        # Create and start the async task with semaphore to limit concurrency
+        async_task = asyncio.create_task(
+            self._run_async_with_progress(
+                async_task_func,
+                task_args,
+                task_id,
+                progress_callback
             )
-        
-        # Submit to executor
-        loop = asyncio.get_running_loop()
-        future = loop.run_in_executor(
-            self.executor,
-            self._run_with_progress,
-            task_func,
-            task_args,
-            progress_queue,
-            task_id
         )
         
-        self.active_tasks[task_id] = future
+        self.active_tasks[task_id] = async_task
         return task_id
     
-    def _run_with_progress(
+    async def _run_async_with_progress(
         self,
-        task_func: Callable,
+        async_task_func: Callable,
         task_args: tuple,
-        progress_queue: Queue,
-        task_id: str
-    ) -> Any:
-        """Wrapper to inject progress queue into task function"""
-        try:
-            logger.info(f"Starting execution of task {task_id}")
-            # Inject progress_queue as first argument
-            result = task_func(progress_queue, *task_args)
-            progress_queue.put({
-                'status': 'complete',
-                'percentage': 100,
-                'result': result
-            })
-            logger.info(f"Task {task_id} completed successfully")
-            return result
-        except Exception as e:
-            logger.error(f"Task {task_id} failed with error: {e}")
-            progress_queue.put({
-                'status': 'error',
-                'percentage': -1,
-                'error': str(e)
-            })
-            raise
-    
-    async def _emit_progress(
-        self,
         task_id: str,
-        queue: Queue,
-        callback: Callable
-    ):
-        """Emit progress updates from queue"""
-        logger.debug(f"Starting progress emitter for task {task_id}")
-        
-        last_heartbeat = datetime.utcnow()
-        heartbeat_interval = 30  # Send heartbeat every 30 seconds
-        
-        while True:
+        progress_callback: Optional[Callable] = None
+    ) -> Any:
+        """Wrapper to run async task with progress tracking and concurrency control"""
+        async with self._task_semaphore:  # Limit concurrent tasks
             try:
-                if not queue.empty():
-                    update = queue.get_nowait()
-                    logger.info(f"Progress update from queue for task {task_id}: status={update.get('status')}, percentage={update.get('percentage')}")
-                    
-                    # Update metadata with all progress information
-                    # Store the complete update for reconnection purposes
-                    if 'percentage' in update:
-                        self.task_metadata[task_id].update({
-                            'status': update.get('status', 'running'),
-                            'progress': update.get('percentage', 0),
-                            'last_update': update  # Store complete update for reconnections
-                        })
-                    else:
-                        # Only update status if no percentage
-                        self.task_metadata[task_id]['status'] = update.get('status', 'running')
-                        self.task_metadata[task_id]['last_update'] = update
-                    
-                    # Call callback with error handling to prevent Socket.IO failures from crashing tasks
-                    logger.info(f"Calling progress callback for task {task_id}")
-                    try:
-                        await callback(task_id, update)
-                        logger.info(f"Progress callback completed for task {task_id}")
-                    except Exception as callback_error:
-                        # Log but don't crash - Socket.IO failures shouldn't kill background tasks
-                        logger.error(f"Progress callback error for task {task_id}: {callback_error}")
-                        logger.error("Continuing task execution despite callback failure")
-                    
-                    # Exit on completion
-                    if update.get('status') in ['complete', 'error']:
-                        logger.debug(f"Task {task_id} reached terminal state: {update.get('status')}")
-                        break
-                    
-                    # Reset heartbeat timer after sending an update
-                    last_heartbeat = datetime.utcnow()
-                else:
-                    # Check if we need to send a heartbeat
-                    time_since_heartbeat = (datetime.utcnow() - last_heartbeat).total_seconds()
-                    if time_since_heartbeat >= heartbeat_interval:
-                        # Send heartbeat to keep connection alive
-                        metadata = self.task_metadata.get(task_id, {})
-                        heartbeat_update = {
-                            'status': metadata.get('status', 'running'),
-                            'percentage': metadata.get('progress', 0),
-                            'heartbeat': True,
-                            'log': 'Background task still running...'
-                        }
-                        
-                        logger.debug(f"Sending heartbeat for task {task_id}")
-                        try:
-                            await callback(task_id, heartbeat_update)
-                        except Exception as e:
-                            logger.error(f"Heartbeat callback error for task {task_id}: {e}")
-                        
-                        last_heartbeat = datetime.utcnow()
+                logger.info(f"Starting execution of async task {task_id}")
                 
-                await asyncio.sleep(0.1)
+                # Update metadata to running state
+                self.task_metadata[task_id].update({
+                    'status': 'running',
+                    'progress': 0
+                })
+                
+                # Execute the async task function
+                result = await async_task_func(*task_args)
+                
+                # Update metadata to completed state
+                self.task_metadata[task_id].update({
+                    'status': 'complete',
+                    'progress': 100,
+                    'result': result
+                })
+                
+                # Send completion update via progress callback if provided
+                if progress_callback:
+                    try:
+                        await progress_callback(task_id, {
+                            'status': 'complete',
+                            'percentage': 100,
+                            'result': result
+                        })
+                    except Exception as callback_error:
+                        logger.error(f"Progress callback error for completed task {task_id}: {callback_error}")
+                
+                logger.info(f"Async task {task_id} completed successfully")
+                return result
                 
             except Exception as e:
-                logger.error(f"Progress emission error for task {task_id}: {e}")
-                break
-        
-        # Cleanup
-        if task_id in self.progress_queues:
-            del self.progress_queues[task_id]
-            logger.debug(f"Cleaned up progress queue for task {task_id}")
+                logger.error(f"Async task {task_id} failed with error: {e}")
+                
+                # Update metadata to error state
+                self.task_metadata[task_id].update({
+                    'status': 'error',
+                    'progress': -1,
+                    'error': str(e)
+                })
+                
+                # Send error update via progress callback if provided
+                if progress_callback:
+                    try:
+                        await progress_callback(task_id, {
+                            'status': 'error',
+                            'percentage': -1,
+                            'error': str(e)
+                        })
+                    except Exception as callback_error:
+                        logger.error(f"Progress callback error for failed task {task_id}: {callback_error}")
+                
+                raise
+            finally:
+                # Remove from active tasks
+                if task_id in self.active_tasks:
+                    del self.active_tasks[task_id]
     
     async def get_task_status(self, task_id: str) -> Dict[str, Any]:
         """Get current status of a task"""
-        if task_id not in self.active_tasks:
-            return {"error": "Task not found"}
-        
         metadata = self.task_metadata.get(task_id, {})
-        future = self.active_tasks[task_id]
         
-        if future.done():
+        if task_id not in self.active_tasks:
+            # Task not active - check if we have metadata from completed task
+            if metadata:
+                return metadata
+            else:
+                return {"error": "Task not found"}
+        
+        task = self.active_tasks[task_id]
+        
+        if task.done():
             try:
-                result = future.result()
+                result = task.result()
                 metadata['result'] = result
             except Exception as e:
                 metadata['error'] = str(e)
@@ -204,19 +158,84 @@ class BackgroundTaskManager:
         return metadata
     
     async def cancel_task(self, task_id: str) -> bool:
-        """Cancel a running task"""
+        """Cancel a running async task"""
         if task_id in self.active_tasks:
-            logger.info(f"Cancelling task {task_id}")
-            self.active_tasks[task_id].cancel()
+            logger.info(f"Cancelling async task {task_id}")
+            task = self.active_tasks[task_id]
+            task.cancel()
+            
+            # Update metadata
+            if task_id in self.task_metadata:
+                self.task_metadata[task_id]['status'] = 'cancelled'
+            
+            # Remove from active tasks
             del self.active_tasks[task_id]
-            self.task_metadata[task_id]['status'] = 'cancelled'
             return True
         return False
     
+    async def _periodic_cleanup(self):
+        """Periodically clean up old task metadata to prevent memory leaks"""
+        while True:
+            try:
+                await asyncio.sleep(300)  # Run cleanup every 5 minutes
+                
+                current_time = datetime.utcnow()
+                retention_cutoff = current_time - timedelta(hours=self.metadata_retention_hours)
+                
+                # Find and remove old completed/error/cancelled task metadata
+                tasks_to_remove = []
+                for task_id, metadata in self.task_metadata.items():
+                    # Only clean up completed/error/cancelled tasks
+                    if metadata.get('status') in ['complete', 'error', 'cancelled']:
+                        created_at = metadata.get('created_at')
+                        if created_at and created_at < retention_cutoff:
+                            tasks_to_remove.append(task_id)
+                
+                # Remove old metadata
+                for task_id in tasks_to_remove:
+                    del self.task_metadata[task_id]
+                    logger.debug(f"Cleaned up metadata for old task {task_id}")
+                
+                if tasks_to_remove:
+                    logger.info(f"Cleaned up metadata for {len(tasks_to_remove)} old tasks")
+                    
+            except asyncio.CancelledError:
+                logger.info("Periodic cleanup task cancelled")
+                break
+            except Exception as e:
+                logger.error(f"Error in periodic cleanup: {e}", exc_info=True)
+                await asyncio.sleep(60)  # Wait a bit before retrying on error
+    
     async def cleanup(self):
-        """Cleanup resources"""
+        """Cleanup resources and cancel remaining tasks"""
         logger.info("Shutting down BackgroundTaskManager")
-        self.executor.shutdown(wait=True)
+        
+        # Cancel the periodic cleanup task
+        if self._cleanup_task and not self._cleanup_task.done():
+            self._cleanup_task.cancel()
+            try:
+                await self._cleanup_task
+            except asyncio.CancelledError:
+                pass
+        
+        # Cancel all active tasks
+        for task_id, task in list(self.active_tasks.items()):
+            logger.info(f"Cancelling active task {task_id} during cleanup")
+            task.cancel()
+            
+            # Update metadata
+            if task_id in self.task_metadata:
+                self.task_metadata[task_id]['status'] = 'cancelled'
+        
+        # Wait for all tasks to complete or be cancelled
+        if self.active_tasks:
+            await asyncio.gather(*self.active_tasks.values(), return_exceptions=True)
+        
+        # Clear collections
+        self.active_tasks.clear()
+        self.task_metadata.clear()
+        
+        logger.info("BackgroundTaskManager shutdown complete")
 
 
 # Global instance

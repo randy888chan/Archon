@@ -9,11 +9,71 @@ from supabase import Client
 from ...config.logfire_config import safe_span, get_logger
 
 logger = get_logger(__name__)
-from ..embeddings.embedding_service import create_embedding, create_embedding_async
+from ..embeddings.embedding_service import create_embedding, create_embedding_async, get_dimension_column_name
+from ..embeddings.dimension_validator import validate_rpc_parameters, log_dimension_operation, validate_embedding_dimensions
+from ..embeddings.exceptions import VectorSearchError, DimensionValidationError
 
 # Fixed similarity threshold for RAG queries
 # Could make this configurable in the future, but that is unnecessary for now
 SIMILARITY_THRESHOLD = 0.15
+
+
+def build_rpc_params(query_embedding, match_count, filter_metadata=None, source_filter=None):
+    """Build RPC parameters with dimension-specific embedding parameter.
+    
+    Args:
+        query_embedding: The query embedding vector
+        match_count: Number of results to return
+        filter_metadata: Optional metadata filter dict
+        source_filter: Optional source filter string
+        
+    Returns:
+        Dictionary with appropriate RPC parameters
+        
+    Raises:
+        DimensionValidationError: If embedding validation fails and no fallback allowed
+    """
+    try:
+        # Validate embedding dimensions
+        is_valid, dims, error_msg = validate_embedding_dimensions(
+            query_embedding, 
+            allow_fallback=True
+        )
+        
+        if not is_valid:
+            logger.warning(f"RPC parameter validation: {error_msg}")
+            log_dimension_operation("vector_search_rpc", dims, False, error_msg)
+            # Use fallback parameter with validated dimensions
+            param_name = f"query_embedding_{dims}"
+        else:
+            log_dimension_operation("vector_search_rpc", dims, True)
+            param_name = f"query_embedding_{dims}"
+        
+    except Exception as e:
+        logger.error(f"Failed to validate embedding dimensions: {e}")
+        # Fallback to default 1536-dimensional parameter
+        param_name = "query_embedding_1536"
+        dims = 1536
+        log_dimension_operation("vector_search_rpc", dims, False, f"Validation exception: {e}")
+    
+    # Build parameters dictionary
+    params = {
+        param_name: query_embedding if query_embedding else [0.0] * dims,
+        "match_count": match_count,
+        "filter": filter_metadata or {}
+    }
+    
+    if source_filter:
+        params["source_filter"] = source_filter
+    
+    # Validate final RPC parameters for security
+    try:
+        validated_params = validate_rpc_parameters(params)
+        return validated_params
+    except DimensionValidationError as e:
+        logger.error(f"RPC parameter security validation failed: {e}")
+        # Return original params if validation fails but log the issue
+        return params
 
 
 
@@ -59,30 +119,26 @@ def search_documents(
             
             # Build the filter for the RPC call
             with safe_span("prepare_rpc_params"):
-                rpc_params = {
-                    "query_embedding": query_embedding,
-                    "match_count": match_count
-                }
+                # Handle source filter extraction
+                source_filter = None
+                final_filter_metadata = filter_metadata
                 
-                # Add filter to RPC params if provided
+                if filter_metadata and "source" in filter_metadata:
+                    source_filter = filter_metadata["source"]
+                    # Use empty filter for the general filter parameter
+                    final_filter_metadata = {}
+                
+                # Build RPC params with dimension-specific embedding parameter
+                rpc_params = build_rpc_params(
+                    query_embedding,
+                    match_count,
+                    final_filter_metadata,
+                    source_filter
+                )
+                
                 if filter_metadata:
-                    logger.debug(f"Adding filter to RPC params: {filter_metadata}")
-                    
-                    # Check if we have a source filter specifically
-                    if "source" in filter_metadata:
-                        # Use the version with source_filter parameter
-                        rpc_params["source_filter"] = filter_metadata["source"]
-                        # Also add the general filter as empty jsonb to satisfy the function signature
-                        rpc_params["filter"] = {}
-                    else:
-                        # Use the general filter parameter
-                        rpc_params["filter"] = filter_metadata
-                    
                     span.set_attribute("filter_applied", True)
                     span.set_attribute("filter_keys", list(filter_metadata.keys()) if filter_metadata else [])
-                else:
-                    # No filter provided - use empty jsonb for filter parameter
-                    rpc_params["filter"] = {}
             
             # Call the RPC function
             with safe_span("supabase_rpc_call"):
@@ -167,30 +223,26 @@ async def search_documents_async(
             
             # Build the filter for the RPC call
             with safe_span("prepare_rpc_params"):
-                rpc_params = {
-                    "query_embedding": query_embedding,
-                    "match_count": match_count
-                }
+                # Handle source filter extraction
+                source_filter = None
+                final_filter_metadata = filter_metadata
                 
-                # Add filter to RPC params if provided
+                if filter_metadata and "source" in filter_metadata:
+                    source_filter = filter_metadata["source"]
+                    # Use empty filter for the general filter parameter
+                    final_filter_metadata = {}
+                
+                # Build RPC params with dimension-specific embedding parameter
+                rpc_params = build_rpc_params(
+                    query_embedding,
+                    match_count,
+                    final_filter_metadata,
+                    source_filter
+                )
+                
                 if filter_metadata:
-                    logger.debug(f"Adding filter to RPC params: {filter_metadata}")
-                    
-                    # Check if we have a source filter specifically
-                    if "source" in filter_metadata:
-                        # Use the version with source_filter parameter
-                        rpc_params["source_filter"] = filter_metadata["source"]
-                        # Also add the general filter as empty jsonb to satisfy the function signature
-                        rpc_params["filter"] = {}
-                    else:
-                        # Use the general filter parameter
-                        rpc_params["filter"] = filter_metadata
-                    
                     span.set_attribute("filter_applied", True)
                     span.set_attribute("filter_keys", list(filter_metadata.keys()) if filter_metadata else [])
-                else:
-                    # No filter provided - use empty jsonb for filter parameter
-                    rpc_params["filter"] = {}
             
             # Call the RPC function
             with safe_span("supabase_rpc_call"):
@@ -258,19 +310,13 @@ def search_code_examples(
     
     # Execute the search using the match_archon_code_examples function
     try:
-        # Only include filter parameter if filter_metadata is provided and not empty
-        params = {
-            'query_embedding': query_embedding,
-            'match_count': match_count
-        }
-        
-        # Only add the filter if it's actually provided and not empty
-        if filter_metadata:
-            params['filter'] = filter_metadata
-            
-        # Add source filter if provided
-        if source_id:
-            params['source_filter'] = source_id
+        # Build RPC params with dimension-specific embedding parameter
+        params = build_rpc_params(
+            query_embedding,
+            match_count,
+            filter_metadata,
+            source_id
+        )
         
         result = client.rpc('match_archon_code_examples', params).execute()
         

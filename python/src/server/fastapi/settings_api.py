@@ -110,6 +110,16 @@ async def create_credential(request: CredentialRequest):
         logfire.error(f"Error creating credential | key={request.key} | error={str(e)}")
         raise HTTPException(status_code=500, detail={'error': str(e)})
 
+# Define optional settings with their default values
+# These are user preferences that should return defaults instead of 404
+# This prevents console errors in the frontend when settings haven't been explicitly set
+# The frontend can check the 'is_default' flag to know if it's a default or user-set value
+OPTIONAL_SETTINGS_WITH_DEFAULTS = {
+    'DISCONNECT_SCREEN_ENABLED': 'true',  # Show disconnect screen when server is unavailable
+    'PROJECTS_ENABLED': 'false',          # Enable project management features
+    'LOGFIRE_ENABLED': 'false',           # Enable Pydantic Logfire integration
+}
+
 @router.get("/credentials/{key}")
 async def get_credential(key: str, decrypt: bool = True):
     """Get a specific credential by key."""
@@ -118,6 +128,17 @@ async def get_credential(key: str, decrypt: bool = True):
         value = await credential_service.get_credential(key, decrypt=decrypt)
         
         if value is None:
+            # Check if this is an optional setting with a default value
+            if key in OPTIONAL_SETTINGS_WITH_DEFAULTS:
+                logfire.info(f"Returning default value for optional setting | key={key}")
+                return {
+                    'key': key,
+                    'value': OPTIONAL_SETTINGS_WITH_DEFAULTS[key],
+                    'is_default': True,
+                    'category': 'features',
+                    'description': f'Default value for {key}'
+                }
+            
             logfire.warning(f"Credential not found | key={key}")
             raise HTTPException(status_code=404, detail={'error': f'Credential {key} not found'})
         

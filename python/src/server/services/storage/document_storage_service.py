@@ -9,10 +9,14 @@ from typing import List, Dict, Any, Optional
 from urllib.parse import urlparse
 
 from ...config.logfire_config import search_logger, safe_span
-from ..embeddings.embedding_service import create_embeddings_batch_async
+from ..embeddings.embedding_service import create_embeddings_batch, get_dimension_column_name
 from ..embeddings.contextual_embedding_service import (
     generate_contextual_embeddings_batch
 )
+from ..embeddings.dimension_validator import (
+    get_safe_dimension_column, log_dimension_operation, validate_batch_consistency
+)
+from ..embeddings.exceptions import VectorStorageError, DimensionValidationError
 from ..credential_service import credential_service
 
 
@@ -225,14 +229,59 @@ async def add_documents_to_supabase(
             
             # Create embeddings for the batch - no progress reporting
             # Don't pass websocket to avoid Socket.IO issues
-            batch_embeddings = await create_embeddings_batch_async(
+            result = await create_embeddings_batch(
                 contextual_contents,
                 provider=provider
             )
             
-            # Prepare batch data
+            # Log any failures
+            if result.has_failures:
+                search_logger.error(
+                    f"Batch {batch_num}: Failed to create {result.failure_count} embeddings. "
+                    f"Successful: {result.success_count}. Errors: {[item['error'] for item in result.failed_items[:3]]}"
+                )
+            
+            # Use only successful embeddings
+            batch_embeddings = result.embeddings
+            successful_texts = result.texts_processed
+            
+            if not batch_embeddings:
+                search_logger.warning(f"Skipping batch {batch_num} - no successful embeddings created")
+                completed_batches += 1
+                continue
+            
+            # Validate batch embeddings consistency
+            try:
+                is_consistent, consistency_msg = validate_batch_consistency(batch_embeddings)
+                if not is_consistent:
+                    search_logger.warning(f"Document storage batch {batch_num}: {consistency_msg}")
+                    log_dimension_operation("document_storage", 
+                                          len(batch_embeddings[0]) if batch_embeddings and batch_embeddings[0] else 1536, 
+                                          False, consistency_msg)
+                else:
+                    log_dimension_operation("document_storage", 
+                                          len(batch_embeddings[0]) if batch_embeddings and batch_embeddings[0] else 1536, 
+                                          True)
+            except Exception as validation_error:
+                search_logger.error(f"Batch validation failed: {validation_error}")
+                log_dimension_operation("document_storage", 1536, False, f"Validation error: {validation_error}")
+            
+            # Prepare batch data - only for successful embeddings
             batch_data = []
-            for j in range(len(contextual_contents)):
+            # Map successful texts back to their original indices
+            for j, (embedding, text) in enumerate(zip(batch_embeddings, successful_texts)):
+                # Find the original index of this text
+                orig_idx = None
+                for idx, orig_text in enumerate(contextual_contents):
+                    if orig_text == text:
+                        orig_idx = idx
+                        break
+                
+                if orig_idx is None:
+                    search_logger.warning(f"Could not map embedding back to original text")
+                    continue
+                    
+                j = orig_idx  # Use original index for metadata lookup
                 # Use source_id from metadata if available, otherwise extract from URL
                 if batch_metadatas[j].get('source_id'):
                     source_id = batch_metadatas[j]['source_id']
@@ -241,16 +290,25 @@ async def add_documents_to_supabase(
                     parsed_url = urlparse(batch_urls[j])
                     source_id = parsed_url.netloc or parsed_url.path
                 
+                # Get appropriate embedding column name based on dimensions
+                try:
+                    embedding_dims = len(embedding)
+                    column_name = get_dimension_column_name(embedding_dims)
+                except Exception as e:
+                    search_logger.error(f"Failed to determine embedding column for {len(embedding) if embedding else 'None'} dimensions: {e}")
+                    # Fallback to default 1536-dimensional column
+                    column_name = "embedding_1536"
+                
                 data = {
                     "url": batch_urls[j],
                     "chunk_number": batch_chunk_numbers[j],
-                    "content": contextual_contents[j],
+                    "content": text,  # Use the successful text
                     "metadata": {
-                        "chunk_size": len(contextual_contents[j]),
+                        "chunk_size": len(text),
                         **batch_metadatas[j]
                     },
                     "source_id": source_id,
-                    "embedding": batch_embeddings[j]
+                    column_name: embedding  # Use the successful embedding with the appropriate column name
                 }
                 batch_data.append(data)
             
