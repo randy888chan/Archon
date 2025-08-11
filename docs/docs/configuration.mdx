@@ -277,6 +277,20 @@ curl http://localhost:8052/health
 curl http://localhost:3737
 ```
 
+#### Frontend Health Check Configuration
+
+The frontend performs automatic health checks to detect server disconnections. Configuration:
+
+- **Check Interval**: 30 seconds (defined in `HEALTH_CHECK_INTERVAL_MS` constant)
+- **Timeout**: 10 seconds per health check request
+- **Disconnect Threshold**: 2 missed checks (60 seconds total)
+- **Location**: `archon-ui-main/src/services/serverHealthService.ts`
+
+To adjust the health check interval, modify the constant at the top of the file:
+```typescript
+const HEALTH_CHECK_INTERVAL_MS = 30000; // 30 seconds (default)
+```
+
 ### Container Management
 
 ```bash

@@ -24,12 +24,39 @@ class ServiceDiscovery:
     In Local: Uses localhost with different ports
     """
     
-    # Default service ports
-    DEFAULT_PORTS = {
-        "api": int(os.getenv("ARCHON_SERVER_PORT", "8181")),
-        "mcp": int(os.getenv("ARCHON_MCP_PORT", "8051")),
-        "agents": int(os.getenv("ARCHON_AGENTS_PORT", "8052"))
-    }
+    def __init__(self):
+        # Get ports during initialization
+        server_port = os.getenv("ARCHON_SERVER_PORT")
+        mcp_port = os.getenv("ARCHON_MCP_PORT")
+        agents_port = os.getenv("ARCHON_AGENTS_PORT")
+        
+        if not server_port:
+            raise ValueError(
+                "ARCHON_SERVER_PORT environment variable is required. "
+                "Please set it in your .env file or environment. "
+                "Default value: 8181"
+            )
+        if not mcp_port:
+            raise ValueError(
+                "ARCHON_MCP_PORT environment variable is required. "
+                "Please set it in your .env file or environment. "
+                "Default value: 8051"
+            )
+        if not agents_port:
+            raise ValueError(
+                "ARCHON_AGENTS_PORT environment variable is required. "
+                "Please set it in your .env file or environment. "
+                "Default value: 8052"
+            )
+        
+        self.DEFAULT_PORTS = {
+            "api": int(server_port),
+            "mcp": int(mcp_port),
+            "agents": int(agents_port)
+        }
+        
+        self.environment = self._detect_environment()
+        self._cache: Dict[str, str] = {}
     
     # Service name mappings
     SERVICE_NAMES = {
@@ -40,10 +67,6 @@ class ServiceDiscovery:
         "archon-mcp": "archon-mcp",
         "archon-agents": "archon-agents"
     }
-    
-    def __init__(self):
-        self.environment = self._detect_environment()
-        self._cache: Dict[str, str] = {}
     
     @staticmethod
     def _detect_environment() -> Environment:
@@ -72,7 +95,9 @@ class ServiceDiscovery:
         
         # Normalize service name
         service_name = self.SERVICE_NAMES.get(service, service)
-        port = self.DEFAULT_PORTS.get(service, 8080)
+        port = self.DEFAULT_PORTS.get(service)
+        if port is None:
+            raise ValueError(f"Unknown service: {service}. Valid services are: {list(self.DEFAULT_PORTS.keys())}")
         
         if self.environment == Environment.DOCKER_COMPOSE:
             # Docker Compose uses service names directly
@@ -157,25 +182,39 @@ class ServiceDiscovery:
         return self.environment == Environment.LOCAL
 
 
-# Global instance for convenience
-discovery = ServiceDiscovery()
+# Global instance for convenience - lazy loaded
+_discovery = None
+
+def get_discovery() -> ServiceDiscovery:
+    """Get or create the global ServiceDiscovery instance"""
+    global _discovery
+    if _discovery is None:
+        _discovery = ServiceDiscovery()
+    return _discovery
+
+# For backward compatibility - create a property that lazy-loads
+class _LazyDiscovery:
+    def __getattr__(self, name):
+        return getattr(get_discovery(), name)
+
+discovery = _LazyDiscovery()
 
 # Convenience functions
 def get_api_url() -> str:
     """Get the API service URL"""
-    return discovery.get_service_url("api")
+    return get_discovery().get_service_url("api")
 
 def get_mcp_url() -> str:
     """Get the MCP service URL"""
-    return discovery.get_service_url("mcp")
+    return get_discovery().get_service_url("mcp")
 
 def get_agents_url() -> str:
     """Get the Agents service URL"""
-    return discovery.get_service_url("agents")
+    return get_discovery().get_service_url("agents")
 
 async def is_service_healthy(service: str) -> bool:
     """Check if a service is healthy"""
-    return await discovery.health_check(service)
+    return await get_discovery().health_check(service)
 
 # Export key functions and classes
 __all__ = [

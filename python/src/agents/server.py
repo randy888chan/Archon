@@ -63,8 +63,14 @@ async def fetch_credentials_from_server():
         try:
             async with httpx.AsyncClient() as client:
                 # Call the server's internal credentials endpoint
+                server_port = os.getenv("ARCHON_SERVER_PORT")
+                if not server_port:
+                    raise ValueError(
+                        "ARCHON_SERVER_PORT environment variable is required. "
+                        "Please set it in your .env file or environment."
+                    )
                 response = await client.get(
-                    "http://archon-server:8080/internal/credentials/agents",
+                    f"http://archon-server:{server_port}/internal/credentials/agents",
                     timeout=10.0
                 )
                 response.raise_for_status()
@@ -288,7 +294,14 @@ async def stream_agent(agent_type: str, request: AgentRequest):
 
 # Main entry point
 if __name__ == "__main__":
-    port = int(os.getenv("AGENTS_PORT", "8052"))
+    agents_port = os.getenv("ARCHON_AGENTS_PORT")
+    if not agents_port:
+        raise ValueError(
+            "ARCHON_AGENTS_PORT environment variable is required. "
+            "Please set it in your .env file or environment. "
+            "Default value: 8052"
+        )
+    port = int(agents_port)
     
     uvicorn.run(
         "server:app",
