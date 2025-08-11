@@ -36,6 +36,7 @@ from .fastapi.agent_chat_api import router as agent_chat_router
 from .fastapi.internal_api import router as internal_router
 from .fastapi.coverage_api import router as coverage_router
 from .fastapi.bug_report_api import router as bug_report_router
+from .fastapi.embedding_model_api import router as embedding_model_router
 
 # Import utilities and core classes
 from .services.credential_service import initialize_credentials
@@ -203,6 +204,7 @@ app.include_router(agent_chat_router)
 app.include_router(internal_router)
 app.include_router(coverage_router)
 app.include_router(bug_report_router)
+app.include_router(embedding_model_router)
 
 # Root endpoint
 @app.get("/")

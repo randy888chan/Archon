@@ -21,6 +21,11 @@ from .contextual_embedding_service import (
     process_chunk_with_context_async
 )
 
+from .embedding_dimension_service import (
+    embedding_dimension_service,
+    RECOMMENDED_MODELS
+)
+
 __all__ = [
     # Embedding functions
     'create_embedding',
@@ -38,5 +43,9 @@ __all__ = [
     'generate_contextual_embedding_async',
     'generate_contextual_embeddings_batch',
     'process_chunk_with_context',
-    'process_chunk_with_context_async'
+    'process_chunk_with_context_async',
+    
+    # Dimension service
+    'embedding_dimension_service',
+    'RECOMMENDED_MODELS'
 ]
