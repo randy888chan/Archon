@@ -81,6 +81,19 @@ def get_embedding_dimensions(model_name: str) -> int:
     Returns:
         Number of dimensions for the model
     """
+    # Import the new dimension service 
+    from .embedding_dimension_service import embedding_dimension_service
+    
+    # Try to get dimensions from the new service first
+    try:
+        # Use the new dimension service which has comprehensive model support
+        dimensions = embedding_dimension_service._get_known_model_dimension(model_name)
+        if dimensions:
+            return dimensions
+    except Exception as e:
+        search_logger.warning(f"Failed to get dimensions from dimension service: {e}")
+    
+    # Fallback to legacy hardcoded dimensions for backward compatibility
     # OpenAI models
     if model_name in ['text-embedding-3-large']:
         return 3072
@@ -93,9 +106,9 @@ def get_embedding_dimensions(model_name: str) -> int:
         return 768
     elif 'all-MiniLM-L12-v2' in model_name:
         return 384
-    # Ollama models (snowflake-arctic-embed2 uses 768 dimensions)
+    # Ollama models - now handled by dimension service, but keep one for fallback
     elif 'snowflake-arctic-embed2' in model_name:
-        return 768
+        return 1024  # Updated to correct dimension
     # Default fallback
     else:
         search_logger.warning(f"Unknown model dimensions for {model_name}, defaulting to 1536")
