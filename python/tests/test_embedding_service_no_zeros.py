@@ -11,9 +11,7 @@ import openai
 
 from src.server.services.embeddings.embedding_service import (
     create_embedding,
-    create_embedding_async,
     create_embeddings_batch,
-    create_embeddings_batch_async,
     EmbeddingBatchResult
 )
 from src.server.services.embeddings.embedding_exceptions import (
@@ -27,16 +25,8 @@ from src.server.services.embeddings.embedding_exceptions import (
 class TestNoZeroEmbeddings:
     """Test that no zero embeddings are ever returned."""
     
-    def test_sync_from_async_context_raises_exception(self) -> None:
-        """Test that calling sync function from async context raises exception."""
-        async def async_function():
-            # This should raise EmbeddingAsyncContextError
-            with pytest.raises(EmbeddingAsyncContextError) as exc_info:
-                create_embedding("test text")
-            
-            assert "use create_embedding_async instead" in str(exc_info.value)
-            
-        asyncio.run(async_function())
+    # Note: Removed test_sync_from_async_context_raises_exception 
+    # as sync versions no longer exist - everything is async-only now
     
     @pytest.mark.asyncio
     async def test_async_quota_exhausted_returns_failure(self) -> None:
@@ -53,7 +43,7 @@ class TestNoZeroEmbeddings:
             
             # Single embedding still raises for backward compatibility
             with pytest.raises(EmbeddingQuotaExhaustedError) as exc_info:
-                await create_embedding_async("test text")
+                await create_embedding("test text")
             
             assert "quota exhausted" in str(exc_info.value).lower()
     
@@ -71,7 +61,7 @@ class TestNoZeroEmbeddings:
             mock_client.return_value = mock_ctx
             
             with pytest.raises(EmbeddingRateLimitError) as exc_info:
-                await create_embedding_async("test text")
+                await create_embedding("test text")
             
             assert "rate limit" in str(exc_info.value).lower()
     
@@ -85,7 +75,7 @@ class TestNoZeroEmbeddings:
             mock_client.return_value = mock_ctx
             
             with pytest.raises(EmbeddingAPIError) as exc_info:
-                await create_embedding_async("test text")
+                await create_embedding("test text")
             
             assert "failed to create embedding" in str(exc_info.value).lower()
     
@@ -116,7 +106,7 @@ class TestNoZeroEmbeddings:
                     
                     # Process 4 texts (batch size will be 2)
                     texts = ["text1", "text2", "text3", "text4"]
-                    result = await create_embeddings_batch_async(texts)
+                    result = await create_embeddings_batch(texts)
                     
                     # Check result structure
                     assert isinstance(result, EmbeddingBatchResult)
@@ -150,7 +140,7 @@ class TestNoZeroEmbeddings:
                 with patch('src.server.services.embeddings.embedding_service.credential_service.get_credentials_by_category',
                           new_callable=AsyncMock, return_value={"EMBEDDING_DIMENSIONS": "3072"}):
                     
-                    result = await create_embeddings_batch_async(["test text"])
+                    result = await create_embeddings_batch(["test text"])
                     
                     # Verify the dimensions parameter was passed correctly
                     mock_create.assert_called_once()
@@ -182,7 +172,7 @@ class TestNoZeroEmbeddings:
                 with patch('src.server.services.embeddings.embedding_service.credential_service.get_credentials_by_category',
                           new_callable=AsyncMock, return_value={}):
                     
-                    result = await create_embeddings_batch_async(["test text"])
+                    result = await create_embeddings_batch(["test text"])
                     
                     # Verify the default dimensions parameter was used
                     mock_create.assert_called_once()
@@ -210,7 +200,7 @@ class TestNoZeroEmbeddings:
                       new_callable=AsyncMock, return_value="text-embedding-ada-002"):
                 
                 texts = ["text1", "text2", "text3", "text4"]
-                result = await create_embeddings_batch_async(texts)
+                result = await create_embeddings_batch(texts)
                 
                 # All should fail due to quota
                 assert result.success_count == 0
@@ -221,7 +211,8 @@ class TestNoZeroEmbeddings:
                     for item in result.failed_items
                 )
     
-    def test_no_zero_vectors_in_results(self) -> None:
+    @pytest.mark.asyncio
+    async def test_no_zero_vectors_in_results(self) -> None:
         """Test that no function ever returns a zero vector [0.0] * 1536."""
         # This is a meta-test to ensure our implementation never creates zero vectors
         
@@ -236,21 +227,21 @@ class TestNoZeroEmbeddings:
         # Test data that should never produce zero embeddings
         test_text = "This is a test"
         
-        # Test 1: Sync function with API error should raise, not return zeros
-        with patch('src.server.services.embeddings.embedding_service.create_embedding_async',
-                  side_effect=Exception("Test error")):
-            with pytest.raises(Exception):
-                result = create_embedding(test_text)
-                # This line should never be reached
-                assert not is_zero_embedding(result)
-        
-        # Test 2: Batch function with error should return failure result, not zeros
-        with patch('src.server.services.embeddings.embedding_service.create_embeddings_batch_async',
-                  return_value=EmbeddingBatchResult()):
-            result = create_embeddings_batch([test_text])
-            # Should return empty result, not zeros
+        # Test: Batch function with error should return failure result, not zeros
+        with patch('src.server.services.embeddings.embedding_service.get_llm_client') as mock_client:
+            # Mock the client to raise an error
+            mock_ctx = AsyncMock()
+            mock_ctx.__aenter__.return_value.embeddings.create.side_effect = Exception("Test error")
+            mock_client.return_value = mock_ctx
+            
+            result = await create_embeddings_batch([test_text])
+            # Should return result with failures, not zeros
             assert isinstance(result, EmbeddingBatchResult)
             assert len(result.embeddings) == 0
+            assert result.failure_count == 1
+            # Verify no zero embeddings in the result
+            for embedding in result.embeddings:
+                assert not is_zero_embedding(embedding)
 
 
 class TestEmbeddingBatchResult:

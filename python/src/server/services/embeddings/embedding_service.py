@@ -303,13 +303,15 @@ async def create_embeddings_batch(
                     
                     # WebSocket update
                     if websocket:
+                        processed = result.success_count + result.failure_count
+                        ws_progress = (processed / len(texts)) * 100
                         await websocket.send_json({
                             "type": "embedding_progress",
-                            "processed": result.success_count + result.failure_count,
+                            "processed": processed,
                             "successful": result.success_count,
                             "failed": result.failure_count,
                             "total": len(texts),
-                            "percentage": progress
+                            "percentage": ws_progress
                         })
                     
                     # Yield control
