@@ -88,17 +88,42 @@ jobs:
           echo "# Backend Security Audit Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
-          # Run safety check and save JSON output
-          if uv run safety check --output json > safety-report.json 2>&1; then
+          # Debug: Show what packages are installed
+          echo "## Installed Packages:" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          uv pip list | head -20 >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Run safety check with more verbose output
+          echo "## Safety Check Results:" >> $GITHUB_STEP_SUMMARY
+          
+          # First try to run safety check and capture exit code
+          set +e  # Don't exit on error
+          uv run safety check --output json > safety-report.json 2>&1
+          SAFETY_EXIT_CODE=$?
+          set -e  # Re-enable exit on error
+          
+          # Check the exit code
+          if [ $SAFETY_EXIT_CODE -eq 0 ]; then
             echo "✅ No known vulnerabilities found" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "⚠️ Known vulnerabilities detected" >> $GITHUB_STEP_SUMMARY
+            # Show a sample of the JSON report for verification
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "## Vulnerabilities Found:" >> $GITHUB_STEP_SUMMARY
+            echo "Safety scan completed successfully." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ Known vulnerabilities detected (exit code: $SAFETY_EXIT_CODE)" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### Vulnerability Details:" >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
-            # Run again in text format for summary
-            uv run safety check --output text >> $GITHUB_STEP_SUMMARY 2>&1 || true
+            # Run again in text format for human-readable output
+            uv run safety check --output text 2>&1 | head -100 >> $GITHUB_STEP_SUMMARY || true
             echo '```' >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Always show the JSON report size for debugging
+          if [ -f safety-report.json ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "📊 Report generated: $(wc -c < safety-report.json) bytes" >> $GITHUB_STEP_SUMMARY
           fi
 
       - name: Upload safety report
