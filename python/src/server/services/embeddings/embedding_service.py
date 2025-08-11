@@ -294,13 +294,15 @@ async def create_embeddings_batch_async(
         
         try:
             async with get_llm_client(provider=provider, use_embedding_provider=True) as client:
-                # Load batch size from settings
+                # Load batch size and dimensions from settings
                 try:
                     rag_settings = await credential_service.get_credentials_by_category("rag_strategy")
                     batch_size = int(rag_settings.get("EMBEDDING_BATCH_SIZE", "100"))
+                    embedding_dimensions = int(rag_settings.get("EMBEDDING_DIMENSIONS", "1536"))
                 except Exception as e:
-                    search_logger.warning(f"Failed to load embedding batch size: {e}, using default")
+                    search_logger.warning(f"Failed to load embedding settings: {e}, using defaults")
                     batch_size = 100
+                    embedding_dimensions = 1536
                 
                 total_tokens_used = 0
                 
@@ -325,7 +327,7 @@ async def create_embeddings_batch_async(
                                     response = await client.embeddings.create(
                                         model=embedding_model,
                                         input=batch,
-                                        dimensions=1536
+                                        dimensions=embedding_dimensions
                                     )
                                     
                                     # Add successful embeddings

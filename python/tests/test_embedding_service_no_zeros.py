@@ -129,6 +129,70 @@ class TestNoZeroEmbeddings:
                     for embedding in result.embeddings:
                         assert not all(v == 0.0 for v in embedding)
     
+    @pytest.mark.asyncio
+    async def test_configurable_embedding_dimensions(self) -> None:
+        """Test that embedding dimensions can be configured via settings."""
+        with patch('src.server.services.embeddings.embedding_service.get_llm_client') as mock_client:
+            # Mock successful response
+            mock_ctx = AsyncMock()
+            mock_create = AsyncMock()
+            mock_ctx.__aenter__.return_value.embeddings.create = mock_create
+            
+            # Setup mock response
+            mock_response = Mock()
+            mock_response.data = [Mock(embedding=[0.1] * 3072)]  # Different dimensions
+            mock_create.return_value = mock_response
+            mock_client.return_value = mock_ctx
+            
+            with patch('src.server.services.embeddings.embedding_service.get_embedding_model',
+                      new_callable=AsyncMock, return_value="text-embedding-3-large"):
+                # Mock credential service to return custom dimensions
+                with patch('src.server.services.embeddings.embedding_service.credential_service.get_credentials_by_category',
+                          new_callable=AsyncMock, return_value={"EMBEDDING_DIMENSIONS": "3072"}):
+                    
+                    result = await create_embeddings_batch_async(["test text"])
+                    
+                    # Verify the dimensions parameter was passed correctly
+                    mock_create.assert_called_once()
+                    call_args = mock_create.call_args
+                    assert call_args.kwargs['dimensions'] == 3072
+                    
+                    # Verify result
+                    assert result.success_count == 1
+                    assert len(result.embeddings[0]) == 3072
+    
+    @pytest.mark.asyncio
+    async def test_default_embedding_dimensions(self) -> None:
+        """Test that default dimensions (1536) are used when not configured."""
+        with patch('src.server.services.embeddings.embedding_service.get_llm_client') as mock_client:
+            # Mock successful response
+            mock_ctx = AsyncMock()
+            mock_create = AsyncMock()
+            mock_ctx.__aenter__.return_value.embeddings.create = mock_create
+            
+            # Setup mock response with default dimensions
+            mock_response = Mock()
+            mock_response.data = [Mock(embedding=[0.1] * 1536)]
+            mock_create.return_value = mock_response
+            mock_client.return_value = mock_ctx
+            
+            with patch('src.server.services.embeddings.embedding_service.get_embedding_model',
+                      new_callable=AsyncMock, return_value="text-embedding-3-small"):
+                # Mock credential service to return empty settings (no dimensions specified)
+                with patch('src.server.services.embeddings.embedding_service.credential_service.get_credentials_by_category',
+                          new_callable=AsyncMock, return_value={}):
+                    
+                    result = await create_embeddings_batch_async(["test text"])
+                    
+                    # Verify the default dimensions parameter was used
+                    mock_create.assert_called_once()
+                    call_args = mock_create.call_args
+                    assert call_args.kwargs['dimensions'] == 1536
+                    
+                    # Verify result
+                    assert result.success_count == 1
+                    assert len(result.embeddings[0]) == 1536
+
     @pytest.mark.asyncio  
     async def test_batch_quota_exhausted_stops_process(self) -> None:
         """Test that quota exhaustion stops processing remaining batches."""
