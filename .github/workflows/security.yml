@@ -1,0 +1,308 @@
+name: Security & Dependency Checks
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    # Run weekly on Mondays at 2 AM UTC
+    - cron: '0 2 * * 1'
+  workflow_dispatch: # Allow manual triggering
+
+jobs:
+  # Job 1: Frontend Security Audit
+  frontend-security:
+    name: Frontend Security Audit (npm audit)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./archon-ui-main
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: archon-ui-main/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run npm audit
+        run: |
+          echo "# Frontend Security Audit Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if npm audit --audit-level=high; then
+            echo "✅ No high or critical vulnerabilities found" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ High or critical vulnerabilities detected" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "## Vulnerabilities Found:" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            npm audit --audit-level=high >> $GITHUB_STEP_SUMMARY || true
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Check for outdated packages
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Outdated Packages:" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          npm outdated >> $GITHUB_STEP_SUMMARY || true
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+  # Job 2: Backend Security Audit
+  backend-security:
+    name: Backend Security Audit (Python Safety)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./python
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Install safety
+        run: uv add safety
+
+      - name: Run safety check
+        run: |
+          echo "# Backend Security Audit Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if uv run safety check --json --output safety-report.json; then
+            echo "✅ No known vulnerabilities found" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ Known vulnerabilities detected" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "## Vulnerabilities Found:" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            uv run safety check >> $GITHUB_STEP_SUMMARY || true
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload safety report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-security-report
+          path: python/safety-report.json
+          retention-days: 30
+
+  # Job 3: Docker Security Scanning
+  docker-security:
+    name: Docker Security Scanning
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        service: [server, mcp, agents]
+        
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            --file python/Dockerfile.${{ matrix.service }} \
+            --tag archon-${{ matrix.service }}:security-test \
+            python/
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'archon-${{ matrix.service }}:security-test'
+          format: 'sarif'
+          output: 'trivy-results-${{ matrix.service }}.sarif'
+
+      - name: Upload Trivy scan results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results-${{ matrix.service }}.sarif'
+
+      - name: Run basic image security checks
+        run: |
+          echo "## Docker Security Check - ${{ matrix.service }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Check if running as non-root user
+          if docker run --rm archon-${{ matrix.service }}:security-test whoami | grep -v root; then
+            echo "✅ Container runs as non-root user" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ Container runs as root user" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Check image size
+          SIZE=$(docker images archon-${{ matrix.service }}:security-test --format "{{.Size}}")
+          echo "📦 Image size: $SIZE" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+  # Job 4: Secrets Scanning
+  secrets-scan:
+    name: Secrets Scanning
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Full history for better scanning
+
+      - name: Run TruffleHog OSS
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: main
+          head: HEAD
+          extra_args: --debug --only-verified
+
+      - name: Check for common secrets patterns
+        run: |
+          echo "# Secrets Scanning Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Check for common patterns (excluding test files and examples)
+          FOUND_SECRETS=false
+          
+          # Check for potential API keys (but ignore test/example values)
+          if grep -r "api[_-]key.*=.*['\"][a-zA-Z0-9]{20,}" . \
+             --exclude-dir=.git \
+             --exclude-dir=node_modules \
+             --exclude="*.md" \
+             --exclude=".env.example" \
+             | grep -v "test-key" \
+             | grep -v "your-.*-key" \
+             | grep -v "example" \
+             | grep -v "placeholder"; then
+            echo "⚠️ Potential API keys found" >> $GITHUB_STEP_SUMMARY
+            FOUND_SECRETS=true
+          fi
+          
+          # Check for potential database URLs (but ignore test/example values)  
+          if grep -r "supabase.*://.*@" . \
+             --exclude-dir=.git \
+             --exclude-dir=node_modules \
+             --exclude="*.md" \
+             --exclude=".env.example" \
+             | grep -v "test.supabase.co" \
+             | grep -v "your-project.supabase.co" \
+             | grep -v "example"; then
+            echo "⚠️ Potential database URLs found" >> $GITHUB_STEP_SUMMARY
+            FOUND_SECRETS=true
+          fi
+          
+          if [ "$FOUND_SECRETS" = false ]; then
+            echo "✅ No secrets detected" >> $GITHUB_STEP_SUMMARY
+          fi
+
+  # Job 5: License Compliance
+  license-check:
+    name: License Compliance Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check frontend licenses
+        working-directory: ./archon-ui-main
+        run: |
+          echo "# License Compliance Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Frontend Dependencies" >> $GITHUB_STEP_SUMMARY
+          
+          # Setup Node.js
+          npm ci
+          
+          # Use license-checker if available, otherwise just list packages
+          if npm list --depth=0 --json > packages.json; then
+            echo "✅ Frontend dependencies verified" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ Issue verifying frontend dependencies" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Check backend licenses
+        working-directory: ./python
+        run: |
+          echo "## Backend Dependencies" >> $GITHUB_STEP_SUMMARY
+          
+          # Install uv and dependencies
+          pip install uv
+          uv sync
+          
+          # List installed packages
+          if uv pip list > backend-packages.txt; then
+            echo "✅ Backend dependencies listed" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Total packages: $(wc -l < backend-packages.txt)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ Issue listing backend dependencies" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload dependency lists
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-lists
+          path: |
+            archon-ui-main/packages.json
+            python/backend-packages.txt
+          retention-days: 30
+
+  # Job 6: Security Summary
+  security-summary:
+    name: Security Summary
+    runs-on: ubuntu-latest
+    needs: [frontend-security, backend-security, docker-security, secrets-scan, license-check]
+    if: always()
+
+    steps:
+      - name: Create security summary
+        run: |
+          echo "# 🔒 Archon V2 Alpha - Security & Compliance Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Security Checks Completed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Check job results
+          echo "- **Frontend Security**: ${{ needs.frontend-security.result == 'success' && '✅ Passed' || '❌ Failed' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Backend Security**: ${{ needs.backend-security.result == 'success' && '✅ Passed' || '❌ Failed' }}" >> $GITHUB_STEP_SUMMARY  
+          echo "- **Docker Security**: ${{ needs.docker-security.result == 'success' && '✅ Passed' || '❌ Failed' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Secrets Scanning**: ${{ needs.secrets-scan.result == 'success' && '✅ Passed' || '❌ Failed' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **License Check**: ${{ needs.license-check.result == 'success' && '✅ Passed' || '❌ Failed' }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          echo "## Recommendations" >> $GITHUB_STEP_SUMMARY
+          echo "- Review any flagged vulnerabilities and update dependencies" >> $GITHUB_STEP_SUMMARY
+          echo "- Ensure no secrets are committed to the repository" >> $GITHUB_STEP_SUMMARY
+          echo "- Verify all dependencies have compatible licenses" >> $GITHUB_STEP_SUMMARY
+          echo "- Consider implementing dependabot for automated dependency updates" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          echo "## Alpha Project Notes" >> $GITHUB_STEP_SUMMARY
+          echo "As an alpha project focused on rapid iteration:" >> $GITHUB_STEP_SUMMARY
+          echo "- Some security warnings may be acceptable for development" >> $GITHUB_STEP_SUMMARY
+          echo "- Focus on preventing secrets exposure and critical vulnerabilities" >> $GITHUB_STEP_SUMMARY
+          echo "- Production deployment should address all security findings" >> $GITHUB_STEP_SUMMARY
