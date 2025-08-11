@@ -11,7 +11,7 @@ from urllib.parse import urlparse
 
 from ...config.logfire_config import search_logger
 from ..credential_service import get_credential_sync
-from ..llm_provider_service import get_llm_client_sync, get_embedding_model_sync
+from ..embeddings.embedding_service import create_embeddings_batch
 
 
 def add_documents_to_supabase_sync(
@@ -180,22 +180,40 @@ def add_documents_to_supabase_sync(
         else:
             contextual_contents = batch_contents
         
-        # Create embeddings for the batch using synchronous OpenAI client
-        try:
-            response = openai_client.embeddings.create(
-                input=contextual_contents,
-                model=embedding_model
+        # Create embeddings for the batch using consolidated function
+        result = create_embeddings_batch(contextual_contents)
+        
+        # Log any failures
+        if result.has_failures:
+            search_logger.error(
+                f"Batch {batch_num}: Failed to create {result.failure_count} embeddings. "
+                f"Successful: {result.success_count}"
             )
-            batch_embeddings = [item.embedding for item in response.data]
-        except Exception as e:
-            search_logger.error(f"Error creating embeddings for batch {batch_num}: {e}")
-            # Skip this batch entirely - don't store documents with failed embeddings
-            search_logger.warning(f"Skipping batch {batch_num} due to embedding failure: {e}")
+        
+        # Use only successful embeddings
+        batch_embeddings = result.embeddings
+        successful_texts = result.texts_processed
+        
+        if not batch_embeddings:
+            search_logger.warning(f"Skipping batch {batch_num} - no successful embeddings created")
             continue  # Skip to next batch
         
-        # Prepare batch data
+        # Prepare batch data - only for successful embeddings
         batch_data = []
-        for j in range(len(contextual_contents)):
+        # Map successful texts back to their original indices
+        for j, (embedding, text) in enumerate(zip(batch_embeddings, successful_texts)):
+            # Find the original index of this text
+            orig_idx = None
+            for idx, orig_text in enumerate(contextual_contents):
+                if orig_text == text:
+                    orig_idx = idx
+                    break
+            
+            if orig_idx is None:
+                search_logger.warning(f"Could not map embedding back to original text")
+                continue
+                
+            j = orig_idx  # Use original index for metadata lookup
             # Use source_id from metadata if available, otherwise extract from URL
             if batch_metadatas[j].get('source_id'):
                 source_id = batch_metadatas[j]['source_id']
@@ -207,13 +225,13 @@ def add_documents_to_supabase_sync(
             data = {
                 "url": batch_urls[j],
                 "chunk_number": batch_chunk_numbers[j],
-                "content": contextual_contents[j],
+                "content": text,  # Use the successful text
                 "metadata": {
-                    "chunk_size": len(contextual_contents[j]),
+                    "chunk_size": len(text),
                     **batch_metadatas[j]
                 },
                 "source_id": source_id,
-                "embedding": batch_embeddings[j]
+                "embedding": embedding  # Use the successful embedding
             }
             batch_data.append(data)
         
