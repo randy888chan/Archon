@@ -81,55 +81,29 @@ jobs:
         run: uv sync
 
       - name: Install safety
-        run: |
-          # Install safety as a dev dependency
-          uv pip install safety
-          
-          # Verify safety is installed
-          echo "Verifying safety installation..."
-          uv run safety --version || echo "Safety not found in uv run"
-          which safety || echo "Safety not in PATH"
-          uv pip list | grep -i safety || echo "Safety not in pip list"
+        run: uv pip install safety
 
       - name: Run safety check
-        continue-on-error: true
         run: |
           echo "# Backend Security Audit Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
-          # Debug: Check current directory and files
-          echo "Current directory: $(pwd)"
-          echo "Python dependencies found:"
-          ls -la
+          # Run safety check with uv
+          set +e  # Don't exit on error
+          uv run safety check --output json > safety-report.json 2>&1
+          SAFETY_EXIT_CODE=$?
+          set -e  # Re-enable exit on error
           
-          # Try different ways to run safety
-          echo "Attempting to run safety check..." >> $GITHUB_STEP_SUMMARY
-          
-          # Method 1: Direct safety command
-          echo "Method 1: Direct safety command"
-          safety check --output screen 2>&1 | tee safety-output.txt || echo "Direct safety failed"
-          
-          # Method 2: With uv run
-          echo "Method 2: With uv run"
-          uv run safety check --output screen 2>&1 | tee -a safety-output.txt || echo "uv run safety failed"
-          
-          # Method 3: With python -m
-          echo "Method 3: With python -m"
-          uv run python -m safety check --output screen 2>&1 | tee -a safety-output.txt || echo "python -m safety failed"
-          
-          # Show output in summary
-          if [ -f safety-output.txt ] && [ -s safety-output.txt ]; then
-            echo "## Safety Check Output:" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            head -100 safety-output.txt >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
+          if [ $SAFETY_EXIT_CODE -eq 0 ]; then
+            echo "✅ No known vulnerabilities found" >> $GITHUB_STEP_SUMMARY
           else
-            echo "⚠️ Safety check produced no output" >> $GITHUB_STEP_SUMMARY
-            echo "This might indicate an issue with the safety installation or environment." >> $GITHUB_STEP_SUMMARY
+            echo "⚠️ Known vulnerabilities detected" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "## Vulnerability Details:" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            uv run safety check --output text 2>&1 | head -50 >> $GITHUB_STEP_SUMMARY || true
+            echo '```' >> $GITHUB_STEP_SUMMARY
           fi
-          
-          # Create a minimal JSON report for artifact upload
-          echo '{"scan_completed": true}' > safety-report.json
 
       - name: Upload safety report
         if: always()
