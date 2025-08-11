@@ -1,12 +1,18 @@
 """
-RAG Services Package
+Crawling Services Package
 
-This package contains services specific to Retrieval Augmented Generation (RAG)
-that don't fit into other service categories. Currently includes web crawling operations.
+This package contains services for web crawling, document processing, 
+and related orchestration operations.
 """
 
 from .crawling_service import CrawlingService
+from .crawl_orchestration_service import CrawlOrchestrationService
+from .code_extraction_service import CodeExtractionService
+from .progress_mapper import ProgressMapper
 
 __all__ = [
-    "CrawlingService"
+    "CrawlingService",
+    "CrawlOrchestrationService",
+    "CodeExtractionService",
+    "ProgressMapper"
 ]

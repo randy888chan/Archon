@@ -11,7 +11,7 @@ from queue import Queue
 import uuid
 
 from ...config.logfire_config import safe_logfire_info, safe_logfire_error
-from ..crawling.crawling_service import CrawlingService
+from .crawling_service import CrawlingService
 from ..storage.storage_services import DocumentStorageService
 from ..storage.document_storage_service import add_documents_to_supabase
 from .code_extraction_service import CodeExtractionService
