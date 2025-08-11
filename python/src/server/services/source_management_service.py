@@ -9,25 +9,24 @@ from supabase import Client
 
 from ..config.logfire_config import search_logger, get_logger
 from .client_manager import get_supabase_client
-from .llm_provider_service import get_llm_client_sync
+from .llm_provider_service import get_llm_client
 
 logger = get_logger(__name__)
 
 
 def _get_model_choice() -> str:
-    """Get MODEL_CHOICE from credential service using proper methods (sync version)."""
+    """Get MODEL_CHOICE with direct fallback."""
     try:
-        # Import the sync helper from llm_provider_service
-        from .llm_provider_service import _get_active_provider_sync
-        
-        provider_config = _get_active_provider_sync()
-        model = provider_config["chat_model"]
-        provider = provider_config["provider"]
-        
-        logger.debug(f"Using model from provider config: {model} with provider: {provider}")
+        # Direct cache/env fallback
+        from .credential_service import credential_service
+        if credential_service._cache_initialized and "MODEL_CHOICE" in credential_service._cache:
+            model = credential_service._cache["MODEL_CHOICE"]
+        else:
+            model = os.getenv("MODEL_CHOICE", "gpt-4.1-nano")
+        logger.debug(f"Using model choice: {model}")
         return model
     except Exception as e:
-        logger.warning(f"Error getting provider config: {e}, using default")
+        logger.warning(f"Error getting model choice: {e}, using default")
         return "gpt-4.1-nano"
 
 def extract_source_summary(source_id: str, content: str, max_length: int = 500, provider: str = None) -> str:
@@ -67,12 +66,29 @@ The above content is from the documentation for '{source_id}'. Please provide a 
 """
     
     try:
-        # Get LLM client using the provider service
         try:
-            client = get_llm_client_sync()
-            search_logger.info("Successfully created LLM client for summary generation")
+            import openai
+            import os
+            api_key = os.getenv("OPENAI_API_KEY")
+            if not api_key:
+                # Try to get from credential service with direct fallback
+                from .credential_service import credential_service
+                if credential_service._cache_initialized and "OPENAI_API_KEY" in credential_service._cache:
+                    cached_key = credential_service._cache["OPENAI_API_KEY"]
+                    if isinstance(cached_key, dict) and cached_key.get("is_encrypted"):
+                        api_key = credential_service._decrypt_value(cached_key["encrypted_value"])
+                    else:
+                        api_key = cached_key
+                else:
+                    api_key = os.getenv("OPENAI_API_KEY", "")
+            
+            if not api_key:
+                raise ValueError("No OpenAI API key available")
+            
+            client = openai.OpenAI(api_key=api_key)
+            search_logger.info("Successfully created LLM client fallback for summary generation")
         except Exception as e:
-            search_logger.error(f"Failed to create LLM client: {e}")
+            search_logger.error(f"Failed to create LLM client fallback: {e}")
             return default_summary
         
         # Call the OpenAI API to generate the summary
@@ -132,12 +148,28 @@ def generate_source_title_and_metadata(
     # Try to generate a better title from content
     if content and len(content.strip()) > 100:
         try:
-            # Get LLM client using the provider service
-            # Note: Sync version has limited provider support
             try:
-                client = get_llm_client_sync()
+                import openai
+                import os
+                api_key = os.getenv("OPENAI_API_KEY")
+                if not api_key:
+                    # Try to get from credential service with direct fallback
+                    from .credential_service import credential_service
+                    if credential_service._cache_initialized and "OPENAI_API_KEY" in credential_service._cache:
+                        cached_key = credential_service._cache["OPENAI_API_KEY"]
+                        if isinstance(cached_key, dict) and cached_key.get("is_encrypted"):
+                            api_key = credential_service._decrypt_value(cached_key["encrypted_value"])
+                        else:
+                            api_key = cached_key
+                    else:
+                        api_key = os.getenv("OPENAI_API_KEY", "")
+                
+                if not api_key:
+                    raise ValueError("No OpenAI API key available")
+                
+                client = openai.OpenAI(api_key=api_key)
             except Exception as e:
-                search_logger.error(f"Failed to create LLM client for title generation: {e}")
+                search_logger.error(f"Failed to create LLM client fallback for title generation: {e}")
                 # Don't proceed if client creation fails
                 raise
                 

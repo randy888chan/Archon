@@ -63,64 +63,11 @@ class EmbeddingBatchResult:
         return self.success_count + self.failure_count
 
 
-# Use the new provider-aware client factory
+# Provider-aware client factory
 get_openai_client = get_llm_client
 
 
-def create_embedding(text: str, provider: Optional[str] = None) -> List[float]:
-    """
-    Create an embedding for a single text using the configured provider.
-    
-    This is a synchronous wrapper around the async version for backward compatibility.
-    
-    Args:
-        text: Text to create an embedding for
-        provider: Optional provider override
-        
-    Returns:
-        List of floats representing the embedding
-    """
-    try:
-        # Check if we're in an async context
-        try:
-            loop = asyncio.get_running_loop()
-            # If we're already in an async context, we can't run sync - must use async version
-            raise EmbeddingAsyncContextError(
-                "create_embedding (sync) called from async context - use create_embedding_async instead",
-                text_preview=text
-            )
-        except RuntimeError:
-            # No running loop, safe to use asyncio.run
-            return asyncio.run(create_embedding_async(text, provider=provider))
-    except EmbeddingError:
-        # Re-raise our custom exceptions as-is
-        raise
-    except Exception as e:
-        # Convert other exceptions to EmbeddingAPIError
-        error_msg = str(e)
-        search_logger.error(f"Embedding creation failed: {error_msg}")
-        search_logger.error(f"Failed text preview: {text[:100]}...")
-        
-        # Check for specific error types
-        if "insufficient_quota" in error_msg:
-            raise EmbeddingQuotaExhaustedError(
-                f"OpenAI quota exhausted: {error_msg}",
-                text_preview=text
-            )
-        elif "rate_limit" in error_msg.lower():
-            raise EmbeddingRateLimitError(
-                f"Rate limit hit: {error_msg}",
-                text_preview=text
-            )
-        else:
-            raise EmbeddingAPIError(
-                f"Unexpected embedding error: {error_msg}",
-                text_preview=text,
-                original_error=e
-            )
-
-
-async def create_embedding_async(text: str, provider: Optional[str] = None) -> List[float]:
+async def create_embedding(text: str, provider: Optional[str] = None) -> List[float]:
     """
     Create an embedding for a single text using the configured provider.
     
@@ -130,9 +77,14 @@ async def create_embedding_async(text: str, provider: Optional[str] = None) -> L
         
     Returns:
         List of floats representing the embedding
+        
+    Raises:
+        EmbeddingQuotaExhaustedError: When OpenAI quota is exhausted
+        EmbeddingRateLimitError: When rate limited
+        EmbeddingAPIError: For other API errors
     """
     try:
-        result = await create_embeddings_batch_async([text], provider=provider)
+        result = await create_embeddings_batch([text], provider=provider)
         if not result.embeddings:
             # Check if there were failures
             if result.has_failures and result.failed_items:
@@ -166,7 +118,7 @@ async def create_embedding_async(text: str, provider: Optional[str] = None) -> L
     except Exception as e:
         # Convert to appropriate exception type
         error_msg = str(e)
-        search_logger.error(f"Async embedding creation failed: {error_msg}")
+        search_logger.error(f"Embedding creation failed: {error_msg}")
         search_logger.error(f"Failed text preview: {text[:100]}...")
         
         if "insufficient_quota" in error_msg:
@@ -181,69 +133,13 @@ async def create_embedding_async(text: str, provider: Optional[str] = None) -> L
             )
         else:
             raise EmbeddingAPIError(
-                f"Async embedding error: {error_msg}",
+                f"Embedding error: {error_msg}",
                 text_preview=text,
                 original_error=e
             )
 
 
-def create_embeddings_batch(texts: List[str], provider: Optional[str] = None) -> EmbeddingBatchResult:
-    """
-    Create embeddings for multiple texts with graceful failure handling.
-    
-    This is a synchronous wrapper around the async version for backward compatibility.
-    
-    Args:
-        texts: List of texts to create embeddings for
-        provider: Optional provider override
-        
-    Returns:
-        EmbeddingBatchResult with successful embeddings and failure details
-    """
-    if not texts:
-        return EmbeddingBatchResult()
-    
-    try:
-        # Check if we're in an async context
-        try:
-            loop = asyncio.get_running_loop()
-            # If we're already in an async context, we can't run sync - must use async version
-            raise EmbeddingAsyncContextError(
-                f"create_embeddings_batch (sync) called from async context - use create_embeddings_batch_async instead. Batch size: {len(texts)}",
-                text_preview=texts[0] if texts else None
-            )
-        except RuntimeError:
-            # No running loop, safe to use asyncio.run
-            return asyncio.run(create_embeddings_batch_async(texts, provider=provider))
-    except EmbeddingError:
-        # Re-raise our custom exceptions
-        raise
-    except Exception as e:
-        # Convert to appropriate exception type
-        error_msg = str(e)
-        search_logger.error(f"Batch embedding creation failed: {error_msg}")
-        search_logger.error(f"Batch size: {len(texts)}, first text preview: {texts[0][:100] if texts else 'empty'}...")
-        
-        if "insufficient_quota" in error_msg:
-            raise EmbeddingQuotaExhaustedError(
-                f"OpenAI quota exhausted during batch processing: {error_msg}",
-                text_preview=texts[0] if texts else None
-            )
-        elif "rate_limit" in error_msg.lower():
-            raise EmbeddingRateLimitError(
-                f"Rate limit hit during batch processing: {error_msg}",
-                text_preview=texts[0] if texts else None
-            )
-        else:
-            raise EmbeddingAPIError(
-                f"Batch embedding error: {error_msg}",
-                text_preview=texts[0] if texts else None,
-                original_error=e,
-                batch_size=len(texts)
-            )
-
-
-async def create_embeddings_batch_async(
+async def create_embeddings_batch(
     texts: List[str], 
     websocket: Optional[Any] = None,
     progress_callback: Optional[Any] = None,
@@ -288,7 +184,7 @@ async def create_embeddings_batch_async(
     result = EmbeddingBatchResult()
     threading_service = get_threading_service()
     
-    with safe_span("create_embeddings_batch_async", 
+    with safe_span("create_embeddings_batch", 
                            text_count=len(texts),
                            total_chars=sum(len(t) for t in texts)) as span:
         
@@ -376,7 +272,6 @@ async def create_embeddings_batch_async(
                                             await asyncio.sleep(wait_time)
                                         else:
                                             raise  # Will be caught by outer try
-                        
                                             
                     except Exception as e:
                         # This batch failed - track failures but continue with next batch
@@ -443,17 +338,8 @@ async def create_embeddings_batch_async(
             return result
 
 
-
 # Deprecated functions - kept for backward compatibility
 async def get_openai_api_key() -> Optional[str]:
-    """
-    DEPRECATED: Use os.getenv("OPENAI_API_KEY") directly.
-    API key is loaded into environment at startup.
-    """
-    return os.getenv("OPENAI_API_KEY")
-
-
-def get_openai_api_key_sync() -> Optional[str]:
     """
     DEPRECATED: Use os.getenv("OPENAI_API_KEY") directly.
     API key is loaded into environment at startup.
