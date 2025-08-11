@@ -12,7 +12,13 @@ from typing import List
 
 from src.server.services.embeddings.embedding_service import (
     create_embedding,
-    create_embeddings_batch
+    create_embeddings_batch,
+    EmbeddingBatchResult
+)
+from src.server.services.embeddings.embedding_exceptions import (
+    EmbeddingAPIError,
+    EmbeddingQuotaExhaustedError,
+    EmbeddingRateLimitError
 )
 
 
@@ -95,8 +101,8 @@ class TestAsyncEmbeddingService:
                         mock_llm_client.embeddings.create.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_create_embedding_api_error_fallback(self, mock_threading_service):
-        """Test embedding creation with API error - should return zero embedding"""
+    async def test_create_embedding_api_error_raises_exception(self, mock_threading_service):
+        """Test embedding creation with API error - should raise exception"""
         with patch('src.server.services.embeddings.embedding_service.get_threading_service', return_value=mock_threading_service):
             with patch('src.server.services.embeddings.embedding_service.get_llm_client') as mock_get_client:
                 with patch('src.server.services.embeddings.embedding_service.get_embedding_model', return_value="text-embedding-3-small"):
@@ -108,11 +114,9 @@ class TestAsyncEmbeddingService:
                         mock_client.embeddings.create = AsyncMock(side_effect=Exception("API Error"))
                         mock_get_client.return_value = AsyncContextManager(mock_client)
                         
-                        result = await create_embedding("test text")
-                        
-                        # Should return zero embedding
-                        assert len(result) == 1536
-                        assert all(x == 0.0 for x in result)
+                        # Should raise exception now instead of returning zero embeddings
+                        with pytest.raises(EmbeddingAPIError):
+                            await create_embedding("test text")
 
     @pytest.mark.asyncio
     async def test_create_embeddings_batch_success(self, mock_llm_client, mock_threading_service):
@@ -135,12 +139,15 @@ class TestAsyncEmbeddingService:
                         
                         result = await create_embeddings_batch(["text1", "text2"])
                         
-                        # Verify the result
-                        assert len(result) == 2
-                        assert len(result[0]) == 1536
-                        assert len(result[1]) == 1536
-                        assert result[0][0] == 0.1
-                        assert result[1][0] == 0.4
+                        # Verify the result is EmbeddingBatchResult
+                        assert isinstance(result, EmbeddingBatchResult)
+                        assert result.success_count == 2
+                        assert result.failure_count == 0
+                        assert len(result.embeddings) == 2
+                        assert len(result.embeddings[0]) == 1536
+                        assert len(result.embeddings[1]) == 1536
+                        assert result.embeddings[0][0] == 0.1
+                        assert result.embeddings[1][0] == 0.4
                         
                         mock_llm_client.embeddings.create.assert_called_once()
 
@@ -148,7 +155,10 @@ class TestAsyncEmbeddingService:
     async def test_create_embeddings_batch_empty_list(self):
         """Test batch embedding with empty list"""
         result = await create_embeddings_batch([])
-        assert result == []
+        assert isinstance(result, EmbeddingBatchResult)
+        assert result.success_count == 0
+        assert result.failure_count == 0
+        assert result.embeddings == []
 
     @pytest.mark.asyncio
     async def test_create_embeddings_batch_rate_limit_error(self, mock_threading_service):
@@ -159,7 +169,7 @@ class TestAsyncEmbeddingService:
                     with patch('src.server.services.embeddings.embedding_service.credential_service') as mock_cred:
                         mock_cred.get_credentials_by_category = AsyncMock(return_value={"EMBEDDING_BATCH_SIZE": "10"})
                         
-                        # Setup client to raise rate limit error
+                        # Setup client to raise rate limit error (not quota)
                         mock_client = MagicMock()
                         # Create a proper RateLimitError with required attributes
                         error = openai.RateLimitError("Rate limit exceeded", response=MagicMock(), body={"error": {"message": "Rate limit exceeded"}})
@@ -168,10 +178,12 @@ class TestAsyncEmbeddingService:
                         
                         result = await create_embeddings_batch(["text1", "text2"])
                         
-                        # Should return zero embeddings
-                        assert len(result) == 2
-                        assert all(len(emb) == 1536 for emb in result)
-                        assert all(all(x == 0.0 for x in emb) for emb in result)
+                        # Should return result with failures, not zero embeddings
+                        assert isinstance(result, EmbeddingBatchResult)
+                        assert result.success_count == 0
+                        assert result.failure_count == 2
+                        assert len(result.embeddings) == 0
+                        assert len(result.failed_items) == 2
 
     @pytest.mark.asyncio
     async def test_create_embeddings_batch_quota_exhausted(self, mock_threading_service):
@@ -193,11 +205,14 @@ class TestAsyncEmbeddingService:
                         
                         result = await create_embeddings_batch(["text1", "text2"], progress_callback=progress_callback)
                         
-                        # Should return zero embeddings and call progress callback
-                        assert len(result) == 2
-                        assert all(len(emb) == 1536 for emb in result)
-                        assert all(all(x == 0.0 for x in emb) for emb in result)
-                        progress_callback.assert_called()
+                        # Should return result with failures, not zero embeddings
+                        assert isinstance(result, EmbeddingBatchResult)
+                        assert result.success_count == 0
+                        assert result.failure_count == 2
+                        assert len(result.embeddings) == 0
+                        assert len(result.failed_items) == 2
+                        # Verify quota exhausted is in error messages
+                        assert any("quota" in item["error"].lower() for item in result.failed_items)
 
     @pytest.mark.asyncio
     async def test_create_embeddings_batch_with_websocket_progress(self, mock_llm_client, mock_threading_service):
@@ -219,6 +234,10 @@ class TestAsyncEmbeddingService:
                         mock_websocket.send_json = AsyncMock()
                         
                         result = await create_embeddings_batch(["text1"], websocket=mock_websocket)
+                        
+                        # Verify result is correct
+                        assert isinstance(result, EmbeddingBatchResult)
+                        assert result.success_count == 1
                         
                         # Verify WebSocket was called
                         mock_websocket.send_json.assert_called()
@@ -246,6 +265,10 @@ class TestAsyncEmbeddingService:
                         progress_callback = AsyncMock()
                         
                         result = await create_embeddings_batch(["text1"], progress_callback=progress_callback)
+                        
+                        # Verify result
+                        assert isinstance(result, EmbeddingBatchResult)
+                        assert result.success_count == 1
                         
                         # Verify progress callback was called
                         progress_callback.assert_called()
@@ -294,5 +317,11 @@ class TestAsyncEmbeddingService:
                         
                         # Should have made 3 API calls due to batching
                         assert mock_llm_client.embeddings.create.call_count == 3
-                        # Should have 6 embeddings total (3 calls * 2 embeddings per call)
-                        assert len(result) == 6  # 3 calls * 2 embeddings per call
+                        
+                        # Result should be EmbeddingBatchResult
+                        assert isinstance(result, EmbeddingBatchResult)
+                        # Should have 5 embeddings total (for 5 input texts)
+                        # Even though mock returns 2 per call, we only process as many as we requested
+                        assert result.success_count == 5
+                        assert len(result.embeddings) == 5
+                        assert result.texts_processed == texts
