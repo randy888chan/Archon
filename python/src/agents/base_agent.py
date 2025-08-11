@@ -62,9 +62,9 @@ class RateLimitHandler:
                 error_str = str(e).lower()
                 full_error = str(e)
                 
-                print(f"🔍 DEBUG: Agent error caught: {full_error}")
-                print(f"🔍 DEBUG: Error type: {type(e).__name__}")
-                print(f"🔍 DEBUG: Error class: {e.__class__.__module__}.{e.__class__.__name__}")
+                logger.debug(f"Agent error caught: {full_error}")
+                logger.debug(f"Error type: {type(e).__name__}")
+                logger.debug(f"Error class: {e.__class__.__module__}.{e.__class__.__name__}")
                 
                 # Check for different types of rate limits
                 is_rate_limit = (
@@ -77,7 +77,7 @@ class RateLimitHandler:
                 if is_rate_limit:
                     retries += 1
                     if retries > self.max_retries:
-                        print(f"💥 DEBUG: Max retries exceeded for rate limit: {full_error}")
+                        logger.debug(f"Max retries exceeded for rate limit: {full_error}")
                         if progress_callback:
                             await progress_callback({
                                 'step': 'ai_generation',
@@ -91,7 +91,7 @@ class RateLimitHandler:
                         # Use exponential backoff
                         wait_time = self.base_delay * (2 ** (retries - 1))
                     
-                    print(f"⏳ Rate limit hit. Type: {type(e).__name__}, Waiting {wait_time:.2f}s before retry {retries}/{self.max_retries}")
+                    logger.info(f"Rate limit hit. Type: {type(e).__name__}, Waiting {wait_time:.2f}s before retry {retries}/{self.max_retries}")
                     
                     # Send progress update if callback provided
                     if progress_callback:
@@ -104,7 +104,7 @@ class RateLimitHandler:
                     continue
                 else:
                     # Non-rate-limit error, re-raise immediately
-                    print(f"❌ DEBUG: Non-rate-limit error, re-raising: {full_error}")
+                    logger.debug(f"Non-rate-limit error, re-raising: {full_error}")
                     if progress_callback:
                         await progress_callback({
                             'step': 'ai_generation', 

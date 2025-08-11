@@ -9,7 +9,7 @@ from typing import List, Dict, Any, Optional
 from urllib.parse import urlparse
 
 from ...config.logfire_config import search_logger, safe_span
-from ..embeddings.embedding_service import create_embeddings_batch_async
+from ..embeddings.embedding_service import create_embeddings_batch
 from ..embeddings.contextual_embedding_service import (
     generate_contextual_embeddings_batch
 )
@@ -225,7 +225,7 @@ async def add_documents_to_supabase(
             
             # Create embeddings for the batch - no progress reporting
             # Don't pass websocket to avoid Socket.IO issues
-            batch_embeddings = await create_embeddings_batch_async(
+            batch_embeddings = await create_embeddings_batch(
                 contextual_contents,
                 provider=provider
             )

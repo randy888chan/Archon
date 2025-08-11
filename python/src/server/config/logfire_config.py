@@ -90,22 +90,22 @@ def setup_logfire(
                 
                 # Add LogfireLoggingHandler to capture all standard logging
                 handlers.append(logfire.LogfireLoggingHandler())
-                print(f"✅ Logfire enabled for {service_name}")
+                logging.info(f"✅ Logfire enabled for {service_name}")
                 
             except Exception as e:
-                print(f"❌ Failed to configure Logfire: {e}. Using standard logging.")
+                logging.error(f"❌ Failed to configure Logfire: {e}. Using standard logging.")
                 _logfire_enabled = False
         else:
-            print("❌ LOGFIRE_TOKEN not found. Using standard logging.")
+            logging.info("❌ LOGFIRE_TOKEN not found. Using standard logging.")
             _logfire_enabled = False
     
     if not _logfire_enabled and LOGFIRE_AVAILABLE:
         try:
             # Configure logfire but disable sending to remote
             logfire.configure(send_to_logfire=False)
-            print("📝 Logfire configured but disabled (send_to_logfire=False)")
+            logging.info("📝 Logfire configured but disabled (send_to_logfire=False)")
         except Exception as e:
-            print(f"⚠️  Warning: Could not configure Logfire in disabled mode: {e}")
+            logging.warning(f"⚠️  Warning: Could not configure Logfire in disabled mode: {e}")
     
     # Set up standard Python logging (always)
     if not handlers:
@@ -121,7 +121,7 @@ def setup_logfire(
     )
     
     _logfire_configured = True
-    print(f"📋 Logging configured (Logfire: {'enabled' if _logfire_enabled else 'disabled'})")
+    logging.info(f"📋 Logging configured (Logfire: {'enabled' if _logfire_enabled else 'disabled'})")
 
 
 def get_logger(name: str) -> logging.Logger:
