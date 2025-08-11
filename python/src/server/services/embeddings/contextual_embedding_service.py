@@ -193,14 +193,14 @@ async def generate_contextual_embeddings_batch(full_documents: List[str], chunks
     except openai.RateLimitError as e:
         if "insufficient_quota" in str(e):
             search_logger.warning(f"⚠️ QUOTA EXHAUSTED in contextual embeddings: {e}")
-            print("⚠️ OpenAI quota exhausted - proceeding without contextual embeddings")
+            search_logger.warning("OpenAI quota exhausted - proceeding without contextual embeddings")
         else:
             search_logger.warning(f"Rate limit hit in contextual embeddings batch: {e}")
-            print("Rate limit hit - proceeding without contextual embeddings for this batch")
+            search_logger.warning("Rate limit hit - proceeding without contextual embeddings for this batch")
         # Return non-contextual for all chunks
         return [(chunk, False) for chunk in chunks]
         
     except Exception as e:
-        print(f"Error in contextual embedding batch: {e}")
+        search_logger.error(f"Error in contextual embedding batch: {e}")
         # Return non-contextual for all chunks
         return [(chunk, False) for chunk in chunks]

@@ -25,8 +25,11 @@ from ..services.knowledge import CrawlOrchestrationService, KnowledgeItemService
 from ..services.crawler_manager import get_crawler
 
 # Import unified logging
-from ..config.logfire_config import safe_logfire_info, safe_logfire_error
+from ..config.logfire_config import safe_logfire_info, safe_logfire_error, get_logger
 from ..utils.document_processing import extract_text_from_document
+
+# Get logger for this module
+logger = get_logger(__name__)
 from .socketio_handlers import (
     start_crawl_progress,
     update_crawl_progress,
@@ -168,18 +171,18 @@ async def update_knowledge_item(source_id: str, updates: dict):
 async def delete_knowledge_item(source_id: str):
     """Delete a knowledge item from the database."""
     try:
-        print(f"DEBUG: Starting delete_knowledge_item for source_id: {source_id}")
+        logger.debug(f"Starting delete_knowledge_item for source_id: {source_id}")
         safe_logfire_info(f"Deleting knowledge item | source_id={source_id}")
         
         # Use SourceManagementService directly instead of going through MCP
-        print("DEBUG: Creating SourceManagementService...")
+        logger.debug("Creating SourceManagementService...")
         from ..services.source_management_service import SourceManagementService
         source_service = SourceManagementService(get_supabase_client())
-        print("DEBUG: Successfully created SourceManagementService")
+        logger.debug("Successfully created SourceManagementService")
         
-        print("DEBUG: Calling delete_source function...")
+        logger.debug("Calling delete_source function...")
         success, result_data = source_service.delete_source(source_id)
-        print(f"DEBUG: delete_source returned: success={success}, data={result_data}")
+        logger.debug(f"delete_source returned: success={success}, data={result_data}")
         
         # Convert to expected format
         result = {
@@ -200,10 +203,10 @@ async def delete_knowledge_item(source_id: str):
             raise HTTPException(status_code=500, detail={'error': result.get('error', 'Deletion failed')})
                 
     except Exception as e:
-        print(f"ERROR: Exception in delete_knowledge_item: {e}")
-        print(f"ERROR: Exception type: {type(e)}")
+        logger.error(f"Exception in delete_knowledge_item: {e}")
+        logger.error(f"Exception type: {type(e)}")
         import traceback
-        print(f"ERROR: Traceback: {traceback.format_exc()}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
         safe_logfire_error(f"Failed to delete knowledge item | error={str(e)} | source_id={source_id}")
         raise HTTPException(status_code=500, detail={'error': str(e)})
 
@@ -435,12 +438,12 @@ async def _perform_crawl_with_progress(progress_id: str, request: KnowledgeItemR
             safe_logfire_error(f"Crawl failed | progress_id={progress_id} | error={error_message} | exception_type={type(e).__name__}")
             import traceback
             tb = traceback.format_exc()
-            # Ensure the error is visible in Docker logs
-            print(f"=== CRAWL ERROR FOR {progress_id} ===")
-            print(f"Error: {error_message}")
-            print(f"Exception Type: {type(e).__name__}")
-            print(f"Traceback:\n{tb}")
-            print("=== END CRAWL ERROR ===")
+            # Ensure the error is visible in logs
+            logger.error(f"=== CRAWL ERROR FOR {progress_id} ===")
+            logger.error(f"Error: {error_message}")
+            logger.error(f"Exception Type: {type(e).__name__}")
+            logger.error(f"Traceback:\n{tb}")
+            logger.error("=== END CRAWL ERROR ===")
             safe_logfire_error(f"Crawl exception traceback | traceback={tb}")
             await error_crawl_progress(progress_id, error_message)
         finally:

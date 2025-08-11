@@ -11,7 +11,7 @@ Uses the cross-encoder/ms-marco-MiniLM-L-6-v2 model for reranking by default.
 import os
 from typing import List, Dict, Any, Optional
 
-# Import CrossEncoder for reranking if available
+
 try:
     from sentence_transformers import CrossEncoder
     CROSSENCODER_AVAILABLE = True

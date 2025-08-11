@@ -20,9 +20,6 @@ from .keyword_extractor import extract_keywords, build_search_terms
 
 logger = get_logger(__name__)
 
-# Fixed similarity threshold for vector results
-SIMILARITY_THRESHOLD = 0.15
-
 
 class HybridSearchStrategy:
     """Strategy class implementing hybrid search combining vector and keyword search"""

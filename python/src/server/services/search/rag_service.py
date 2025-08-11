@@ -15,7 +15,6 @@ Multiple strategies can be enabled simultaneously and work together.
 import os
 from typing import List, Dict, Any, Optional, Tuple
 
-# Import CrossEncoder for test compatibility
 try:
     from sentence_transformers import CrossEncoder
 except ImportError:
@@ -32,9 +31,6 @@ from .reranking_strategy import RerankingStrategy
 from .agentic_rag_strategy import AgenticRAGStrategy
 
 logger = get_logger(__name__)
-
-# Fixed similarity threshold for RAG queries
-SIMILARITY_THRESHOLD = 0.15
 
 
 class RAGService:

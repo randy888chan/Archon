@@ -133,17 +133,17 @@ async def broadcast_crawl_progress(progress_id: str, data: dict):
                     if namespace == '/' and room == progress_id:
                         room_sids = list(sids)
         
-        print(f"📢 [SOCKETIO DEBUG] Broadcasting to room '{progress_id}'")
-        print(f"📢 [SOCKETIO DEBUG] Room {progress_id} has {len(room_sids)} subscribers: {room_sids}")
-        print(f"📢 [SOCKETIO DEBUG] All rooms in namespace '/': {list(all_rooms.get('/', {}).keys())}")
+        logger.debug(f"Broadcasting to room '{progress_id}'")
+        logger.debug(f"Room {progress_id} has {len(room_sids)} subscribers: {room_sids}")
+        logger.debug(f"All rooms in namespace '/': {list(all_rooms.get('/', {}).keys())}")
         
         # Log if the room doesn't exist
         if not room_sids:
-            print(f"⚠️  [SOCKETIO DEBUG] WARNING: Room '{progress_id}' has no subscribers!")
+            logger.warning(f"Room '{progress_id}' has no subscribers!")
             logger.warning(f"Room '{progress_id}' has no subscribers when broadcasting crawl progress")
             
     except Exception as e:
-        print(f"📢 [SOCKETIO DEBUG] Could not get room info: {e}")
+        logger.debug(f"Could not get room info: {e}")
         import traceback
         traceback.print_exc()
     
@@ -199,11 +199,11 @@ async def connect(sid, environ):
     logger.info(f'🔌 [SOCKETIO] Query params: {query_params}')
     logger.info(f'🔌 [SOCKETIO] User-Agent: {headers.get("HTTP_USER_AGENT", "unknown")}')
     
-    print('🔌 [SOCKETIO DEBUG] New connection:')
-    print(f'  - SID: {sid}')
-    print(f'  - Address: {client_address}')
-    print(f'  - Query: {query_params}')
-    print(f'  - Transport: {headers.get("HTTP_UPGRADE", "unknown")}')
+    logger.debug('🔌 New connection:')
+    logger.debug(f'  - SID: {sid}')
+    logger.debug(f'  - Address: {client_address}')
+    logger.debug(f'  - Query: {query_params}')
+    logger.debug(f'  - Transport: {headers.get("HTTP_UPGRADE", "unknown")}')
     
     # Parse query params to check for session_id
     if query_params:
@@ -211,7 +211,7 @@ async def connect(sid, environ):
         params = urllib.parse.parse_qs(query_params)
         session_id = params.get('session_id', [None])[0]
         if session_id:
-            print(f'  - Session ID: {session_id}')
+            logger.debug(f'  - Session ID: {session_id}')
     
     # Log total connected clients
     try:
@@ -220,7 +220,7 @@ async def connect(sid, environ):
             for namespace_rooms in sio.manager.rooms.values():
                 for room_sids in namespace_rooms.values():
                     all_sids.update(room_sids)
-            print(f'📊 [SOCKETIO DEBUG] Total connected clients: {len(all_sids)}')
+            logger.debug(f'Total connected clients: {len(all_sids)}')
     except:
         pass
 
@@ -230,7 +230,7 @@ async def disconnect(sid):
     # Log which rooms the client was in before disconnecting
     rooms = sio.rooms(sid) if hasattr(sio, 'rooms') else []
     logger.info(f'🔌 [SOCKETIO] Client disconnected: {sid}, was in rooms: {rooms}')
-    print(f'🔌 Client disconnected: {sid}, was in rooms: {rooms}')
+    logger.info(f'Client disconnected: {sid}, was in rooms: {rooms}')
 
 @sio.event
 async def join_project(sid, data):
@@ -243,7 +243,7 @@ async def join_project(sid, data):
     # Join the room for this project
     await sio.enter_room(sid, project_id)
     logger.info(f"📥 [SOCKETIO] Client {sid} joined project room: {project_id}")
-    print(f"✅ Client {sid} joined project {project_id}")
+    logger.info(f"Client {sid} joined project {project_id}")
     
     # Send confirmation - let frontend request initial tasks via API
     await sio.emit('joined_project', {'project_id': project_id}, to=sid)
@@ -254,14 +254,14 @@ async def leave_project(sid, data):
     project_id = data.get('project_id')
     if project_id:
         await sio.leave_room(sid, project_id)
-        print(f"🛑 Client {sid} left project {project_id}")
+        logger.info(f"Client {sid} left project {project_id}")
 
 @sio.event
 async def subscribe_projects(sid, data=None):
     """Subscribe to project list updates."""
     await sio.enter_room(sid, 'project_list')
     logger.info(f"📥 [SOCKETIO] Client {sid} joined project_list room")
-    print(f"✅ Client {sid} subscribed to project list")
+    logger.info(f"Client {sid} subscribed to project list")
     
     # Send current project list using ProjectService
     try:
@@ -277,7 +277,7 @@ async def subscribe_projects(sid, data=None):
         formatted_projects = source_service.format_projects_with_sources(result["projects"])
         
         await sio.emit('projects_update', {'projects': formatted_projects}, to=sid)
-        print(f"📤 Sent {len(formatted_projects)} projects to client {sid}")
+        logger.info(f"Sent {len(formatted_projects)} projects to client {sid}")
         
     except Exception as e:
         await sio.emit('error', {'message': str(e)}, to=sid)
@@ -286,7 +286,7 @@ async def subscribe_projects(sid, data=None):
 async def unsubscribe_projects(sid, data=None):
     """Unsubscribe from project list updates."""
     await sio.leave_room(sid, 'project_list')
-    print(f"🛑 Client {sid} unsubscribed from project list")
+    logger.info(f"Client {sid} unsubscribed from project list")
 
 @sio.event
 async def subscribe_progress(sid, data):
@@ -321,7 +321,7 @@ async def subscribe_progress(sid, data):
     except Exception as e:
         logger.error(f"📤 [SOCKETIO] Error sending current progress state: {e}")
     
-    print(f"✅ Client {sid} subscribed to progress {progress_id}")
+    logger.info(f"Client {sid} subscribed to progress {progress_id}")
 
 @sio.event
 async def unsubscribe_progress(sid, data):
@@ -329,13 +329,13 @@ async def unsubscribe_progress(sid, data):
     progress_id = data.get('progress_id')
     if progress_id:
         await sio.leave_room(sid, progress_id)
-        print(f"🛑 Client {sid} unsubscribed from progress {progress_id}")
+        logger.info(f"Client {sid} unsubscribed from progress {progress_id}")
 
 @sio.event
 async def crawl_subscribe(sid, data=None):
     """Subscribe to crawl progress updates."""
     logger.info(f"📥 [SOCKETIO] Received crawl_subscribe from {sid} with data: {data}")
-    print(f"📥 [SOCKETIO DEBUG] crawl_subscribe event - sid: {sid}, data: {data}")
+    logger.debug(f"crawl_subscribe event - sid: {sid}, data: {data}")
     progress_id = data.get('progress_id') if data else None
     if not progress_id:
         logger.error(f"❌ [SOCKETIO] No progress_id in crawl_subscribe from {sid}")
@@ -345,7 +345,7 @@ async def crawl_subscribe(sid, data=None):
     # Enter the room
     await sio.enter_room(sid, progress_id)
     logger.info(f"✅ [SOCKETIO] Client {sid} subscribed to crawl progress room: {progress_id}")
-    print(f"✅ Client {sid} subscribed to crawl progress {progress_id}")
+    logger.info(f"Client {sid} subscribed to crawl progress {progress_id}")
     
     # Verify room membership
     try:
@@ -372,17 +372,17 @@ async def crawl_subscribe(sid, data=None):
                 if sid in sids:
                     client_rooms.append(room)
         
-        print(f"📥 [SOCKETIO DEBUG] Client {sid} is now in rooms: {client_rooms}")
-        print(f"📥 [SOCKETIO DEBUG] Room '{progress_id}' membership confirmed: {progress_id in client_rooms}")
+        logger.debug(f"Client {sid} is now in rooms: {client_rooms}")
+        logger.debug(f"Room '{progress_id}' membership confirmed: {progress_id in client_rooms}")
         
         # Double-check room membership by listing all members
         if hasattr(sio.manager, 'rooms'):
             room_members = list(sio.manager.rooms.get('/', {}).get(progress_id, []))
-            print(f"📥 [SOCKETIO DEBUG] Room '{progress_id}' now has {len(room_members)} members: {room_members}")
-            print(f"📥 [SOCKETIO DEBUG] Client {sid} is in room: {sid in room_members}")
+            logger.debug(f"Room '{progress_id}' now has {len(room_members)} members: {room_members}")
+            logger.debug(f"Client {sid} is in room: {sid in room_members}")
             
     except Exception as e:
-        print(f"📥 [SOCKETIO DEBUG] Error checking room membership: {e}")
+        logger.debug(f"Error checking room membership: {e}")
         import traceback
         traceback.print_exc()
     
@@ -430,12 +430,12 @@ async def crawl_unsubscribe(sid, data):
     if progress_id:
         # Log why the client is unsubscribing
         logger.info(f"📤 [SOCKETIO] crawl_unsubscribe event received | sid={sid} | progress_id={progress_id} | data={data}")
-        print(f"🛑 [SOCKETIO DEBUG] Client {sid} requesting to unsubscribe from crawl progress {progress_id}")
-        print(f"🛑 [SOCKETIO DEBUG] Unsubscribe data: {data}")
+        logger.debug(f"Client {sid} requesting to unsubscribe from crawl progress {progress_id}")
+        logger.debug(f"Unsubscribe data: {data}")
         
         await sio.leave_room(sid, progress_id)
         logger.info(f"📤 [SOCKETIO] Client {sid} left crawl progress room: {progress_id}")
-        print(f"🛑 Client {sid} unsubscribed from crawl progress {progress_id}")
+        logger.info(f"Client {sid} unsubscribed from crawl progress {progress_id}")
 
 # Background Task Management Socket.IO Events
 @sio.event
