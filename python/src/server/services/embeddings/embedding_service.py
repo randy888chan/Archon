@@ -21,6 +21,14 @@ from .embedding_exceptions import (
     EmbeddingAPIError,
     EmbeddingValidationError
 )
+from .dimension_validator import (
+    validate_embedding_dimensions, log_dimension_operation, 
+    ensure_valid_embedding, validate_batch_consistency
+)
+from .exceptions import (
+    EmbeddingCreationError, UnsupportedDimensionError, 
+    QuotaExhaustedError, RateLimitError, handle_dimension_error
+)
 
 
 @dataclass
@@ -65,6 +73,34 @@ class EmbeddingBatchResult:
 
 # Provider-aware client factory
 get_openai_client = get_llm_client
+
+
+def get_embedding_dimensions(model: str) -> int:
+    """Get the embedding dimensions for a given model."""
+    # Mapping of common models to their dimensions
+    model_dimensions = {
+        'text-embedding-ada-002': 1536,
+        'text-embedding-3-small': 1536,
+        'text-embedding-3-large': 3072,
+        'text-embedding-3-large-768': 768,
+        'text-embedding-3-large-1024': 1024
+    }
+    return model_dimensions.get(model, 1536)  # Default to 1536
+
+
+def get_dimension_column_name(dimensions: int) -> str:
+    """Get the column name for storing embeddings based on dimensions."""
+    supported_dimensions = {768, 1024, 1536, 3072}
+    if dimensions in supported_dimensions:
+        return f"embedding_{dimensions}"
+    else:
+        # Fallback to 1536 dimension column for unsupported dimensions
+        search_logger.warning(f"Unsupported embedding dimension {dimensions}, falling back to embedding_1536")
+        return "embedding_1536"
+
+
+# Alias for backward compatibility  
+create_embedding_async = create_embedding
 
 
 async def create_embedding(text: str, provider: Optional[str] = None) -> List[float]:
@@ -223,12 +259,25 @@ async def create_embeddings_batch(
                                     response = await client.embeddings.create(
                                         model=embedding_model,
                                         input=batch,
-                                        dimensions=embedding_dimensions
+                                        dimensions=get_embedding_dimensions(embedding_model)
                                     )
                                     
+                                    # Extract embeddings and validate consistency
+                                    batch_embeddings = [item.embedding for item in response.data]
+                                    
+                                    # Validate embedding dimensions
+                                    embedding_model_dims = get_embedding_dimensions(embedding_model)
+                                    is_consistent, consistency_msg = validate_batch_consistency(batch_embeddings)
+                                    
+                                    if not is_consistent:
+                                        search_logger.warning(f"Batch consistency validation failed: {consistency_msg}")
+                                        log_dimension_operation("embedding_creation", embedding_model_dims, False, consistency_msg)
+                                    else:
+                                        log_dimension_operation("embedding_creation", embedding_model_dims, True)
+                                    
                                     # Add successful embeddings
-                                    for text, item in zip(batch, response.data):
-                                        result.add_success(item.embedding, text)
+                                    for text, embedding in zip(batch, batch_embeddings):
+                                        result.add_success(embedding, text)
                                     
                                     break  # Success, exit retry loop
                                     

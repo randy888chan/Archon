@@ -9,10 +9,14 @@ from typing import List, Dict, Any, Optional
 from urllib.parse import urlparse
 
 from ...config.logfire_config import search_logger, safe_span
-from ..embeddings.embedding_service import create_embeddings_batch
+from ..embeddings.embedding_service import create_embeddings_batch, get_dimension_column_name
 from ..embeddings.contextual_embedding_service import (
     generate_contextual_embeddings_batch
 )
+from ..embeddings.dimension_validator import (
+    get_safe_dimension_column, log_dimension_operation, validate_batch_consistency
+)
+from ..embeddings.exceptions import VectorStorageError, DimensionValidationError
 from ..credential_service import credential_service
 
 
@@ -246,6 +250,22 @@ async def add_documents_to_supabase(
                 completed_batches += 1
                 continue
             
+            # Validate batch embeddings consistency
+            try:
+                is_consistent, consistency_msg = validate_batch_consistency(batch_embeddings)
+                if not is_consistent:
+                    search_logger.warning(f"Document storage batch {batch_num}: {consistency_msg}")
+                    log_dimension_operation("document_storage", 
+                                          len(batch_embeddings[0]) if batch_embeddings and batch_embeddings[0] else 1536, 
+                                          False, consistency_msg)
+                else:
+                    log_dimension_operation("document_storage", 
+                                          len(batch_embeddings[0]) if batch_embeddings and batch_embeddings[0] else 1536, 
+                                          True)
+            except Exception as validation_error:
+                search_logger.error(f"Batch validation failed: {validation_error}")
+                log_dimension_operation("document_storage", 1536, False, f"Validation error: {validation_error}")
+            
             # Prepare batch data - only for successful embeddings
             batch_data = []
             # Map successful texts back to their original indices
@@ -270,6 +290,15 @@ async def add_documents_to_supabase(
                     parsed_url = urlparse(batch_urls[j])
                     source_id = parsed_url.netloc or parsed_url.path
                 
+                # Get appropriate embedding column name based on dimensions
+                try:
+                    embedding_dims = len(embedding)
+                    column_name = get_dimension_column_name(embedding_dims)
+                except Exception as e:
+                    search_logger.error(f"Failed to determine embedding column for {len(embedding) if embedding else 'None'} dimensions: {e}")
+                    # Fallback to default 1536-dimensional column
+                    column_name = "embedding_1536"
+                
                 data = {
                     "url": batch_urls[j],
                     "chunk_number": batch_chunk_numbers[j],
@@ -279,7 +308,7 @@ async def add_documents_to_supabase(
                         **batch_metadatas[j]
                     },
                     "source_id": source_id,
-                    "embedding": embedding  # Use the successful embedding
+                    column_name: embedding  # Use the successful embedding with the appropriate column name
                 }
                 batch_data.append(data)
             
