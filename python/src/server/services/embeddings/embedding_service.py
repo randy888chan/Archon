@@ -107,6 +107,10 @@ async def create_embedding(text: str, provider: Optional[str] = None) -> List[fl
         return [0.0] * 1536
 
 
+# Alias for backward compatibility with tests and other modules
+create_embedding_async = create_embedding
+
+
 
 async def create_embeddings_batch(
     texts: List[str], 
