@@ -12,6 +12,14 @@ from ...config.logfire_config import search_logger, safe_span
 from ..threading_service import get_threading_service
 from ..llm_provider_service import get_llm_client, get_embedding_model
 from ..credential_service import credential_service
+from .dimension_validator import (
+    validate_embedding_dimensions, log_dimension_operation, 
+    ensure_valid_embedding, validate_batch_consistency
+)
+from .exceptions import (
+    EmbeddingCreationError, UnsupportedDimensionError, 
+    QuotaExhaustedError, RateLimitError, handle_dimension_error
+)
 
 
 def get_embedding_dimensions(model_name: str) -> int:
@@ -259,10 +267,23 @@ async def create_embeddings_batch_async(
                                 response = await client.embeddings.create(
                                     model=embedding_model,
                                     input=batch,
-                                    dimensions=1536
+                                    dimensions=get_embedding_dimensions(embedding_model)
                                 )
                                 
                                 batch_embeddings = [item.embedding for item in response.data]
+                                
+                                # Validate embedding dimensions
+                                embedding_model_dims = get_embedding_dimensions(embedding_model)
+                                is_consistent, consistency_msg = validate_batch_consistency(batch_embeddings)
+                                
+                                if not is_consistent:
+                                    search_logger.warning(f"Batch consistency validation failed: {consistency_msg}")
+                                    log_dimension_operation("embedding_creation", embedding_model_dims, False, consistency_msg)
+                                    # Use fallback embeddings for consistency
+                                    batch_embeddings = [[0.0] * embedding_model_dims for _ in batch]
+                                else:
+                                    log_dimension_operation("embedding_creation", embedding_model_dims, True)
+                                
                                 all_embeddings.extend(batch_embeddings)
                                 break  # Success, exit retry loop
                                 

@@ -13,7 +13,7 @@ from urllib.parse import urlparse
 from supabase import Client
 
 from ...config.logfire_config import search_logger
-from ..embeddings.embedding_service import create_embeddings_batch_async, create_embedding_async
+from ..embeddings.embedding_service import create_embeddings_batch_async, create_embedding_async, get_dimension_column_name
 from ..embeddings.contextual_embedding_service import generate_contextual_embeddings_batch
 from ..llm_provider_service import get_llm_client_sync
 
@@ -746,6 +746,15 @@ async def add_code_examples_to_supabase(
                 parsed_url = urlparse(urls[idx])
                 source_id = parsed_url.netloc or parsed_url.path
             
+            # Get appropriate embedding column name based on dimensions
+            try:
+                embedding_dims = len(embedding)
+                column_name = get_dimension_column_name(embedding_dims)
+            except Exception as e:
+                search_logger.error(f"Failed to determine embedding column for {len(embedding) if embedding else 'None'} dimensions: {e}")
+                # Fallback to default 1536-dimensional column
+                column_name = "embedding_1536"
+            
             batch_data.append({
                 'url': urls[idx],
                 'chunk_number': chunk_numbers[idx],
@@ -753,7 +762,7 @@ async def add_code_examples_to_supabase(
                 'summary': summaries[idx],
                 'metadata': metadatas[idx],  # Store as JSON object, not string
                 'source_id': source_id,
-                'embedding': embedding
+                column_name: embedding
             })
         
         # Insert batch into Supabase with retry logic
