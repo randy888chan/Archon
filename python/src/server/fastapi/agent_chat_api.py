@@ -1,6 +1,7 @@
 """
 Agent Chat API - Socket.IO-based chat with SSE proxy to AI agents
 """
+import os
 import json
 import uuid
 import asyncio
@@ -158,10 +159,16 @@ async def process_agent_response(session_id: str, message: str, context: dict):
     
     try:
         # Call agents service with SSE streaming
+        agents_port = os.getenv("ARCHON_AGENTS_PORT")
+        if not agents_port:
+            raise ValueError(
+                "ARCHON_AGENTS_PORT environment variable is required. "
+                "Please set it in your .env file or environment."
+            )
         async with httpx.AsyncClient(timeout=httpx.Timeout(60.0)) as client:
             async with client.stream(
                 "POST",
-                f"http://archon-agents:8052/agents/{agent_type}/stream",
+                f"http://archon-agents:{agents_port}/agents/{agent_type}/stream",
                 json={
                     "agent_type": agent_type,
                     "prompt": message,

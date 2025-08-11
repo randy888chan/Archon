@@ -42,6 +42,9 @@ const AppContent = () => {
     const settings = serverHealthService.getSettings();
     setDisconnectScreenSettings(settings);
 
+    // Stop any existing monitoring before starting new one to prevent multiple intervals
+    serverHealthService.stopMonitoring();
+
     // Start health monitoring
     serverHealthService.startMonitoring({
       onDisconnected: () => {

@@ -10,6 +10,10 @@ os.environ["TESTING"] = "true"
 # Set fake database credentials to prevent connection attempts
 os.environ["SUPABASE_URL"] = "https://test.supabase.co"
 os.environ["SUPABASE_SERVICE_KEY"] = "test-key"
+# Set required port environment variables for ServiceDiscovery
+os.environ.setdefault("ARCHON_SERVER_PORT", "8181")
+os.environ.setdefault("ARCHON_MCP_PORT", "8051")
+os.environ.setdefault("ARCHON_AGENTS_PORT", "8052")
 
 
 @pytest.fixture(autouse=True)

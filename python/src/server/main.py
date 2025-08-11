@@ -261,10 +261,20 @@ socket_app = create_socketio_app(app)
 
 if __name__ == "__main__":
     import uvicorn
+    
+    # Require ARCHON_SERVER_PORT to be set
+    server_port = os.getenv("ARCHON_SERVER_PORT")
+    if not server_port:
+        raise ValueError(
+            "ARCHON_SERVER_PORT environment variable is required. "
+            "Please set it in your .env file or environment. "
+            "Default value: 8181"
+        )
+    
     uvicorn.run(
         "main:socket_app",
         host="0.0.0.0",
-        port=8080,
+        port=int(server_port),
         reload=True,
         log_level="info"
     ) 

@@ -16,16 +16,10 @@ The actual implementations have been moved to:
 from ..services.embeddings import (
     create_embedding,
     create_embeddings_batch,
-    create_embedding_async,
-    create_embeddings_batch_async,
     get_openai_client,
-    get_openai_api_key,
-    get_openai_api_key_sync,
     generate_contextual_embedding,
-    generate_contextual_embedding_async,
     generate_contextual_embeddings_batch,
-    process_chunk_with_context,
-    process_chunk_with_context_async
+    process_chunk_with_context
 )
 
 # Note: storage and search imports removed to avoid circular dependency
@@ -97,8 +91,6 @@ __all__ = [
     'create_embedding_async',
     'create_embeddings_batch_async',
     'get_openai_client',
-    'get_openai_api_key',
-    'get_openai_api_key_sync',
     
     # Contextual embedding functions
     'generate_contextual_embedding',

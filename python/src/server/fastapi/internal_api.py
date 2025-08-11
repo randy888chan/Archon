@@ -5,6 +5,7 @@ These endpoints are meant to be called only by other services in the Archon syst
 not by external clients. They provide internal functionality like credential sharing.
 """
 
+import os
 from fastapi import APIRouter, HTTPException, Request
 from typing import Dict, Any
 import logging
@@ -82,7 +83,7 @@ async def get_agent_credentials(request: Request) -> Dict[str, Any]:
             "AGENT_MAX_RETRIES": await credential_service.get_credential("AGENT_MAX_RETRIES", default="3"),
             
             # MCP endpoint
-            "MCP_SERVICE_URL": "http://archon-mcp:8051",
+            "MCP_SERVICE_URL": f"http://archon-mcp:{os.getenv('ARCHON_MCP_PORT')}",
             
             # Additional settings
             "LOG_LEVEL": await credential_service.get_credential("LOG_LEVEL", default="INFO"),

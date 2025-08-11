@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { getApiUrl } from '../config/api';
 
 // ========================================
 // TYPES & INTERFACES
@@ -397,11 +398,26 @@ class MCPClientService {
    * Create Archon MCP client using Streamable HTTP transport
    */
   async createArchonClient(): Promise<MCPClient> {
+    // Require ARCHON_MCP_PORT to be set
+    const mcpPort = import.meta.env.ARCHON_MCP_PORT;
+    if (!mcpPort) {
+      throw new Error(
+        'ARCHON_MCP_PORT environment variable is required. ' +
+        'Please set it in your environment variables. ' +
+        'Default value: 8051'
+      );
+    }
+    
+    // Get the host from the API URL
+    const apiUrl = getApiUrl();
+    const url = new URL(apiUrl || `http://${window.location.hostname}:${mcpPort}`);
+    const mcpUrl = `${url.protocol}//${url.hostname}:${mcpPort}/mcp`;
+    
     const archonConfig: MCPClientConfig = {
       name: 'Archon',
       transport_type: 'http',
       connection_config: {
-        url: 'http://localhost:8051/mcp'
+        url: mcpUrl
       },
       auto_connect: true,
       health_check_interval: 30,

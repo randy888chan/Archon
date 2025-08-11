@@ -73,52 +73,11 @@ def get_dimension_column_name(dimensions: int) -> str:
         return "embedding_1536"
 
 
-# Use the new provider-aware client factory
+# Provider-aware client factory
 get_openai_client = get_llm_client
 
 
-def create_embedding(text: str, provider: Optional[str] = None) -> List[float]:
-    """
-    Create an embedding for a single text using the configured provider.
-    
-    This is a synchronous wrapper around the async version for backward compatibility.
-    
-    Args:
-        text: Text to create an embedding for
-        provider: Optional provider override
-        
-    Returns:
-        List of floats representing the embedding
-    """
-    try:
-        # Check if we're in an async context
-        try:
-            loop = asyncio.get_running_loop()
-            # If we're already in an async context, we can't run sync - return zero embedding
-            search_logger.warning("create_embedding called from async context - using zero embedding fallback")
-            search_logger.warning(f"Text preview for zero embedding: {text[:100]}...")
-            return [0.0] * 1536
-        except RuntimeError:
-            # No running loop, safe to use asyncio.run
-            return asyncio.run(create_embedding_async(text, provider=provider))
-    except Exception as e:
-        # Enhanced logging for zero embedding fallback
-        search_logger.warning(f"Embedding creation failed, using zero fallback: {str(e)}")
-        search_logger.warning(f"Failed text preview: {text[:100]}...")
-        
-        # Track failure metrics
-        if "insufficient_quota" in str(e):
-            search_logger.error("OpenAI quota exhausted - zero embeddings returned")
-        elif "rate_limit" in str(e).lower():
-            search_logger.warning("Rate limit hit - zero embeddings returned")
-        else:
-            search_logger.error(f"Unexpected embedding error: {type(e).__name__}")
-        
-        # Continue with zero embeddings to keep process working
-        return [0.0] * 1536
-
-
-async def create_embedding_async(text: str, provider: Optional[str] = None) -> List[float]:
+async def create_embedding(text: str, provider: Optional[str] = None) -> List[float]:
     """
     Create an embedding for a single text using the configured provider.
     
@@ -130,7 +89,7 @@ async def create_embedding_async(text: str, provider: Optional[str] = None) -> L
         List of floats representing the embedding
     """
     try:
-        embeddings = await create_embeddings_batch_async([text], provider=provider)
+        embeddings = await create_embeddings_batch([text], provider=provider)
         return embeddings[0] if embeddings else [0.0] * 1536
     except Exception as e:
         # Enhanced logging for zero embedding fallback
@@ -148,51 +107,8 @@ async def create_embedding_async(text: str, provider: Optional[str] = None) -> L
         return [0.0] * 1536
 
 
-def create_embeddings_batch(texts: List[str], provider: Optional[str] = None) -> List[List[float]]:
-    """
-    Create embeddings for multiple texts in a single API call.
-    
-    This is a synchronous wrapper around the async version for backward compatibility.
-    
-    Args:
-        texts: List of texts to create embeddings for
-        provider: Optional provider override
-        
-    Returns:
-        List of embeddings (each embedding is a list of floats)
-    """
-    if not texts:
-        return []
-    
-    try:
-        # Check if we're in an async context
-        try:
-            loop = asyncio.get_running_loop()
-            # If we're already in an async context, we can't run sync - return zero embeddings
-            search_logger.warning("create_embeddings_batch called from async context - using zero embedding fallback")
-            search_logger.warning(f"Batch size: {len(texts)}, first text preview: {texts[0][:100] if texts else 'empty'}...")
-            return [[0.0] * 1536 for _ in texts]
-        except RuntimeError:
-            # No running loop, safe to use asyncio.run
-            return asyncio.run(create_embeddings_batch_async(texts, provider=provider))
-    except Exception as e:
-        # Enhanced logging for zero embedding fallback
-        search_logger.warning(f"Batch embedding creation failed, using zero fallback: {str(e)}")
-        search_logger.warning(f"Batch size: {len(texts)}, first text preview: {texts[0][:100] if texts else 'empty'}...")
-        
-        # Track failure metrics
-        if "insufficient_quota" in str(e):
-            search_logger.error("OpenAI quota exhausted - zero embeddings returned")
-        elif "rate_limit" in str(e).lower():
-            search_logger.warning("Rate limit hit - zero embeddings returned")
-        else:
-            search_logger.error(f"Unexpected embedding error: {type(e).__name__}")
-        
-        # Return zero embeddings as fallback
-        return [[0.0] * 1536 for _ in texts]
 
-
-async def create_embeddings_batch_async(
+async def create_embeddings_batch(
     texts: List[str], 
     websocket: Optional[Any] = None,
     progress_callback: Optional[Any] = None,
@@ -326,8 +242,8 @@ async def create_embeddings_batch_async(
                                         all_embeddings.extend([[0.0] * 1536 for _ in batch])
                         
                         # Progress reporting with cost estimation
+                        progress = ((i + len(batch)) / len(texts)) * 100
                         if progress_callback:
-                            progress = ((i + len(batch)) / len(texts)) * 100
                             cost_estimate = (total_tokens_used / 1_000_000) * 0.02  # Estimated cost
                             await progress_callback(
                                 f"Created embeddings for {i + len(batch)}/{len(texts)} texts (tokens: {total_tokens_used:,} ≈${cost_estimate:.4f})",
@@ -360,20 +276,3 @@ async def create_embeddings_batch_async(
             
             # Return zero embeddings as fallback
             return [[0.0] * 1536 for _ in texts]
-
-
-# Deprecated functions - kept for backward compatibility
-async def get_openai_api_key() -> Optional[str]:
-    """
-    DEPRECATED: Use os.getenv("OPENAI_API_KEY") directly.
-    API key is loaded into environment at startup.
-    """
-    return os.getenv("OPENAI_API_KEY")
-
-
-def get_openai_api_key_sync() -> Optional[str]:
-    """
-    DEPRECATED: Use os.getenv("OPENAI_API_KEY") directly.
-    API key is loaded into environment at startup.
-    """
-    return os.getenv("OPENAI_API_KEY")

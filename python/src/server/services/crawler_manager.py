@@ -13,7 +13,9 @@ except ImportError:
     AsyncWebCrawler = None
     BrowserConfig = None
     
-from ..config.logfire_config import safe_logfire_info, safe_logfire_error
+from ..config.logfire_config import safe_logfire_info, safe_logfire_error, get_logger
+
+logger = get_logger(__name__)
 
 
 class CrawlerManager:
@@ -42,13 +44,13 @@ class CrawlerManager:
             
         try:
             safe_logfire_info("Initializing Crawl4AI crawler...")
-            print("=== CRAWLER INITIALIZATION START ===")
+            logger.info("=== CRAWLER INITIALIZATION START ===")
             
             # Check if crawl4ai is available
             if not AsyncWebCrawler or not BrowserConfig:
-                print("ERROR: crawl4ai not available")
-                print(f"AsyncWebCrawler: {AsyncWebCrawler}")
-                print(f"BrowserConfig: {BrowserConfig}")
+                logger.error("ERROR: crawl4ai not available")
+                logger.error(f"AsyncWebCrawler: {AsyncWebCrawler}")
+                logger.error(f"BrowserConfig: {BrowserConfig}")
                 raise ImportError("crawl4ai is not installed or available")
             
             # Check for Docker environment
@@ -108,20 +110,20 @@ class CrawlerManager:
             safe_logfire_info(f"Crawler entered context successfully | crawler={self._crawler}")
             
             safe_logfire_info("✅ Crawler initialized successfully")
-            print("=== CRAWLER INITIALIZATION SUCCESS ===")
-            print(f"Crawler instance: {self._crawler}")
-            print(f"Initialized: {self._initialized}")
+            logger.info("=== CRAWLER INITIALIZATION SUCCESS ===")
+            logger.info(f"Crawler instance: {self._crawler}")
+            logger.info(f"Initialized: {self._initialized}")
             
         except Exception as e:
             safe_logfire_error(f"Failed to initialize crawler: {e}")
             import traceback
             tb = traceback.format_exc()
             safe_logfire_error(f"Crawler initialization traceback: {tb}")
-            # Also print to stdout for Docker logs
-            print("=== CRAWLER INITIALIZATION ERROR ===")
-            print(f"Error: {e}")
-            print(f"Traceback:\n{tb}")
-            print("=== END CRAWLER ERROR ===")
+            # Log error details
+            logger.error("=== CRAWLER INITIALIZATION ERROR ===")
+            logger.error(f"Error: {e}")
+            logger.error(f"Traceback:\n{tb}")
+            logger.error("=== END CRAWLER ERROR ===")
             # Don't mark as initialized if the crawler is None
             # This allows retries and proper error propagation
             self._crawler = None
@@ -150,10 +152,10 @@ async def get_crawler() -> Optional[AsyncWebCrawler]:
     global _crawler_manager
     crawler = await _crawler_manager.get_crawler()
     if crawler is None:
-        print("WARNING: get_crawler() returning None")
-        print(f"_crawler_manager: {_crawler_manager}")
-        print(f"_crawler_manager._crawler: {_crawler_manager._crawler if _crawler_manager else 'N/A'}")
-        print(f"_crawler_manager._initialized: {_crawler_manager._initialized if _crawler_manager else 'N/A'}")
+        logger.warning("get_crawler() returning None")
+        logger.warning(f"_crawler_manager: {_crawler_manager}")
+        logger.warning(f"_crawler_manager._crawler: {_crawler_manager._crawler if _crawler_manager else 'N/A'}")
+        logger.warning(f"_crawler_manager._initialized: {_crawler_manager._initialized if _crawler_manager else 'N/A'}")
     return crawler
 
 
