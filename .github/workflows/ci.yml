@@ -8,9 +8,10 @@ on:
   workflow_dispatch: # Allow manual triggering
 
 env:
-  # Test database credentials (using public test values)
-  SUPABASE_URL: ${{ secrets.SUPABASE_URL || 'https://test.supabase.co' }}
-  SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY || 'test-key' }}
+  # Test database credentials (using properly formatted fake values for CI)
+  # These are fake but properly formatted values that will pass validation
+  SUPABASE_URL: ${{ secrets.SUPABASE_URL || 'https://xyzcompanytest.supabase.co' }}
+  SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU' }}
   NODE_VERSION: '18'
   PYTHON_VERSION: '3.12'
 
@@ -224,16 +225,16 @@ jobs:
           case "${{ matrix.service }}" in
             "server")
               docker run -d --name test-${{ matrix.service }} \
-                -e SUPABASE_URL=https://test.supabase.co \
-                -e SUPABASE_SERVICE_KEY=test-key \
+                -e SUPABASE_URL=${{ env.SUPABASE_URL }} \
+                -e SUPABASE_SERVICE_KEY=${{ env.SUPABASE_SERVICE_KEY }} \
                 -e ARCHON_SERVER_PORT=8181 \
                 -p 8181:8181 \
                 archon-${{ matrix.service }}:test
               ;;
             "mcp")
               docker run -d --name test-${{ matrix.service }} \
-                -e SUPABASE_URL=https://test.supabase.co \
-                -e SUPABASE_SERVICE_KEY=test-key \
+                -e SUPABASE_URL=${{ env.SUPABASE_URL }} \
+                -e SUPABASE_SERVICE_KEY=${{ env.SUPABASE_SERVICE_KEY }} \
                 -e ARCHON_MCP_PORT=8051 \
                 -e API_SERVICE_URL=http://localhost:8181 \
                 -e AGENTS_SERVICE_URL=http://localhost:8052 \
@@ -242,8 +243,8 @@ jobs:
               ;;
             "agents")
               docker run -d --name test-${{ matrix.service }} \
-                -e SUPABASE_URL=https://test.supabase.co \
-                -e SUPABASE_SERVICE_KEY=test-key \
+                -e SUPABASE_URL=${{ env.SUPABASE_URL }} \
+                -e SUPABASE_SERVICE_KEY=${{ env.SUPABASE_SERVICE_KEY }} \
                 -e ARCHON_AGENTS_PORT=8052 \
                 -p 8052:8052 \
                 archon-${{ matrix.service }}:test
@@ -282,9 +283,9 @@ jobs:
       - name: Create test environment file
         run: |
           cat > .env << EOF
-          SUPABASE_URL=https://test.supabase.co
-          SUPABASE_SERVICE_KEY=test-key
-          OPENAI_API_KEY=test-key
+          SUPABASE_URL=${{ env.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY=${{ env.SUPABASE_SERVICE_KEY }}
+          OPENAI_API_KEY=sk-test-1234567890abcdef
           LOG_LEVEL=INFO
           HOST=localhost
           ARCHON_UI_PORT=3737
