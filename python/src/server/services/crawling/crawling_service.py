@@ -23,7 +23,7 @@ def _ensure_socketio_imports():
     """Ensure socket.IO handlers are imported."""
     global update_crawl_progress, complete_crawl_progress
     if update_crawl_progress is None:
-        from ...fastapi.socketio_handlers import update_crawl_progress as _update, complete_crawl_progress as _complete
+        from ...api_routes.socketio_handlers import update_crawl_progress as _update, complete_crawl_progress as _complete
         update_crawl_progress = _update
         complete_crawl_progress = _complete
 
