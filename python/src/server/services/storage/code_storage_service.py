@@ -3,6 +3,7 @@ Code Storage Service
 
 Handles extraction and storage of code examples from documents.
 """
+
 import asyncio
 import json
 import os
@@ -24,6 +25,7 @@ def _get_model_choice() -> str:
     try:
         # Direct cache/env fallback
         from ..credential_service import credential_service
+
         if credential_service._cache_initialized and "MODEL_CHOICE" in credential_service._cache:
             model = credential_service._cache["MODEL_CHOICE"]
         else:
@@ -43,32 +45,32 @@ def _get_max_workers() -> int:
 def _normalize_code_for_comparison(code: str) -> str:
     """
     Normalize code for similarity comparison by removing version-specific variations.
-    
+
     Args:
         code: The code string to normalize
-        
+
     Returns:
         Normalized code string for comparison
     """
     # Remove extra whitespace and normalize line endings
-    normalized = re.sub(r'\s+', ' ', code.strip())
+    normalized = re.sub(r"\s+", " ", code.strip())
 
     # Remove common version-specific imports that don't change functionality
     # Handle typing imports variations
-    normalized = re.sub(r'from typing_extensions import', 'from typing import', normalized)
-    normalized = re.sub(r'from typing import Annotated[^,\n]*,?', '', normalized)
-    normalized = re.sub(r'from typing_extensions import Annotated[^,\n]*,?', '', normalized)
+    normalized = re.sub(r"from typing_extensions import", "from typing import", normalized)
+    normalized = re.sub(r"from typing import Annotated[^,\n]*,?", "", normalized)
+    normalized = re.sub(r"from typing_extensions import Annotated[^,\n]*,?", "", normalized)
 
     # Remove Annotated wrapper variations for comparison
     # This handles: Annotated[type, dependency] -> type
-    normalized = re.sub(r'Annotated\[\s*([^,\]]+)[^]]*\]', r'\1', normalized)
+    normalized = re.sub(r"Annotated\[\s*([^,\]]+)[^]]*\]", r"\1", normalized)
 
     # Normalize common FastAPI parameter patterns
-    normalized = re.sub(r':\s*Annotated\[[^\]]+\]\s*=', '=', normalized)
+    normalized = re.sub(r":\s*Annotated\[[^\]]+\]\s*=", "=", normalized)
 
     # Remove trailing commas and normalize punctuation spacing
-    normalized = re.sub(r',\s*\)', ')', normalized)
-    normalized = re.sub(r',\s*]', ']', normalized)
+    normalized = re.sub(r",\s*\)", ")", normalized)
+    normalized = re.sub(r",\s*]", "]", normalized)
 
     return normalized
 
@@ -76,11 +78,11 @@ def _normalize_code_for_comparison(code: str) -> str:
 def _calculate_code_similarity(code1: str, code2: str) -> float:
     """
     Calculate similarity between two code strings using normalized comparison.
-    
+
     Args:
         code1: First code string
         code2: Second code string
-        
+
     Returns:
         Similarity ratio between 0.0 and 1.0
     """
@@ -97,15 +99,15 @@ def _calculate_code_similarity(code1: str, code2: str) -> float:
 def _select_best_code_variant(similar_blocks: list[dict[str, Any]]) -> dict[str, Any]:
     """
     Select the best variant from a list of similar code blocks.
-    
+
     Criteria:
     1. Prefer blocks with more complete language specification
     2. Prefer longer, more comprehensive examples
     3. Prefer blocks with better context
-    
+
     Args:
         similar_blocks: List of similar code block dictionaries
-        
+
     Returns:
         The best code block variant
     """
@@ -116,21 +118,21 @@ def _select_best_code_variant(similar_blocks: list[dict[str, Any]]) -> dict[str,
         score = 0
 
         # Prefer blocks with explicit language specification
-        if block.get('language') and block['language'] not in ['', 'text', 'plaintext']:
+        if block.get("language") and block["language"] not in ["", "text", "plaintext"]:
             score += 10
 
         # Prefer longer code (more comprehensive examples)
-        score += len(block['code']) * 0.01
+        score += len(block["code"]) * 0.01
 
         # Prefer blocks with better context
-        context_before_len = len(block.get('context_before', ''))
-        context_after_len = len(block.get('context_after', ''))
+        context_before_len = len(block.get("context_before", ""))
+        context_after_len = len(block.get("context_after", ""))
         score += (context_before_len + context_after_len) * 0.005
 
         # Slight preference for Python 3.10+ syntax (most modern)
-        if 'python 3.10' in block.get('full_context', '').lower():
+        if "python 3.10" in block.get("full_context", "").lower():
             score += 5
-        elif 'annotated' in block.get('code', '').lower():
+        elif "annotated" in block.get("code", "").lower():
             score += 3
 
         return score
@@ -141,27 +143,25 @@ def _select_best_code_variant(similar_blocks: list[dict[str, Any]]) -> dict[str,
     # Add metadata about consolidated variants
     variant_count = len(similar_blocks)
     if variant_count > 1:
-        languages = [block.get('language', '') for block in similar_blocks if block.get('language')]
+        languages = [block.get("language", "") for block in similar_blocks if block.get("language")]
         unique_languages = list(set(filter(None, languages)))
 
         # Add consolidated metadata
-        best_block['consolidated_variants'] = variant_count
+        best_block["consolidated_variants"] = variant_count
         if unique_languages:
-            best_block['variant_languages'] = unique_languages
+            best_block["variant_languages"] = unique_languages
 
     return best_block
-
-
 
 
 def extract_code_blocks(markdown_content: str, min_length: int = None) -> list[dict[str, Any]]:
     """
     Extract code blocks from markdown content along with context.
-    
+
     Args:
         markdown_content: The markdown content to extract code blocks from
         min_length: Minimum length of code blocks to extract (default: from settings or 250)
-        
+
     Returns:
         List of dictionaries containing code blocks and their context
     """
@@ -176,15 +176,21 @@ def extract_code_blocks(markdown_content: str, min_length: int = None) -> list[d
 
         # Get all relevant settings with defaults
         if min_length is None:
-            min_length = int(_get_setting_fallback('MIN_CODE_BLOCK_LENGTH', '250'))
+            min_length = int(_get_setting_fallback("MIN_CODE_BLOCK_LENGTH", "250"))
 
-        max_length = int(_get_setting_fallback('MAX_CODE_BLOCK_LENGTH', '5000'))
-        enable_prose_filtering = _get_setting_fallback('ENABLE_PROSE_FILTERING', 'true').lower() == 'true'
-        max_prose_ratio = float(_get_setting_fallback('MAX_PROSE_RATIO', '0.15'))
-        min_code_indicators = int(_get_setting_fallback('MIN_CODE_INDICATORS', '3'))
-        enable_diagram_filtering = _get_setting_fallback('ENABLE_DIAGRAM_FILTERING', 'true').lower() == 'true'
-        enable_contextual_length = _get_setting_fallback('ENABLE_CONTEXTUAL_LENGTH', 'true').lower() == 'true'
-        context_window_size = int(_get_setting_fallback('CONTEXT_WINDOW_SIZE', '1000'))
+        max_length = int(_get_setting_fallback("MAX_CODE_BLOCK_LENGTH", "5000"))
+        enable_prose_filtering = (
+            _get_setting_fallback("ENABLE_PROSE_FILTERING", "true").lower() == "true"
+        )
+        max_prose_ratio = float(_get_setting_fallback("MAX_PROSE_RATIO", "0.15"))
+        min_code_indicators = int(_get_setting_fallback("MIN_CODE_INDICATORS", "3"))
+        enable_diagram_filtering = (
+            _get_setting_fallback("ENABLE_DIAGRAM_FILTERING", "true").lower() == "true"
+        )
+        enable_contextual_length = (
+            _get_setting_fallback("ENABLE_CONTEXTUAL_LENGTH", "true").lower() == "true"
+        )
+        context_window_size = int(_get_setting_fallback("CONTEXT_WINDOW_SIZE", "1000"))
 
     except Exception as e:
         # Fallback to defaults if settings retrieval fails
@@ -207,18 +213,20 @@ def extract_code_blocks(markdown_content: str, min_length: int = None) -> list[d
     start_offset = 0
 
     # Check for corrupted markdown (entire content wrapped in code block)
-    if content.startswith('```'):
-        first_line = content.split('\n')[0] if '\n' in content else content[:10]
+    if content.startswith("```"):
+        first_line = content.split("\n")[0] if "\n" in content else content[:10]
         # If it's ```K` or similar single-letter "language" followed by backtick, it's corrupted
         # This pattern specifically looks for ```K` or ```K` (with extra backtick)
-        if re.match(r'^```[A-Z]`$', first_line):
+        if re.match(r"^```[A-Z]`$", first_line):
             search_logger.warning(f"Detected corrupted markdown with fake language: {first_line}")
             # Try to find actual code blocks within the corrupted content
             # Look for nested triple backticks
             # Skip the outer ```K` and closing ```
-            inner_content = content[5:-3] if content.endswith('```') else content[5:]
+            inner_content = content[5:-3] if content.endswith("```") else content[5:]
             # Now extract normally from inner content
-            search_logger.info(f"Attempting to extract from inner content (length: {len(inner_content)})")
+            search_logger.info(
+                f"Attempting to extract from inner content (length: {len(inner_content)})"
+            )
             return extract_code_blocks(inner_content, min_length)
         # For normal language identifiers (e.g., ```python, ```javascript), process normally
         # No need to skip anything - the extraction logic will handle it correctly
@@ -228,7 +236,7 @@ def extract_code_blocks(markdown_content: str, min_length: int = None) -> list[d
     backtick_positions = []
     pos = start_offset
     while True:
-        pos = markdown_content.find('```', pos)
+        pos = markdown_content.find("```", pos)
         if pos == -1:
             break
         backtick_positions.append(pos)
@@ -241,14 +249,14 @@ def extract_code_blocks(markdown_content: str, min_length: int = None) -> list[d
         end_pos = backtick_positions[i + 1]
 
         # Extract the content between backticks
-        code_section = markdown_content[start_pos+3:end_pos]
+        code_section = markdown_content[start_pos + 3 : end_pos]
 
         # Check if there's a language specifier on the first line
-        lines = code_section.split('\n', 1)
+        lines = code_section.split("\n", 1)
         if len(lines) > 1:
             # Check if first line is a language specifier (no spaces, common language names)
             first_line = lines[0].strip()
-            if first_line and ' ' not in first_line and len(first_line) < 20:
+            if first_line and " " not in first_line and len(first_line) < 20:
                 language = first_line.lower()
                 # Keep the code content with its original formatting (don't strip)
                 code_content = lines[1] if len(lines) > 1 else ""
@@ -268,29 +276,37 @@ def extract_code_blocks(markdown_content: str, min_length: int = None) -> list[d
 
         # Skip if code block is too long (likely corrupted or not actual code)
         if len(code_content) > max_length:
-            search_logger.debug(f"Skipping code block that exceeds max length ({len(code_content)} > {max_length})")
+            search_logger.debug(
+                f"Skipping code block that exceeds max length ({len(code_content)} > {max_length})"
+            )
             i += 2  # Move to next pair
             continue
 
         # Check if this is actually code or just documentation text
         # If no language specified, check content to determine if it's code
-        if not language or language in ['text', 'plaintext', 'txt']:
+        if not language or language in ["text", "plaintext", "txt"]:
             # Check if content looks like prose/documentation rather than code
             code_lower = code_content.lower()
 
             # Common indicators this is documentation, not code
             doc_indicators = [
                 # Prose patterns
-                ('this ', 'that ', 'these ', 'those ', 'the '),  # Articles
-                ('is ', 'are ', 'was ', 'were ', 'will ', 'would '),  # Verbs
-                ('to ', 'from ', 'with ', 'for ', 'and ', 'or '),  # Prepositions/conjunctions
-
+                ("this ", "that ", "these ", "those ", "the "),  # Articles
+                ("is ", "are ", "was ", "were ", "will ", "would "),  # Verbs
+                ("to ", "from ", "with ", "for ", "and ", "or "),  # Prepositions/conjunctions
                 # Documentation specific
-                'for example:', 'note:', 'warning:', 'important:',
-                'description:', 'usage:', 'parameters:', 'returns:',
-
+                "for example:",
+                "note:",
+                "warning:",
+                "important:",
+                "description:",
+                "usage:",
+                "parameters:",
+                "returns:",
                 # Sentence endings
-                '. ', '? ', '! ',
+                ". ",
+                "? ",
+                "! ",
             ]
 
             # Count documentation indicators
@@ -304,7 +320,7 @@ def extract_code_blocks(markdown_content: str, min_length: int = None) -> list[d
                         doc_score += 2
 
             # Calculate lines and check structure
-            content_lines = code_content.split('\n')
+            content_lines = code_content.split("\n")
             non_empty_lines = [line for line in content_lines if line.strip()]
 
             # If high documentation score relative to content size, skip (if prose filtering enabled)
@@ -314,22 +330,47 @@ def extract_code_blocks(markdown_content: str, min_length: int = None) -> list[d
                     doc_ratio = doc_score / len(words)
                     # Use configurable prose ratio threshold
                     if doc_ratio > max_prose_ratio:
-                        search_logger.debug(f"Skipping documentation text disguised as code | doc_ratio={doc_ratio:.2f} | threshold={max_prose_ratio} | first_50_chars={repr(code_content[:50])}")
+                        search_logger.debug(
+                            f"Skipping documentation text disguised as code | doc_ratio={doc_ratio:.2f} | threshold={max_prose_ratio} | first_50_chars={repr(code_content[:50])}"
+                        )
                         i += 2
                         continue
 
             # Additional check: if no typical code patterns found
             code_patterns = [
-                '=', '(', ')', '{', '}', '[', ']', ';',
-                'function', 'def', 'class', 'import', 'export',
-                'const', 'let', 'var', 'return', 'if', 'for',
-                '->', '=>', '==', '!=', '<=', '>='
+                "=",
+                "(",
+                ")",
+                "{",
+                "}",
+                "[",
+                "]",
+                ";",
+                "function",
+                "def",
+                "class",
+                "import",
+                "export",
+                "const",
+                "let",
+                "var",
+                "return",
+                "if",
+                "for",
+                "->",
+                "=>",
+                "==",
+                "!=",
+                "<=",
+                ">=",
             ]
 
             code_pattern_count = sum(1 for pattern in code_patterns if pattern in code_content)
             if code_pattern_count < min_code_indicators and len(non_empty_lines) > 5:
                 # Looks more like prose than code
-                search_logger.debug(f"Skipping prose text | code_patterns={code_pattern_count} | min_indicators={min_code_indicators} | lines={len(non_empty_lines)}")
+                search_logger.debug(
+                    f"Skipping prose text | code_patterns={code_pattern_count} | min_indicators={min_code_indicators} | lines={len(non_empty_lines)}"
+                )
                 i += 2
                 continue
 
@@ -337,9 +378,27 @@ def extract_code_blocks(markdown_content: str, min_length: int = None) -> list[d
             if enable_diagram_filtering:
                 # Common indicators of ASCII art diagrams
                 diagram_indicators = [
-                    '┌', '┐', '└', '┘', '│', '─', '├', '┤', '┬', '┴', '┼',  # Box drawing chars
-                    '+-+', '|_|', '___', '...',  # ASCII art patterns
-                    '→', '←', '↑', '↓', '⟶', '⟵',  # Arrows
+                    "┌",
+                    "┐",
+                    "└",
+                    "┘",
+                    "│",
+                    "─",
+                    "├",
+                    "┤",
+                    "┬",
+                    "┴",
+                    "┼",  # Box drawing chars
+                    "+-+",
+                    "|_|",
+                    "___",
+                    "...",  # ASCII art patterns
+                    "→",
+                    "←",
+                    "↑",
+                    "↓",
+                    "⟶",
+                    "⟵",  # Arrows
                 ]
 
                 # Count lines that are mostly special characters or whitespace
@@ -351,11 +410,17 @@ def extract_code_blocks(markdown_content: str, min_length: int = None) -> list[d
                         special_char_lines += 1
 
                 # Check for diagram indicators
-                diagram_indicator_count = sum(1 for indicator in diagram_indicators if indicator in code_content)
+                diagram_indicator_count = sum(
+                    1 for indicator in diagram_indicators if indicator in code_content
+                )
 
                 # If looks like a diagram, skip it
-                if (special_char_lines >= 3 or diagram_indicator_count >= 5) and code_pattern_count < 5:
-                    search_logger.debug(f"Skipping ASCII art diagram | special_lines={special_char_lines} | diagram_indicators={diagram_indicator_count}")
+                if (
+                    special_char_lines >= 3 or diagram_indicator_count >= 5
+                ) and code_pattern_count < 5:
+                    search_logger.debug(
+                        f"Skipping ASCII art diagram | special_lines={special_char_lines} | diagram_indicators={diagram_indicator_count}"
+                    )
                     i += 2
                     continue
 
@@ -365,16 +430,16 @@ def extract_code_blocks(markdown_content: str, min_length: int = None) -> list[d
 
         # Extract context after (configurable window size)
         context_end = min(len(markdown_content), end_pos + 3 + context_window_size)
-        context_after = markdown_content[end_pos + 3:context_end].strip()
+        context_after = markdown_content[end_pos + 3 : context_end].strip()
 
         # Add the extracted code block
         stripped_code = code_content.strip()
         code_blocks.append({
-            'code': stripped_code,
-            'language': language,
-            'context_before': context_before,
-            'context_after': context_after,
-            'full_context': f"{context_before}\n\n{stripped_code}\n\n{context_after}"
+            "code": stripped_code,
+            "language": language,
+            "context_before": context_before,
+            "context_after": context_after,
+            "full_context": f"{context_before}\n\n{stripped_code}\n\n{context_after}",
         })
 
         # Move to next pair (skip the closing backtick we just processed)
@@ -404,7 +469,7 @@ def extract_code_blocks(markdown_content: str, min_length: int = None) -> list[d
             if j <= i or j in processed_indices:
                 continue
 
-            similarity = _calculate_code_similarity(block1['code'], block2['code'])
+            similarity = _calculate_code_similarity(block1["code"], block2["code"])
 
             if similarity >= similarity_threshold:
                 similar_group.append(block2)
@@ -417,22 +482,26 @@ def extract_code_blocks(markdown_content: str, min_length: int = None) -> list[d
 
     deduplicated_count = len(code_blocks) - len(grouped_blocks)
     if deduplicated_count > 0:
-        search_logger.info(f"Code deduplication: removed {deduplicated_count} duplicate variants, kept {len(grouped_blocks)} unique code blocks")
+        search_logger.info(
+            f"Code deduplication: removed {deduplicated_count} duplicate variants, kept {len(grouped_blocks)} unique code blocks"
+        )
 
     return grouped_blocks
 
 
-def generate_code_example_summary(code: str, context_before: str, context_after: str, language: str = "", provider: str = None) -> dict[str, str]:
+def generate_code_example_summary(
+    code: str, context_before: str, context_after: str, language: str = "", provider: str = None
+) -> dict[str, str]:
     """
     Generate a summary and name for a code example using its surrounding context.
-    
+
     Args:
         code: The code example
         context_before: Context before the code
         context_after: Context after the code
         language: The code language (if known)
         provider: Optional provider override
-        
+
     Returns:
         A dictionary with 'summary' and 'example_name'
     """
@@ -471,11 +540,16 @@ Format your response as JSON:
             import os
 
             import openai
+
             api_key = os.getenv("OPENAI_API_KEY")
             if not api_key:
                 # Try to get from credential service with direct fallback
                 from ..credential_service import credential_service
-                if credential_service._cache_initialized and "OPENAI_API_KEY" in credential_service._cache:
+
+                if (
+                    credential_service._cache_initialized
+                    and "OPENAI_API_KEY" in credential_service._cache
+                ):
                     cached_key = credential_service._cache["OPENAI_API_KEY"]
                     if isinstance(cached_key, dict) and cached_key.get("is_encrypted"):
                         api_key = credential_service._decrypt_value(cached_key["encrypted_value"])
@@ -489,21 +563,28 @@ Format your response as JSON:
 
             client = openai.OpenAI(api_key=api_key)
         except Exception as e:
-            search_logger.error(f"Failed to create LLM client fallback: {e} - returning default values")
+            search_logger.error(
+                f"Failed to create LLM client fallback: {e} - returning default values"
+            )
             return {
                 "example_name": f"Code Example{f' ({language})' if language else ''}",
-                "summary": "Code example for demonstration purposes."
+                "summary": "Code example for demonstration purposes.",
             }
 
-        search_logger.debug(f"Calling OpenAI API with model: {model_choice}, language: {language}, code length: {len(code)}")
+        search_logger.debug(
+            f"Calling OpenAI API with model: {model_choice}, language: {language}, code length: {len(code)}"
+        )
 
         response = client.chat.completions.create(
             model=model_choice,
             messages=[
-                {"role": "system", "content": "You are a helpful assistant that analyzes code examples and provides JSON responses with example names and summaries."},
-                {"role": "user", "content": prompt}
+                {
+                    "role": "system",
+                    "content": "You are a helpful assistant that analyzes code examples and provides JSON responses with example names and summaries.",
+                },
+                {"role": "user", "content": prompt},
             ],
-            response_format={"type": "json_object"}
+            response_format={"type": "json_object"},
         )
 
         response_content = response.choices[0].message.content.strip()
@@ -516,36 +597,44 @@ Format your response as JSON:
             search_logger.warning(f"Incomplete response from OpenAI: {result}")
 
         final_result = {
-            "example_name": result.get("example_name", f"Code Example{f' ({language})' if language else ''}"),
-            "summary": result.get("summary", "Code example for demonstration purposes.")
+            "example_name": result.get(
+                "example_name", f"Code Example{f' ({language})' if language else ''}"
+            ),
+            "summary": result.get("summary", "Code example for demonstration purposes."),
         }
 
-        search_logger.info(f"Generated code example summary - Name: '{final_result['example_name']}', Summary length: {len(final_result['summary'])}")
+        search_logger.info(
+            f"Generated code example summary - Name: '{final_result['example_name']}', Summary length: {len(final_result['summary'])}"
+        )
         return final_result
 
     except json.JSONDecodeError as e:
-        search_logger.error(f"Failed to parse JSON response from OpenAI: {e}, Response: {repr(response_content) if 'response_content' in locals() else 'No response'}")
+        search_logger.error(
+            f"Failed to parse JSON response from OpenAI: {e}, Response: {repr(response_content) if 'response_content' in locals() else 'No response'}"
+        )
         return {
             "example_name": f"Code Example{f' ({language})' if language else ''}",
-            "summary": "Code example for demonstration purposes."
+            "summary": "Code example for demonstration purposes.",
         }
     except Exception as e:
         search_logger.error(f"Error generating code example summary: {e}, Model: {model_choice}")
         return {
             "example_name": f"Code Example{f' ({language})' if language else ''}",
-            "summary": "Code example for demonstration purposes."
+            "summary": "Code example for demonstration purposes.",
         }
 
 
-async def generate_code_summaries_batch(code_blocks: list[dict[str, Any]], max_workers: int = None, progress_callback = None) -> list[dict[str, str]]:
+async def generate_code_summaries_batch(
+    code_blocks: list[dict[str, Any]], max_workers: int = None, progress_callback=None
+) -> list[dict[str, str]]:
     """
     Generate summaries for multiple code blocks with rate limiting and proper worker management.
-    
+
     Args:
         code_blocks: List of code block dictionaries
         max_workers: Maximum number of concurrent API requests
         progress_callback: Optional callback for progress updates (async function)
-        
+
     Returns:
         List of summary dictionaries
     """
@@ -556,14 +645,20 @@ async def generate_code_summaries_batch(code_blocks: list[dict[str, Any]], max_w
     if max_workers is None:
         try:
             from ...services.credential_service import credential_service
-            if credential_service._cache_initialized and 'CODE_SUMMARY_MAX_WORKERS' in credential_service._cache:
-                max_workers = int(credential_service._cache['CODE_SUMMARY_MAX_WORKERS'])
+
+            if (
+                credential_service._cache_initialized
+                and "CODE_SUMMARY_MAX_WORKERS" in credential_service._cache
+            ):
+                max_workers = int(credential_service._cache["CODE_SUMMARY_MAX_WORKERS"])
             else:
-                max_workers = int(os.getenv('CODE_SUMMARY_MAX_WORKERS', '3'))
+                max_workers = int(os.getenv("CODE_SUMMARY_MAX_WORKERS", "3"))
         except:
             max_workers = 3  # Default fallback
 
-    search_logger.info(f"Generating summaries for {len(code_blocks)} code blocks with max_workers={max_workers}")
+    search_logger.info(
+        f"Generating summaries for {len(code_blocks)} code blocks with max_workers={max_workers}"
+    )
 
     # Semaphore to limit concurrent requests
     semaphore = asyncio.Semaphore(max_workers)
@@ -581,10 +676,10 @@ async def generate_code_summaries_batch(code_blocks: list[dict[str, Any]], max_w
             result = await loop.run_in_executor(
                 None,
                 generate_code_example_summary,
-                block['code'],
-                block['context_before'],
-                block['context_after'],
-                block.get('language', '')
+                block["code"],
+                block["context_before"],
+                block["context_after"],
+                block.get("language", ""),
             )
 
             # Update progress
@@ -594,11 +689,11 @@ async def generate_code_summaries_batch(code_blocks: list[dict[str, Any]], max_w
                     # Simple progress based on summaries completed
                     progress_percentage = int((completed_count / len(code_blocks)) * 100)
                     await progress_callback({
-                        'status': 'code_extraction',
-                        'percentage': progress_percentage,
-                        'log': f'Generated {completed_count}/{len(code_blocks)} code summaries',
-                        'completed_summaries': completed_count,
-                        'total_summaries': len(code_blocks)
+                        "status": "code_extraction",
+                        "percentage": progress_percentage,
+                        "log": f"Generated {completed_count}/{len(code_blocks)} code summaries",
+                        "completed_summaries": completed_count,
+                        "total_summaries": len(code_blocks),
                     })
 
             return result
@@ -607,7 +702,7 @@ async def generate_code_summaries_batch(code_blocks: list[dict[str, Any]], max_w
     try:
         summaries = await asyncio.gather(
             *[generate_single_summary_with_limit(block) for block in code_blocks],
-            return_exceptions=True
+            return_exceptions=True,
         )
 
         # Handle any exceptions in the results
@@ -616,10 +711,10 @@ async def generate_code_summaries_batch(code_blocks: list[dict[str, Any]], max_w
             if isinstance(summary, Exception):
                 search_logger.error(f"Error generating summary for code block {i}: {summary}")
                 # Use fallback summary
-                language = code_blocks[i].get('language', '')
+                language = code_blocks[i].get("language", "")
                 fallback = {
                     "example_name": f"Code Example{f' ({language})' if language else ''}",
-                    "summary": "Code example for demonstration purposes."
+                    "summary": "Code example for demonstration purposes.",
                 }
                 final_summaries.append(fallback)
             else:
@@ -633,10 +728,10 @@ async def generate_code_summaries_batch(code_blocks: list[dict[str, Any]], max_w
         # Return fallback summaries for all blocks
         fallback_summaries = []
         for block in code_blocks:
-            language = block.get('language', '')
+            language = block.get("language", "")
             fallback = {
                 "example_name": f"Code Example{f' ({language})' if language else ''}",
-                "summary": "Code example for demonstration purposes."
+                "summary": "Code example for demonstration purposes.",
             }
             fallback_summaries.append(fallback)
         return fallback_summaries
@@ -652,11 +747,11 @@ async def add_code_examples_to_supabase(
     batch_size: int = 20,
     url_to_full_document: dict[str, str] | None = None,
     progress_callback: Callable | None = None,
-    provider: str | None = None
+    provider: str | None = None,
 ):
     """
     Add code examples to the Supabase code_examples table in batches.
-    
+
     Args:
         client: Supabase client
         urls: List of URLs
@@ -675,17 +770,20 @@ async def add_code_examples_to_supabase(
     unique_urls = list(set(urls))
     for url in unique_urls:
         try:
-            client.table('archon_code_examples').delete().eq('url', url).execute()
+            client.table("archon_code_examples").delete().eq("url", url).execute()
         except Exception as e:
             search_logger.error(f"Error deleting existing code examples for {url}: {e}")
 
     # Check if contextual embeddings are enabled
     try:
         from ..credential_service import credential_service
+
         use_contextual_embeddings = credential_service._cache.get("USE_CONTEXTUAL_EMBEDDINGS")
         if isinstance(use_contextual_embeddings, str):
             use_contextual_embeddings = use_contextual_embeddings.lower() == "true"
-        elif isinstance(use_contextual_embeddings, dict) and use_contextual_embeddings.get("is_encrypted"):
+        elif isinstance(use_contextual_embeddings, dict) and use_contextual_embeddings.get(
+            "is_encrypted"
+        ):
             # Handle encrypted value
             encrypted_value = use_contextual_embeddings.get("encrypted_value")
             if encrypted_value:
@@ -700,9 +798,13 @@ async def add_code_examples_to_supabase(
             use_contextual_embeddings = bool(use_contextual_embeddings)
     except:
         # Fallback to environment variable
-        use_contextual_embeddings = os.getenv("USE_CONTEXTUAL_EMBEDDINGS", "false").lower() == "true"
+        use_contextual_embeddings = (
+            os.getenv("USE_CONTEXTUAL_EMBEDDINGS", "false").lower() == "true"
+        )
 
-    search_logger.info(f"Using contextual embeddings for code examples: {use_contextual_embeddings}")
+    search_logger.info(
+        f"Using contextual embeddings for code examples: {use_contextual_embeddings}"
+    )
 
     # Process in batches
     total_items = len(urls)
@@ -735,7 +837,9 @@ async def add_code_examples_to_supabase(
                 full_documents.append(full_doc)
 
             # Generate contextual embeddings
-            contextual_results = generate_contextual_embeddings_batch(full_documents, combined_texts)
+            contextual_results = generate_contextual_embeddings_batch(
+                full_documents, combined_texts
+            )
 
             # Process results
             for j, (contextual_text, success) in enumerate(contextual_results):
@@ -766,7 +870,9 @@ async def add_code_examples_to_supabase(
 
         # Prepare batch data - only for successful embeddings
         batch_data = []
-        for j, (embedding, text) in enumerate(zip(valid_embeddings, successful_texts, strict=False)):
+        for j, (embedding, text) in enumerate(
+            zip(valid_embeddings, successful_texts, strict=False)
+        ):
             # Find the original index
             orig_idx = None
             for k, orig_text in enumerate(batch_texts):
@@ -781,20 +887,20 @@ async def add_code_examples_to_supabase(
             idx = i + orig_idx  # Get the global index
 
             # Use source_id from metadata if available, otherwise extract from URL
-            if metadatas[idx] and 'source_id' in metadatas[idx]:
-                source_id = metadatas[idx]['source_id']
+            if metadatas[idx] and "source_id" in metadatas[idx]:
+                source_id = metadatas[idx]["source_id"]
             else:
                 parsed_url = urlparse(urls[idx])
                 source_id = parsed_url.netloc or parsed_url.path
 
             batch_data.append({
-                'url': urls[idx],
-                'chunk_number': chunk_numbers[idx],
-                'content': code_examples[idx],
-                'summary': summaries[idx],
-                'metadata': metadatas[idx],  # Store as JSON object, not string
-                'source_id': source_id,
-                'embedding': embedding
+                "url": urls[idx],
+                "chunk_number": chunk_numbers[idx],
+                "content": code_examples[idx],
+                "summary": summaries[idx],
+                "metadata": metadatas[idx],  # Store as JSON object, not string
+                "source_id": source_id,
+                "embedding": embedding,
             })
 
         # Insert batch into Supabase with retry logic
@@ -803,14 +909,17 @@ async def add_code_examples_to_supabase(
 
         for retry in range(max_retries):
             try:
-                client.table('archon_code_examples').insert(batch_data).execute()
+                client.table("archon_code_examples").insert(batch_data).execute()
                 # Success - break out of retry loop
                 break
             except Exception as e:
                 if retry < max_retries - 1:
-                    search_logger.warning(f"Error inserting batch into Supabase (attempt {retry + 1}/{max_retries}): {e}")
+                    search_logger.warning(
+                        f"Error inserting batch into Supabase (attempt {retry + 1}/{max_retries}): {e}"
+                    )
                     search_logger.info(f"Retrying in {retry_delay} seconds...")
                     import time
+
                     time.sleep(retry_delay)
                     retry_delay *= 2  # Exponential backoff
                 else:
@@ -821,34 +930,40 @@ async def add_code_examples_to_supabase(
                     successful_inserts = 0
                     for record in batch_data:
                         try:
-                            client.table('archon_code_examples').insert(record).execute()
+                            client.table("archon_code_examples").insert(record).execute()
                             successful_inserts += 1
                         except Exception as individual_error:
-                            search_logger.error(f"Failed to insert individual record for URL {record['url']}: {individual_error}")
+                            search_logger.error(
+                                f"Failed to insert individual record for URL {record['url']}: {individual_error}"
+                            )
 
                     if successful_inserts > 0:
-                        search_logger.info(f"Successfully inserted {successful_inserts}/{len(batch_data)} records individually")
+                        search_logger.info(
+                            f"Successfully inserted {successful_inserts}/{len(batch_data)} records individually"
+                        )
 
-        search_logger.info(f"Inserted batch {i//batch_size + 1} of {(total_items + batch_size - 1)//batch_size} code examples")
+        search_logger.info(
+            f"Inserted batch {i // batch_size + 1} of {(total_items + batch_size - 1) // batch_size} code examples"
+        )
 
         # Report progress if callback provided
         if progress_callback:
-            batch_num = i//batch_size + 1
-            total_batches = (total_items + batch_size - 1)//batch_size
+            batch_num = i // batch_size + 1
+            total_batches = (total_items + batch_size - 1) // batch_size
             progress_percentage = int((batch_num / total_batches) * 100)
             await progress_callback({
-                'status': 'code_storage',
-                'percentage': progress_percentage,
-                'log': f'Stored batch {batch_num}/{total_batches} of code examples',
-                'batch_number': batch_num,
-                'total_batches': total_batches
+                "status": "code_storage",
+                "percentage": progress_percentage,
+                "log": f"Stored batch {batch_num}/{total_batches} of code examples",
+                "batch_number": batch_num,
+                "total_batches": total_batches,
             })
 
     # Report final completion at 100% after all batches are done
     if progress_callback and total_items > 0:
         await progress_callback({
-            'status': 'code_storage',
-            'percentage': 100,
-            'log': f'Code storage completed. Stored {total_items} code examples.',
-            'total_items': total_items
+            "status": "code_storage",
+            "percentage": 100,
+            "log": f"Code storage completed. Stored {total_items} code examples.",
+            "total_items": total_items,
         })

@@ -23,8 +23,9 @@ async def debug_paths() -> dict[str, Any]:
         "vitest_coverage_path": str(VITEST_COVERAGE_PATH),
         "vitest_coverage_exists": VITEST_COVERAGE_PATH.exists(),
         "vitest_summary_exists": (VITEST_COVERAGE_PATH / "coverage-summary.json").exists(),
-        "vitest_final_exists": (VITEST_COVERAGE_PATH / "coverage-final.json").exists()
+        "vitest_final_exists": (VITEST_COVERAGE_PATH / "coverage-final.json").exists(),
     }
+
 
 # Base paths for coverage reports
 # Check if we're running in Docker (coverage reports in /app)
@@ -124,8 +125,8 @@ async def get_combined_coverage_summary() -> dict[str, Any]:
             "lines": {"pct": 0, "total": 0, "covered": 0, "skipped": 0},
             "statements": {"pct": 0, "total": 0, "covered": 0, "skipped": 0},
             "functions": {"pct": 0, "total": 0, "covered": 0, "skipped": 0},
-            "branches": {"pct": 0, "total": 0, "covered": 0, "skipped": 0}
-        }
+            "branches": {"pct": 0, "total": 0, "covered": 0, "skipped": 0},
+        },
     }
 
     # Try to get pytest coverage
@@ -135,7 +136,7 @@ async def get_combined_coverage_summary() -> dict[str, Any]:
             pytest_cov = await get_pytest_coverage_json()
             combined_summary["backend"] = {
                 "summary": pytest_cov.get("totals", {}),
-                "files": len(pytest_cov.get("files", {}))
+                "files": len(pytest_cov.get("files", {})),
             }
             pytest_available = True
     except Exception:
@@ -143,7 +144,7 @@ async def get_combined_coverage_summary() -> dict[str, Any]:
         combined_summary["backend"] = {
             "summary": {},
             "files": 0,
-            "message": "No pytest coverage data available"
+            "message": "No pytest coverage data available",
         }
 
     # Try to get vitest coverage
@@ -153,10 +154,7 @@ async def get_combined_coverage_summary() -> dict[str, Any]:
         combined_summary["frontend"] = vitest_cov
         vitest_available = True
     except Exception:
-        combined_summary["frontend"] = {
-            "total": {},
-            "message": "No vitest coverage data available"
-        }
+        combined_summary["frontend"] = {"total": {}, "message": "No vitest coverage data available"}
 
     # Calculate combined totals if any coverage is available
     if vitest_available:

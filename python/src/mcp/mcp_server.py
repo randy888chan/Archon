@@ -13,6 +13,7 @@ Modules:
 Note: Crawling and document upload operations are handled directly by the
 API service and frontend, not through MCP tools.
 """
+
 import json
 import logging
 import os
@@ -36,17 +37,19 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 # Load environment variables from the project root .env file
 project_root = Path(__file__).resolve().parent.parent
-dotenv_path = project_root / '.env'
+dotenv_path = project_root / ".env"
 load_dotenv(dotenv_path, override=True)
 
 # Configure logging FIRST before any imports that might use it
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler('/tmp/mcp_server.log', mode='a') if os.path.exists('/tmp') else logging.NullHandler()
-    ]
+        logging.FileHandler("/tmp/mcp_server.log", mode="a")
+        if os.path.exists("/tmp")
+        else logging.NullHandler(),
+    ],
 )
 logger = logging.getLogger(__name__)
 
@@ -76,12 +79,14 @@ if not mcp_port:
     )
 server_port = int(mcp_port)
 
+
 @dataclass
 class ArchonContext:
     """
     Context for MCP server.
     No heavy dependencies - just service client for HTTP calls.
     """
+
     service_client: Any
     health_status: dict = None
     startup_time: float = None
@@ -92,10 +97,11 @@ class ArchonContext:
                 "status": "healthy",
                 "api_service": False,
                 "agents_service": False,
-                "last_health_check": None
+                "last_health_check": None,
             }
         if self.startup_time is None:
             self.startup_time = time.time()
+
 
 async def perform_health_checks(context: ArchonContext):
     """Perform health checks on dependent services via HTTP."""
@@ -121,6 +127,7 @@ async def perform_health_checks(context: ArchonContext):
         logger.error(f"Health check error: {e}")
         context.health_status["status"] = "unhealthy"
         context.health_status["last_health_check"] = datetime.now().isoformat()
+
 
 @asynccontextmanager
 async def lifespan(server: FastMCP) -> AsyncIterator[ArchonContext]:
@@ -156,11 +163,8 @@ async def lifespan(server: FastMCP) -> AsyncIterator[ArchonContext]:
             service_client = get_mcp_service_client()
             logger.info("✓ Service client initialized")
 
-
             # Create context
-            context = ArchonContext(
-                service_client=service_client
-            )
+            context = ArchonContext(service_client=service_client)
 
             # Perform initial health check
             await perform_health_checks(context)
@@ -182,6 +186,7 @@ async def lifespan(server: FastMCP) -> AsyncIterator[ArchonContext]:
             logger.info("🧹 Cleaning up MCP server...")
             logger.info("✅ MCP server shutdown complete")
 
+
 # Initialize the main FastMCP server with fixed configuration
 try:
     logger.info("🏗️ MCP SERVER INITIALIZATION:")
@@ -193,7 +198,7 @@ try:
         description="MCP server for Archon - uses HTTP calls to other services",
         lifespan=lifespan,
         host=server_host,
-        port=server_port
+        port=server_port,
     )
     logger.info("✓ FastMCP server instance created successfully")
 
@@ -202,18 +207,19 @@ except Exception as e:
     logger.error(traceback.format_exc())
     raise
 
+
 # Health check endpoint
 @mcp.tool()
 async def health_check(ctx: Context) -> str:
     """
     Perform a health check on the MCP server and its dependencies.
-    
+
     Returns:
         JSON string with current health status
     """
     try:
         # Try to get the lifespan context
-        context = getattr(ctx.request_context, 'lifespan_context', None)
+        context = getattr(ctx.request_context, "lifespan_context", None)
 
         if context is None:
             # Server starting up
@@ -221,25 +227,25 @@ async def health_check(ctx: Context) -> str:
                 "success": True,
                 "status": "starting",
                 "message": "MCP server is initializing...",
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             })
 
         # Server is ready - perform health checks
-        if hasattr(context, 'health_status') and context.health_status:
+        if hasattr(context, "health_status") and context.health_status:
             await perform_health_checks(context)
 
             return json.dumps({
                 "success": True,
                 "health": context.health_status,
                 "uptime_seconds": time.time() - context.startup_time,
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             })
         else:
             return json.dumps({
                 "success": True,
                 "status": "ready",
                 "message": "MCP server is running",
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             })
 
     except Exception as e:
@@ -247,15 +253,16 @@ async def health_check(ctx: Context) -> str:
         return json.dumps({
             "success": False,
             "error": f"Health check failed: {str(e)}",
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
         })
+
 
 # Session management endpoint
 @mcp.tool()
 async def session_info(ctx: Context) -> str:
     """
     Get information about the current session and all active sessions.
-    
+
     Returns:
         JSON string with session information
     """
@@ -264,19 +271,19 @@ async def session_info(ctx: Context) -> str:
 
         # Build session info
         session_info_data = {
-            'active_sessions': session_manager.get_active_session_count(),
-            'session_timeout': session_manager.timeout
+            "active_sessions": session_manager.get_active_session_count(),
+            "session_timeout": session_manager.timeout,
         }
 
         # Add server uptime
-        context = getattr(ctx.request_context, 'lifespan_context', None)
-        if context and hasattr(context, 'startup_time'):
-            session_info_data['server_uptime_seconds'] = time.time() - context.startup_time
+        context = getattr(ctx.request_context, "lifespan_context", None)
+        if context and hasattr(context, "startup_time"):
+            session_info_data["server_uptime_seconds"] = time.time() - context.startup_time
 
         return json.dumps({
             "success": True,
             "session_management": session_info_data,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
         })
 
     except Exception as e:
@@ -284,8 +291,9 @@ async def session_info(ctx: Context) -> str:
         return json.dumps({
             "success": False,
             "error": f"Failed to get session info: {str(e)}",
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
         })
+
 
 # Import and register modules
 def register_modules():
@@ -297,6 +305,7 @@ def register_modules():
     # Import and register RAG module (HTTP-based version)
     try:
         from src.mcp.modules.rag_module import register_rag_tools
+
         register_rag_tools(mcp)
         modules_registered += 1
         logger.info("✓ RAG module registered (HTTP-based)")
@@ -311,6 +320,7 @@ def register_modules():
     if projects_enabled:
         try:
             from src.mcp.modules.project_module import register_project_tools
+
             register_project_tools(mcp)
             modules_registered += 1
             logger.info("✓ Project module registered (HTTP-based)")
@@ -328,6 +338,7 @@ def register_modules():
         logger.error("💥 No modules were successfully registered!")
         raise RuntimeError("No MCP modules available")
 
+
 # Register all modules when this file is imported
 try:
     register_modules()
@@ -335,6 +346,7 @@ except Exception as e:
     logger.error(f"💥 Critical error during module registration: {e}")
     logger.error(traceback.format_exc())
     raise
+
 
 def main():
     """Main entry point for the MCP server."""
@@ -356,6 +368,7 @@ def main():
         logger.error(f"💥 Fatal error in main: {e}")
         logger.error(traceback.format_exc())
         raise
+
 
 if __name__ == "__main__":
     try:

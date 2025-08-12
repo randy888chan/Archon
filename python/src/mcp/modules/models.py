@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field, validator
 
 class DocumentType(str, Enum):
     """Enumeration of supported document types"""
+
     PRD = "prd"
     FEATURE_PLAN = "feature_plan"
     ERD = "erd"
@@ -26,6 +27,7 @@ class DocumentType(str, Enum):
 
 class Priority(str, Enum):
     """Priority levels for goals and user stories"""
+
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
@@ -34,27 +36,38 @@ class Priority(str, Enum):
 
 class UserStory(BaseModel):
     """Individual user story within a PRD"""
+
     id: str = Field(..., description="Unique identifier for the user story")
     title: str = Field(..., description="Brief title of the user story")
     description: str = Field(..., description="As a [user], I want [goal] so that [benefit]")
-    acceptance_criteria: list[str] = Field(default_factory=list, description="List of acceptance criteria")
+    acceptance_criteria: list[str] = Field(
+        default_factory=list, description="List of acceptance criteria"
+    )
     priority: Priority = Field(default=Priority.MEDIUM, description="Priority level")
-    estimated_effort: str | None = Field(None, description="Effort estimate (e.g., 'Small', 'Medium', 'Large')")
+    estimated_effort: str | None = Field(
+        None, description="Effort estimate (e.g., 'Small', 'Medium', 'Large')"
+    )
     status: str = Field(default="draft", description="Status of the user story")
 
 
 class Goal(BaseModel):
     """Individual goal within a PRD"""
+
     id: str = Field(..., description="Unique identifier for the goal")
     title: str = Field(..., description="Brief title of the goal")
     description: str = Field(..., description="Detailed description of the goal")
     priority: Priority = Field(default=Priority.MEDIUM, description="Priority level")
-    success_metrics: list[str] = Field(default_factory=list, description="How success will be measured")
+    success_metrics: list[str] = Field(
+        default_factory=list, description="How success will be measured"
+    )
 
 
 class TechnicalRequirement(BaseModel):
     """Technical requirements and constraints"""
-    category: str = Field(..., description="Category (e.g., 'Performance', 'Security', 'Scalability')")
+
+    category: str = Field(
+        ..., description="Category (e.g., 'Performance', 'Security', 'Scalability')"
+    )
     description: str = Field(..., description="Detailed requirement description")
     priority: Priority = Field(default=Priority.MEDIUM, description="Priority level")
 
@@ -64,11 +77,14 @@ class ProjectRequirementsDocument(BaseModel):
     Pydantic model for Project Requirements Document (PRD) structure.
     This model defines the schema for PRD documents stored as JSONB.
     """
+
     # Basic Information
     title: str = Field(..., description="Title of the project")
     description: str = Field(default="", description="Brief project description")
     version: str = Field(default="1.0", description="Document version")
-    last_updated: datetime = Field(default_factory=datetime.now, description="Last update timestamp")
+    last_updated: datetime = Field(
+        default_factory=datetime.now, description="Last update timestamp"
+    )
 
     # Project Details
     goals: list[Goal] = Field(default_factory=list, description="List of project goals")
@@ -76,24 +92,29 @@ class ProjectRequirementsDocument(BaseModel):
 
     # Scope and Context
     scope: str = Field(default="", description="Project scope definition")
-    out_of_scope: list[str] = Field(default_factory=list, description="What is explicitly out of scope")
+    out_of_scope: list[str] = Field(
+        default_factory=list, description="What is explicitly out of scope"
+    )
     assumptions: list[str] = Field(default_factory=list, description="Project assumptions")
     constraints: list[str] = Field(default_factory=list, description="Project constraints")
 
     # Technical Requirements
     technical_requirements: list[TechnicalRequirement] = Field(
-        default_factory=list,
-        description="Technical requirements and constraints"
+        default_factory=list, description="Technical requirements and constraints"
     )
 
     # Stakeholders and Timeline
     stakeholders: list[str] = Field(default_factory=list, description="Key stakeholders")
-    timeline: dict[str, Any] = Field(default_factory=dict, description="Project timeline and milestones")
+    timeline: dict[str, Any] = Field(
+        default_factory=dict, description="Project timeline and milestones"
+    )
 
     # Success Criteria
-    success_criteria: list[str] = Field(default_factory=list, description="Overall project success criteria")
+    success_criteria: list[str] = Field(
+        default_factory=list, description="Overall project success criteria"
+    )
 
-    @validator('last_updated', pre=True, always=True)
+    @validator("last_updated", pre=True, always=True)
     def set_last_updated(cls, v):
         return v or datetime.now()
 
@@ -103,6 +124,7 @@ class GeneralDocument(BaseModel):
     Pydantic model for general document structure in the docs table.
     This provides a flexible schema for various document types.
     """
+
     # Document Metadata
     id: str | None = Field(None, description="Document UUID (auto-generated)")
     project_id: str = Field(..., description="Associated project UUID")
@@ -111,8 +133,7 @@ class GeneralDocument(BaseModel):
 
     # Content
     content: ProjectRequirementsDocument | dict[str, Any] = Field(
-        ...,
-        description="Document content (typed for PRD, flexible for others)"
+        ..., description="Document content (typed for PRD, flexible for others)"
     )
 
     # Metadata
@@ -125,13 +146,14 @@ class GeneralDocument(BaseModel):
     created_at: datetime | None = Field(None, description="Creation timestamp")
     updated_at: datetime | None = Field(None, description="Last update timestamp")
 
-    @validator('created_at', 'updated_at', pre=True, always=True)
+    @validator("created_at", "updated_at", pre=True, always=True)
     def set_timestamps(cls, v):
         return v or datetime.now()
 
 
 class CreateDocumentRequest(BaseModel):
     """Request model for creating a new document"""
+
     project_id: str = Field(..., description="Associated project UUID")
     document_type: DocumentType = Field(..., description="Type of document")
     title: str = Field(..., description="Document title")
@@ -142,6 +164,7 @@ class CreateDocumentRequest(BaseModel):
 
 class UpdateDocumentRequest(BaseModel):
     """Request model for updating an existing document"""
+
     title: str | None = Field(None, description="Updated document title")
     content: dict[str, Any] | None = Field(None, description="Updated document content")
     status: str | None = Field(None, description="Updated document status")
@@ -151,6 +174,7 @@ class UpdateDocumentRequest(BaseModel):
 
 
 # Helper functions for creating default documents
+
 
 def create_default_prd(project_title: str) -> ProjectRequirementsDocument:
     """Create a default PRD structure for a new project"""
@@ -163,7 +187,7 @@ def create_default_prd(project_title: str) -> ProjectRequirementsDocument:
                 title="Define Project Objectives",
                 description="Clearly outline what this project aims to achieve",
                 priority=Priority.HIGH,
-                success_metrics=["Clear problem statement", "Defined success criteria"]
+                success_metrics=["Clear problem statement", "Defined success criteria"],
             )
         ],
         user_stories=[
@@ -172,25 +196,27 @@ def create_default_prd(project_title: str) -> ProjectRequirementsDocument:
                 title="Project Initialization",
                 description="As a project manager, I want to define the project scope so that the team understands the objectives",
                 acceptance_criteria=["PRD is created", "Stakeholders review and approve"],
-                priority=Priority.HIGH
+                priority=Priority.HIGH,
             )
         ],
         technical_requirements=[
             TechnicalRequirement(
                 category="Architecture",
                 description="Define the overall system architecture and technology stack",
-                priority=Priority.HIGH
+                priority=Priority.HIGH,
             )
         ],
         success_criteria=[
             "Project delivers defined features on time",
             "Quality meets established standards",
-            "Stakeholder satisfaction achieved"
-        ]
+            "Stakeholder satisfaction achieved",
+        ],
     )
 
 
-def create_default_document(project_id: str, document_type: DocumentType, title: str) -> GeneralDocument:
+def create_default_document(
+    project_id: str, document_type: DocumentType, title: str
+) -> GeneralDocument:
     """Create a default document based on type"""
     content = {}
 
@@ -204,5 +230,5 @@ def create_default_document(project_id: str, document_type: DocumentType, title:
         document_type=document_type,
         title=title,
         content=content,
-        tags=["default", document_type.value]
+        tags=["default", document_type.value],
     )

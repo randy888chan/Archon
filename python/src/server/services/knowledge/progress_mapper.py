@@ -11,37 +11,37 @@ class ProgressMapper:
 
     # Define progress ranges for each stage
     STAGE_RANGES = {
-        'starting': (0, 0),
-        'analyzing': (0, 5),
-        'crawling': (5, 30),
-        'processing': (30, 35),
-        'document_storage': (35, 80),
-        'code_extraction': (80, 95),
-        'extracting': (80, 95),  # Alias for code_extraction
-        'finalization': (95, 100),
-        'completed': (100, 100),
-        'complete': (100, 100),  # Alias
-        'error': (-1, -1)  # Special case for errors
+        "starting": (0, 0),
+        "analyzing": (0, 5),
+        "crawling": (5, 30),
+        "processing": (30, 35),
+        "document_storage": (35, 80),
+        "code_extraction": (80, 95),
+        "extracting": (80, 95),  # Alias for code_extraction
+        "finalization": (95, 100),
+        "completed": (100, 100),
+        "complete": (100, 100),  # Alias
+        "error": (-1, -1),  # Special case for errors
     }
 
     def __init__(self):
         """Initialize the progress mapper"""
         self.last_overall_progress = 0
-        self.current_stage = 'starting'
+        self.current_stage = "starting"
 
     def map_progress(self, stage: str, stage_progress: float) -> int:
         """
         Map stage-specific progress to overall progress.
-        
+
         Args:
             stage: The current stage name
             stage_progress: Progress within the stage (0-100)
-            
+
         Returns:
             Overall progress percentage (0-100)
         """
         # Handle error state
-        if stage == 'error':
+        if stage == "error":
             return -1
 
         # Get stage range
@@ -52,7 +52,7 @@ class ProgressMapper:
         start, end = self.STAGE_RANGES[stage]
 
         # Handle completion
-        if stage in ['completed', 'complete']:
+        if stage in ["completed", "complete"]:
             self.last_overall_progress = 100
             return 100
 
@@ -80,11 +80,11 @@ class ProgressMapper:
     def calculate_stage_progress(self, current_value: int, max_value: int) -> float:
         """
         Calculate percentage progress within a stage.
-        
+
         Args:
             current_value: Current progress value (e.g., processed items)
             max_value: Maximum value (e.g., total items)
-            
+
         Returns:
             Progress percentage within stage (0-100)
         """
@@ -96,12 +96,12 @@ class ProgressMapper:
     def map_batch_progress(self, stage: str, current_batch: int, total_batches: int) -> int:
         """
         Convenience method for mapping batch processing progress.
-        
+
         Args:
             stage: The current stage name
             current_batch: Current batch number (1-based)
             total_batches: Total number of batches
-            
+
         Returns:
             Overall progress percentage
         """
@@ -116,12 +116,12 @@ class ProgressMapper:
     def map_with_substage(self, stage: str, substage: str, stage_progress: float) -> int:
         """
         Map progress with substage information for finer control.
-        
+
         Args:
             stage: Main stage (e.g., 'document_storage')
             substage: Substage (e.g., 'embeddings', 'chunking')
             stage_progress: Progress within the stage
-            
+
         Returns:
             Overall progress percentage
         """
@@ -132,7 +132,7 @@ class ProgressMapper:
     def reset(self):
         """Reset the mapper to initial state"""
         self.last_overall_progress = 0
-        self.current_stage = 'starting'
+        self.current_stage = "starting"
 
     def get_current_stage(self) -> str:
         """Get the current stage name"""

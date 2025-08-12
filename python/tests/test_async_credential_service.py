@@ -4,6 +4,7 @@ Comprehensive Tests for Async Credential Service
 Tests the credential service async functions after sync function removal.
 Covers credential storage, retrieval, encryption/decryption, and caching.
 """
+
 import asyncio
 import os
 from unittest.mock import MagicMock, patch
@@ -51,7 +52,7 @@ class TestAsyncCredentialService:
                 "value": None,
                 "is_encrypted": True,
                 "category": "api_keys",
-                "description": "OpenAI API key for LLM access"
+                "description": "OpenAI API key for LLM access",
             },
             {
                 "id": 2,
@@ -60,7 +61,7 @@ class TestAsyncCredentialService:
                 "encrypted_value": None,
                 "is_encrypted": False,
                 "category": "rag_strategy",
-                "description": "Default model choice"
+                "description": "Default model choice",
             },
             {
                 "id": 3,
@@ -69,8 +70,8 @@ class TestAsyncCredentialService:
                 "encrypted_value": None,
                 "is_encrypted": False,
                 "category": "rag_strategy",
-                "description": "Maximum tokens per request"
-            }
+                "description": "Maximum tokens per request",
+            },
         ]
 
     def test_deprecated_functions_removed(self):
@@ -78,20 +79,17 @@ class TestAsyncCredentialService:
         import src.server.services.credential_service as cred_module
 
         # The sync function should no longer exist
-        assert not hasattr(cred_module, 'get_credential_sync')
+        assert not hasattr(cred_module, "get_credential_sync")
 
         # The async versions should be the primary functions
-        assert hasattr(cred_module, 'get_credential')
-        assert hasattr(cred_module, 'set_credential')
+        assert hasattr(cred_module, "get_credential")
+        assert hasattr(cred_module, "set_credential")
 
     @pytest.mark.asyncio
     async def test_get_credential_from_cache(self):
         """Test getting credential from initialized cache"""
         # Setup cache
-        credential_service._cache = {
-            "TEST_KEY": "test_value",
-            "NUMERIC_KEY": "123"
-        }
+        credential_service._cache = {"TEST_KEY": "test_value", "NUMERIC_KEY": "123"}
         credential_service._cache_initialized = True
 
         result = await get_credential("TEST_KEY", "default")
@@ -107,14 +105,11 @@ class TestAsyncCredentialService:
     async def test_get_credential_encrypted_value(self):
         """Test getting encrypted credential"""
         # Setup cache with encrypted value
-        encrypted_data = {
-            "encrypted_value": "encrypted_test_value",
-            "is_encrypted": True
-        }
+        encrypted_data = {"encrypted_value": "encrypted_test_value", "is_encrypted": True}
         credential_service._cache = {"SECRET_KEY": encrypted_data}
         credential_service._cache_initialized = True
 
-        with patch.object(credential_service, '_decrypt_value', return_value="decrypted_value"):
+        with patch.object(credential_service, "_decrypt_value", return_value="decrypted_value"):
             result = await get_credential("SECRET_KEY", "default")
             assert result == "decrypted_value"
             credential_service._decrypt_value.assert_called_once_with("encrypted_test_value")
@@ -126,17 +121,19 @@ class TestAsyncCredentialService:
 
         # Mock database response for load_all_credentials (gets ALL settings)
         mock_response = MagicMock()
-        mock_response.data = [{
-            "key": "TEST_KEY",
-            "value": "db_value",
-            "encrypted_value": None,
-            "is_encrypted": False,
-            "category": "test",
-            "description": "Test key"
-        }]
+        mock_response.data = [
+            {
+                "key": "TEST_KEY",
+                "value": "db_value",
+                "encrypted_value": None,
+                "is_encrypted": False,
+                "category": "test",
+                "description": "Test key",
+            }
+        ]
         mock_table.select().execute.return_value = mock_response
 
-        with patch.object(credential_service, '_get_supabase_client', return_value=mock_client):
+        with patch.object(credential_service, "_get_supabase_client", return_value=mock_client):
             result = await credential_service.get_credential("TEST_KEY", "default")
             assert result == "db_value"
 
@@ -155,7 +152,7 @@ class TestAsyncCredentialService:
         mock_response.data = []
         mock_table.select().eq().execute.return_value = mock_response
 
-        with patch.object(credential_service, '_get_supabase_client', return_value=mock_client):
+        with patch.object(credential_service, "_get_supabase_client", return_value=mock_client):
             result = await credential_service.get_credential("MISSING_KEY", "default_value")
             assert result == "default_value"
 
@@ -169,7 +166,7 @@ class TestAsyncCredentialService:
         mock_response.data = [{"id": 1, "key": "NEW_KEY", "value": "new_value"}]
         mock_table.insert().execute.return_value = mock_response
 
-        with patch.object(credential_service, '_get_supabase_client', return_value=mock_client):
+        with patch.object(credential_service, "_get_supabase_client", return_value=mock_client):
             result = await set_credential("NEW_KEY", "new_value", is_encrypted=False)
             assert result is True
 
@@ -186,8 +183,8 @@ class TestAsyncCredentialService:
         mock_response.data = [{"id": 1, "key": "SECRET_KEY"}]
         mock_table.insert().execute.return_value = mock_response
 
-        with patch.object(credential_service, '_get_supabase_client', return_value=mock_client):
-            with patch.object(credential_service, '_encrypt_value', return_value="encrypted_value"):
+        with patch.object(credential_service, "_get_supabase_client", return_value=mock_client):
+            with patch.object(credential_service, "_encrypt_value", return_value="encrypted_value"):
                 result = await set_credential("SECRET_KEY", "secret_value", is_encrypted=True)
                 assert result is True
 
@@ -204,7 +201,7 @@ class TestAsyncCredentialService:
         mock_response.data = sample_credentials_data
         mock_table.select().execute.return_value = mock_response
 
-        with patch.object(credential_service, '_get_supabase_client', return_value=mock_client):
+        with patch.object(credential_service, "_get_supabase_client", return_value=mock_client):
             result = await credential_service.load_all_credentials()
 
             # Should have loaded credentials into cache
@@ -229,14 +226,24 @@ class TestAsyncCredentialService:
 
         # Mock database response for rag_strategy category
         rag_data = [
-            {"key": "MODEL_CHOICE", "value": "gpt-4.1-nano", "is_encrypted": False, "description": "Model choice"},
-            {"key": "MAX_TOKENS", "value": "1000", "is_encrypted": False, "description": "Max tokens"}
+            {
+                "key": "MODEL_CHOICE",
+                "value": "gpt-4.1-nano",
+                "is_encrypted": False,
+                "description": "Model choice",
+            },
+            {
+                "key": "MAX_TOKENS",
+                "value": "1000",
+                "is_encrypted": False,
+                "description": "Max tokens",
+            },
         ]
         mock_response = MagicMock()
         mock_response.data = rag_data
         mock_table.select().eq().execute.return_value = mock_response
 
-        with patch.object(credential_service, '_get_supabase_client', return_value=mock_client):
+        with patch.object(credential_service, "_get_supabase_client", return_value=mock_client):
             result = await credential_service.get_credentials_by_category("rag_strategy")
 
             # Should only return rag_strategy credentials
@@ -258,21 +265,31 @@ class TestAsyncCredentialService:
                 "encrypted_value": "encrypted_key",
                 "is_encrypted": True,
                 "category": "api_keys",
-                "description": "API key"
-            }
+                "description": "API key",
+            },
         }
         credential_service._cache_initialized = True
 
         # Mock rag_strategy category response
         rag_response = MagicMock()
         rag_response.data = [
-            {"key": "LLM_PROVIDER", "value": "openai", "is_encrypted": False, "description": "LLM provider"},
-            {"key": "MODEL_CHOICE", "value": "gpt-4.1-nano", "is_encrypted": False, "description": "Model choice"}
+            {
+                "key": "LLM_PROVIDER",
+                "value": "openai",
+                "is_encrypted": False,
+                "description": "LLM provider",
+            },
+            {
+                "key": "MODEL_CHOICE",
+                "value": "gpt-4.1-nano",
+                "is_encrypted": False,
+                "description": "Model choice",
+            },
         ]
         mock_table.select().eq().execute.return_value = rag_response
 
-        with patch.object(credential_service, '_get_supabase_client', return_value=mock_client):
-            with patch.object(credential_service, '_decrypt_value', return_value="decrypted_key"):
+        with patch.object(credential_service, "_get_supabase_client", return_value=mock_client):
+            with patch.object(credential_service, "_decrypt_value", return_value="decrypted_key"):
                 result = await credential_service.get_active_provider("llm")
 
                 assert result["provider"] == "openai"
@@ -289,7 +306,7 @@ class TestAsyncCredentialService:
         mock_response.data = []
         mock_table.select().eq().execute.return_value = mock_response
 
-        with patch.object(credential_service, '_get_supabase_client', return_value=mock_client):
+        with patch.object(credential_service, "_get_supabase_client", return_value=mock_client):
             result = await credential_service.get_active_provider("llm")
             # Should return default values when no settings found
             assert "provider" in result
@@ -305,8 +322,8 @@ class TestAsyncCredentialService:
         mock_response.data = sample_credentials_data
         mock_table.select().execute.return_value = mock_response
 
-        with patch.object(credential_service, '_get_supabase_client', return_value=mock_client):
-            with patch.object(credential_service, '_decrypt_value', return_value="decrypted_key"):
+        with patch.object(credential_service, "_get_supabase_client", return_value=mock_client):
+            with patch.object(credential_service, "_decrypt_value", return_value="decrypted_key"):
                 with patch.dict(os.environ, {}, clear=True):  # Clear environment
                     await initialize_credentials()
 
@@ -324,7 +341,7 @@ class TestAsyncCredentialService:
         # Mock database error
         mock_table.select().eq().execute.side_effect = Exception("Database connection failed")
 
-        with patch.object(credential_service, '_get_supabase_client', return_value=mock_client):
+        with patch.object(credential_service, "_get_supabase_client", return_value=mock_client):
             result = await credential_service.get_credential("TEST_KEY", "default_value")
             assert result == "default_value"
 
@@ -332,14 +349,13 @@ class TestAsyncCredentialService:
     async def test_encryption_decryption_error_handling(self):
         """Test error handling for encryption/decryption failures"""
         # Setup cache with encrypted value that fails to decrypt
-        encrypted_data = {
-            "encrypted_value": "corrupted_encrypted_value",
-            "is_encrypted": True
-        }
+        encrypted_data = {"encrypted_value": "corrupted_encrypted_value", "is_encrypted": True}
         credential_service._cache = {"CORRUPTED_KEY": encrypted_data}
         credential_service._cache_initialized = True
 
-        with patch.object(credential_service, '_decrypt_value', side_effect=Exception("Decryption failed")):
+        with patch.object(
+            credential_service, "_decrypt_value", side_effect=Exception("Decryption failed")
+        ):
             # Should fall back to default when decryption fails
             result = await credential_service.get_credential("CORRUPTED_KEY", "fallback_value")
             assert result == "fallback_value"
@@ -349,10 +365,7 @@ class TestAsyncCredentialService:
         # Setup cache
         credential_service._cache = {
             "MODEL_CHOICE": "gpt-4.1-nano",
-            "OPENAI_API_KEY": {
-                "encrypted_value": "encrypted_key",
-                "is_encrypted": True
-            }
+            "OPENAI_API_KEY": {"encrypted_value": "encrypted_key", "is_encrypted": True},
         }
         credential_service._cache_initialized = True
 

@@ -9,44 +9,233 @@ import re
 
 # Common stop words to filter out
 STOP_WORDS = {
-    'a', 'an', 'and', 'are', 'as', 'at', 'be', 'been', 'by', 'for', 'from',
-    'has', 'have', 'he', 'in', 'is', 'it', 'its', 'of', 'on', 'that', 'the',
-    'to', 'was', 'will', 'with', 'what', 'when', 'where', 'which', 'who',
-    'why', 'how', 'can', 'could', 'should', 'would', 'may', 'might', 'must',
-    'shall', 'do', 'does', 'did', 'done', 'this', 'these', 'those',
-    'there', 'their', 'them', 'they', 'we', 'you', 'your', 'our', 'us',
-    'am', 'im', 'me', 'my', 'i', 'if', 'so', 'or', 'but', 'not', 'no', 'yes'
+    "a",
+    "an",
+    "and",
+    "are",
+    "as",
+    "at",
+    "be",
+    "been",
+    "by",
+    "for",
+    "from",
+    "has",
+    "have",
+    "he",
+    "in",
+    "is",
+    "it",
+    "its",
+    "of",
+    "on",
+    "that",
+    "the",
+    "to",
+    "was",
+    "will",
+    "with",
+    "what",
+    "when",
+    "where",
+    "which",
+    "who",
+    "why",
+    "how",
+    "can",
+    "could",
+    "should",
+    "would",
+    "may",
+    "might",
+    "must",
+    "shall",
+    "do",
+    "does",
+    "did",
+    "done",
+    "this",
+    "these",
+    "those",
+    "there",
+    "their",
+    "them",
+    "they",
+    "we",
+    "you",
+    "your",
+    "our",
+    "us",
+    "am",
+    "im",
+    "me",
+    "my",
+    "i",
+    "if",
+    "so",
+    "or",
+    "but",
+    "not",
+    "no",
+    "yes",
 }
 
 # Technical stop words that are too common in code/docs to be useful
 TECHNICAL_STOP_WORDS = {
-    'get', 'set', 'use', 'using', 'used', 'make', 'made', 'create', 'created',
-    'add', 'added', 'remove', 'removed', 'update', 'updated', 'delete', 'deleted',
-    'need', 'needs', 'want', 'wants', 'like', 'example', 'examples',
-    'please', 'help', 'show', 'find', 'search', 'look', 'looking',
-    'implement', 'implementing', 'implemented', 'implementation'
+    "get",
+    "set",
+    "use",
+    "using",
+    "used",
+    "make",
+    "made",
+    "create",
+    "created",
+    "add",
+    "added",
+    "remove",
+    "removed",
+    "update",
+    "updated",
+    "delete",
+    "deleted",
+    "need",
+    "needs",
+    "want",
+    "wants",
+    "like",
+    "example",
+    "examples",
+    "please",
+    "help",
+    "show",
+    "find",
+    "search",
+    "look",
+    "looking",
+    "implement",
+    "implementing",
+    "implemented",
+    "implementation",
 }
 
 # Common programming keywords to preserve (not filter out)
 PRESERVE_KEYWORDS = {
-    'api', 'auth', 'authentication', 'authorization', 'database', 'db',
-    'sql', 'query', 'queries', 'function', 'functions', 'class', 'classes',
-    'method', 'methods', 'variable', 'variables', 'array', 'arrays',
-    'object', 'objects', 'type', 'types', 'interface', 'interfaces',
-    'component', 'components', 'module', 'modules', 'package', 'packages',
-    'library', 'libraries', 'framework', 'frameworks', 'server', 'client',
-    'request', 'response', 'http', 'https', 'rest', 'graphql', 'websocket',
-    'async', 'await', 'promise', 'callback', 'event', 'events',
-    'error', 'errors', 'exception', 'exceptions', 'debug', 'debugging',
-    'test', 'tests', 'testing', 'unit', 'integration', 'e2e',
-    'docker', 'kubernetes', 'container', 'containers', 'deployment', 'deploy',
-    'git', 'github', 'gitlab', 'version', 'versions', 'branch', 'branches',
-    'commit', 'commits', 'pull', 'push', 'merge', 'rebase',
-    'python', 'javascript', 'typescript', 'java', 'golang', 'rust',
-    'react', 'vue', 'angular', 'next', 'nuxt', 'express', 'django', 'flask',
-    'postgresql', 'postgres', 'mysql', 'mongodb', 'redis', 'supabase',
-    'aws', 'azure', 'gcp', 'cloud', 'serverless', 'lambda',
-    'jwt', 'oauth', 'token', 'tokens', 'session', 'sessions', 'cookie', 'cookies'
+    "api",
+    "auth",
+    "authentication",
+    "authorization",
+    "database",
+    "db",
+    "sql",
+    "query",
+    "queries",
+    "function",
+    "functions",
+    "class",
+    "classes",
+    "method",
+    "methods",
+    "variable",
+    "variables",
+    "array",
+    "arrays",
+    "object",
+    "objects",
+    "type",
+    "types",
+    "interface",
+    "interfaces",
+    "component",
+    "components",
+    "module",
+    "modules",
+    "package",
+    "packages",
+    "library",
+    "libraries",
+    "framework",
+    "frameworks",
+    "server",
+    "client",
+    "request",
+    "response",
+    "http",
+    "https",
+    "rest",
+    "graphql",
+    "websocket",
+    "async",
+    "await",
+    "promise",
+    "callback",
+    "event",
+    "events",
+    "error",
+    "errors",
+    "exception",
+    "exceptions",
+    "debug",
+    "debugging",
+    "test",
+    "tests",
+    "testing",
+    "unit",
+    "integration",
+    "e2e",
+    "docker",
+    "kubernetes",
+    "container",
+    "containers",
+    "deployment",
+    "deploy",
+    "git",
+    "github",
+    "gitlab",
+    "version",
+    "versions",
+    "branch",
+    "branches",
+    "commit",
+    "commits",
+    "pull",
+    "push",
+    "merge",
+    "rebase",
+    "python",
+    "javascript",
+    "typescript",
+    "java",
+    "golang",
+    "rust",
+    "react",
+    "vue",
+    "angular",
+    "next",
+    "nuxt",
+    "express",
+    "django",
+    "flask",
+    "postgresql",
+    "postgres",
+    "mysql",
+    "mongodb",
+    "redis",
+    "supabase",
+    "aws",
+    "azure",
+    "gcp",
+    "cloud",
+    "serverless",
+    "lambda",
+    "jwt",
+    "oauth",
+    "token",
+    "tokens",
+    "session",
+    "sessions",
+    "cookie",
+    "cookies",
 }
 
 
@@ -57,15 +246,17 @@ class KeywordExtractor:
         self.stop_words = STOP_WORDS | TECHNICAL_STOP_WORDS
         self.preserve_keywords = PRESERVE_KEYWORDS
 
-    def extract_keywords(self, query: str, min_length: int = 2, max_keywords: int = 10) -> list[str]:
+    def extract_keywords(
+        self, query: str, min_length: int = 2, max_keywords: int = 10
+    ) -> list[str]:
         """
         Extract meaningful keywords from a search query.
-        
+
         Args:
             query: The search query string
             min_length: Minimum keyword length (default: 2)
             max_keywords: Maximum number of keywords to return (default: 10)
-            
+
         Returns:
             List of extracted keywords, ordered by importance
         """
@@ -74,7 +265,7 @@ class KeywordExtractor:
 
         # Step 1: Extract potential keywords (alphanumeric + some special chars)
         # Keep dashes and underscores as they're common in tech terms
-        tokens = re.findall(r'[a-z0-9_-]+', query_lower)
+        tokens = re.findall(r"[a-z0-9_-]+", query_lower)
 
         # Step 2: Filter tokens
         keywords = []
@@ -93,16 +284,16 @@ class KeywordExtractor:
         # Step 3: Handle special cases and compound terms
         # Look for common patterns like "best practices", "how to", etc.
         compound_patterns = [
-            (r'best\s+practice[s]?', 'best_practices'),
-            (r'how\s+to', 'howto'),
-            (r'step\s+by\s+step', 'step_by_step'),
-            (r'real\s+time', 'realtime'),
-            (r'full\s+text', 'fulltext'),
-            (r'full[\s-]?stack', 'fullstack'),
-            (r'back[\s-]?end', 'backend'),
-            (r'front[\s-]?end', 'frontend'),
-            (r'data[\s-]?base', 'database'),
-            (r'web[\s-]?socket', 'websocket'),
+            (r"best\s+practice[s]?", "best_practices"),
+            (r"how\s+to", "howto"),
+            (r"step\s+by\s+step", "step_by_step"),
+            (r"real\s+time", "realtime"),
+            (r"full\s+text", "fulltext"),
+            (r"full[\s-]?stack", "fullstack"),
+            (r"back[\s-]?end", "backend"),
+            (r"front[\s-]?end", "frontend"),
+            (r"data[\s-]?base", "database"),
+            (r"web[\s-]?socket", "websocket"),
         ]
 
         for pattern, replacement in compound_patterns:
@@ -129,11 +320,11 @@ class KeywordExtractor:
     def _prioritize_keywords(self, keywords: list[str], original_query: str) -> list[str]:
         """
         Prioritize keywords based on various factors.
-        
+
         Args:
             keywords: List of extracted keywords
             original_query: The original search query
-            
+
         Returns:
             Keywords sorted by priority
         """
@@ -173,10 +364,10 @@ class KeywordExtractor:
     def build_search_terms(self, keywords: list[str]) -> list[str]:
         """
         Build search terms from keywords, including variations.
-        
+
         Args:
             keywords: List of keywords
-            
+
         Returns:
             List of search terms including variations
         """
@@ -187,33 +378,33 @@ class KeywordExtractor:
             search_terms.append(keyword)
 
             # Add plural/singular variations for common patterns
-            if keyword.endswith('s') and len(keyword) > 3 and not keyword.endswith('ss'):
+            if keyword.endswith("s") and len(keyword) > 3 and not keyword.endswith("ss"):
                 # Possible plural -> add singular (but not for words ending in ss)
                 search_terms.append(keyword[:-1])
-            elif not keyword.endswith('s') or keyword.endswith('ss'):
+            elif not keyword.endswith("s") or keyword.endswith("ss"):
                 # Possible singular -> add plural
                 # Handle special cases
-                if keyword.endswith('ss'):
-                    search_terms.append(keyword + 'es')  # e.g., "class" -> "classes"
-                elif keyword.endswith('s'):
-                    search_terms.append(keyword + 'es')  # Other words ending in s
+                if keyword.endswith("ss"):
+                    search_terms.append(keyword + "es")  # e.g., "class" -> "classes"
+                elif keyword.endswith("s"):
+                    search_terms.append(keyword + "es")  # Other words ending in s
                 else:
-                    search_terms.append(keyword + 's')
+                    search_terms.append(keyword + "s")
 
             # Add common variations
-            if keyword.endswith('ing'):
+            if keyword.endswith("ing"):
                 # Remove -ing
                 base = keyword[:-3]
                 if len(base) > 2:
                     search_terms.append(base)
-                    search_terms.append(base + 'e')  # e.g., "coding" -> "code"
+                    search_terms.append(base + "e")  # e.g., "coding" -> "code"
 
-            if keyword.endswith('ed'):
+            if keyword.endswith("ed"):
                 # Remove -ed
                 base = keyword[:-2]
                 if len(base) > 2:
                     search_terms.append(base)
-                    search_terms.append(base + 'e')  # e.g., "created" -> "create"
+                    search_terms.append(base + "e")  # e.g., "created" -> "create"
 
         # Deduplicate
         seen = set()
@@ -233,12 +424,12 @@ keyword_extractor = KeywordExtractor()
 def extract_keywords(query: str, min_length: int = 2, max_keywords: int = 10) -> list[str]:
     """
     Convenience function to extract keywords from a query.
-    
+
     Args:
         query: The search query string
         min_length: Minimum keyword length
         max_keywords: Maximum number of keywords to return
-        
+
     Returns:
         List of extracted keywords
     """
@@ -248,10 +439,10 @@ def extract_keywords(query: str, min_length: int = 2, max_keywords: int = 10) ->
 def build_search_terms(keywords: list[str]) -> list[str]:
     """
     Convenience function to build search terms from keywords.
-    
+
     Args:
         keywords: List of keywords
-        
+
     Returns:
         List of search terms including variations
     """

@@ -13,11 +13,13 @@ def test_health_endpoint(client):
 def test_create_project(client, test_project, mock_supabase_client):
     """Test creating a new project via API."""
     # Set up mock to return a project
-    mock_supabase_client.table.return_value.insert.return_value.execute.return_value.data = [{
-        "id": "test-project-id",
-        "title": test_project["title"],
-        "description": test_project["description"]
-    }]
+    mock_supabase_client.table.return_value.insert.return_value.execute.return_value.data = [
+        {
+            "id": "test-project-id",
+            "title": test_project["title"],
+            "description": test_project["description"],
+        }
+    ]
 
     response = client.post("/api/projects", json=test_project)
     # Should succeed with mocked data
@@ -27,7 +29,13 @@ def test_create_project(client, test_project, mock_supabase_client):
     if response.status_code in [200, 201]:
         data = response.json()
         # Check response format - at least one of these should be present
-        assert "title" in data or "id" in data or "progress_id" in data or "status" in data or "message" in data
+        assert (
+            "title" in data
+            or "id" in data
+            or "progress_id" in data
+            or "status" in data
+            or "message" in data
+        )
 
 
 def test_list_projects(client, mock_supabase_client):
@@ -61,11 +69,7 @@ def test_list_tasks(client):
 
 def test_start_crawl(client):
     """Test crawl endpoint exists and validates input."""
-    crawl_request = {
-        "url": "https://example.com",
-        "max_depth": 2,
-        "max_pages": 10
-    }
+    crawl_request = {"url": "https://example.com", "max_depth": 2, "max_pages": 10}
 
     response = client.post("/api/knowledge/crawl", json=crawl_request)
     # Accept various status codes - endpoint exists and processes request

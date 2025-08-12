@@ -4,6 +4,7 @@ Logging Middleware for FastAPI
 Automatically logs requests and responses using logfire when available.
 Follows 2025 best practices for simple, automatic instrumentation.
 """
+
 import time
 from collections.abc import Callable
 
@@ -17,7 +18,7 @@ from ..config.logfire_config import LOGFIRE_AVAILABLE, get_logger, is_logfire_en
 class LoggingMiddleware(BaseHTTPMiddleware):
     """
     Middleware that automatically logs HTTP requests and responses.
-    
+
     Skips health check endpoints to reduce noise.
     """
 
@@ -66,7 +67,7 @@ class LoggingMiddleware(BaseHTTPMiddleware):
 def instrument_fastapi(app):
     """
     Instrument a FastAPI app with automatic logging.
-    
+
     This is the recommended approach for 2025 - let logfire handle the complexity.
     """
     logger = get_logger("instrumentation")
@@ -75,6 +76,7 @@ def instrument_fastapi(app):
         try:
             # Import logfire for instrumentation only when enabled
             import logfire
+
             # Use logfire's built-in FastAPI instrumentation
             logfire.instrument_fastapi(app)
             logger.info("FastAPI instrumented with logfire")
@@ -91,7 +93,7 @@ def instrument_fastapi(app):
 class LoggingRoute(APIRoute):
     """
     Custom APIRoute that logs endpoint execution time.
-    
+
     This provides more granular logging than middleware alone.
     """
 

@@ -28,7 +28,7 @@ class AgenticRAGStrategy:
     def __init__(self, supabase_client: Client, base_strategy):
         """
         Initialize agentic RAG strategy.
-        
+
         Args:
             supabase_client: Supabase client for database operations
             base_strategy: Base strategy for vector search
@@ -40,7 +40,8 @@ class AgenticRAGStrategy:
         """Check if agentic RAG is enabled via configuration."""
         try:
             from ..credential_service import credential_service
-            if hasattr(credential_service, '_cache') and credential_service._cache_initialized:
+
+            if hasattr(credential_service, "_cache") and credential_service._cache_initialized:
                 cached_value = credential_service._cache.get("USE_AGENTIC_RAG")
                 if cached_value:
                     # Handle both direct values and encrypted values
@@ -64,29 +65,28 @@ class AgenticRAGStrategy:
             # Default to false on any error
             return False
 
-
     async def search_code_examples(
         self,
         query: str,
         match_count: int = 10,
         filter_metadata: dict[str, Any] | None = None,
-        source_id: str | None = None
+        source_id: str | None = None,
     ) -> list[dict[str, Any]]:
         """
         Search for code examples using vector similarity.
-        
+
         Args:
             query: Search query text
             match_count: Maximum number of results to return
             filter_metadata: Optional metadata filter
             source_id: Optional source ID to filter results
-            
+
         Returns:
             List of matching code examples
         """
-        with safe_span("agentic_code_search",
-                      query_length=len(query),
-                      match_count=match_count) as span:
+        with safe_span(
+            "agentic_code_search", query_length=len(query), match_count=match_count
+        ) as span:
             try:
                 # Create embedding for the query (no enhancement)
                 query_embedding = await create_embedding(query)
@@ -98,19 +98,21 @@ class AgenticRAGStrategy:
                 # Prepare filters
                 combined_filter = filter_metadata or {}
                 if source_id:
-                    combined_filter['source'] = source_id
+                    combined_filter["source"] = source_id
 
                 # Use base strategy for vector search
                 results = await self.base_strategy.vector_search(
                     query_embedding=query_embedding,
                     match_count=match_count,
                     filter_metadata=combined_filter,
-                    table_rpc='match_code_examples'
+                    table_rpc="match_code_examples",
                 )
 
                 span.set_attribute("results_found", len(results))
 
-                logger.debug(f"Agentic code search found {len(results)} results for query: {query[:50]}...")
+                logger.debug(
+                    f"Agentic code search found {len(results)} results for query: {query[:50]}..."
+                )
 
                 return results
 
@@ -124,30 +126,32 @@ class AgenticRAGStrategy:
         query: str,
         source_id: str | None = None,
         match_count: int = 5,
-        include_context: bool = True
+        include_context: bool = True,
     ) -> tuple[bool, dict[str, Any]]:
         """
         Perform a comprehensive agentic RAG search for code examples with enhanced formatting.
-        
+
         Args:
             query: The search query
             source_id: Optional source ID to filter results
             match_count: Maximum number of results to return
             include_context: Whether to include contextual information in results
-            
+
         Returns:
             Tuple of (success, result_dict)
         """
-        with safe_span("agentic_rag_search",
-                      query_length=len(query),
-                      source_id=source_id,
-                      match_count=match_count) as span:
+        with safe_span(
+            "agentic_rag_search",
+            query_length=len(query),
+            source_id=source_id,
+            match_count=match_count,
+        ) as span:
             try:
                 # Check if agentic RAG is enabled
                 if not self.is_enabled():
                     return False, {
                         "error": "Agentic RAG (code example extraction) is disabled. Enable USE_AGENTIC_RAG setting to use this feature.",
-                        "query": query
+                        "query": query,
                     }
 
                 # Prepare filter if source is provided
@@ -161,7 +165,7 @@ class AgenticRAGStrategy:
                     match_count=match_count,
                     filter_metadata=filter_metadata,
                     source_id=source_id,
-                    use_enhancement=True
+                    use_enhancement=True,
                 )
 
                 # Format results for API response
@@ -173,7 +177,7 @@ class AgenticRAGStrategy:
                         "summary": result.get("summary"),
                         "metadata": result.get("metadata", {}),
                         "source_id": result.get("source_id"),
-                        "similarity": result.get("similarity", 0.0)
+                        "similarity": result.get("similarity", 0.0),
                     }
 
                     # Add additional context if requested
@@ -190,13 +194,15 @@ class AgenticRAGStrategy:
                     "strategy": "enhanced_code_search",
                     "results": formatted_results,
                     "count": len(formatted_results),
-                    "enhanced_query_used": True
+                    "enhanced_query_used": True,
                 }
 
                 span.set_attribute("results_returned", len(formatted_results))
                 span.set_attribute("success", True)
 
-                logger.info(f"Agentic RAG search completed - {len(formatted_results)} code examples found")
+                logger.info(
+                    f"Agentic RAG search completed - {len(formatted_results)} code examples found"
+                )
 
                 return True, response_data
 
@@ -210,16 +216,16 @@ class AgenticRAGStrategy:
                     "error_type": type(e).__name__,
                     "query": query,
                     "source_filter": source_id,
-                    "search_mode": "agentic_rag"
+                    "search_mode": "agentic_rag",
                 }
 
     def _extract_code_context(self, result: dict[str, Any]) -> dict[str, Any]:
         """
         Extract additional context information from a code example result.
-        
+
         Args:
             result: Raw search result from database
-            
+
         Returns:
             Dictionary with contextual information
         """
@@ -247,17 +253,17 @@ class AgenticRAGStrategy:
         content = result.get("content", "")
         if content:
             context["content_length"] = len(content)
-            context["line_count"] = content.count('\\n') + 1
+            context["line_count"] = content.count("\\n") + 1
 
         return context
 
     def analyze_code_query(self, query: str) -> dict[str, Any]:
         """
         Analyze a query to determine if it's code-related and extract relevant information.
-        
+
         Args:
             query: Search query to analyze
-            
+
         Returns:
             Analysis results with query classification and extracted info
         """
@@ -265,46 +271,96 @@ class AgenticRAGStrategy:
 
         # Programming language detection
         languages = [
-            'python', 'javascript', 'java', 'c++', 'cpp', 'c#', 'csharp',
-            'ruby', 'go', 'golang', 'rust', 'swift', 'kotlin', 'scala',
-            'php', 'typescript', 'html', 'css', 'sql', 'bash', 'shell',
-            'r', 'matlab', 'julia', 'perl', 'lua', 'dart', 'elixir'
+            "python",
+            "javascript",
+            "java",
+            "c++",
+            "cpp",
+            "c#",
+            "csharp",
+            "ruby",
+            "go",
+            "golang",
+            "rust",
+            "swift",
+            "kotlin",
+            "scala",
+            "php",
+            "typescript",
+            "html",
+            "css",
+            "sql",
+            "bash",
+            "shell",
+            "r",
+            "matlab",
+            "julia",
+            "perl",
+            "lua",
+            "dart",
+            "elixir",
         ]
 
         detected_languages = [lang for lang in languages if lang in query_lower]
 
         # Framework/library detection
         frameworks = [
-            'react', 'angular', 'vue', 'django', 'flask', 'fastapi',
-            'express', 'spring', 'rails', 'laravel', 'tensorflow',
-            'pytorch', 'pandas', 'numpy', 'matplotlib', 'opencv'
+            "react",
+            "angular",
+            "vue",
+            "django",
+            "flask",
+            "fastapi",
+            "express",
+            "spring",
+            "rails",
+            "laravel",
+            "tensorflow",
+            "pytorch",
+            "pandas",
+            "numpy",
+            "matplotlib",
+            "opencv",
         ]
 
         detected_frameworks = [fw for fw in frameworks if fw in query_lower]
 
         # Code-related keywords
         code_keywords = [
-            'function', 'class', 'method', 'algorithm', 'implementation',
-            'example', 'tutorial', 'pattern', 'template', 'snippet',
-            'code', 'programming', 'development', 'api', 'library'
+            "function",
+            "class",
+            "method",
+            "algorithm",
+            "implementation",
+            "example",
+            "tutorial",
+            "pattern",
+            "template",
+            "snippet",
+            "code",
+            "programming",
+            "development",
+            "api",
+            "library",
         ]
 
         code_indicators = [kw for kw in code_keywords if kw in query_lower]
 
         # Determine if query is code-related
         is_code_query = (
-            len(detected_languages) > 0 or
-            len(detected_frameworks) > 0 or
-            len(code_indicators) > 0
+            len(detected_languages) > 0 or len(detected_frameworks) > 0 or len(code_indicators) > 0
         )
 
         return {
             "is_code_query": is_code_query,
-            "confidence": min(1.0, (len(detected_languages) + len(detected_frameworks) + len(code_indicators)) * 0.3),
+            "confidence": min(
+                1.0,
+                (len(detected_languages) + len(detected_frameworks) + len(code_indicators)) * 0.3,
+            ),
             "languages": detected_languages,
             "frameworks": detected_frameworks,
             "code_indicators": code_indicators,
-            "enhanced_query_recommended": is_code_query
+            "enhanced_query_recommended": is_code_query,
         }
 
 
@@ -319,18 +375,18 @@ async def search_code_examples_agentic(
     query: str,
     match_count: int = 10,
     filter_metadata: dict[str, Any] | None = None,
-    source_id: str | None = None
+    source_id: str | None = None,
 ) -> list[dict[str, Any]]:
     """
     Standalone function for agentic code example search.
-    
+
     Args:
         client: Supabase client
         query: Search query
         match_count: Number of results to return
         filter_metadata: Optional metadata filter
         source_id: Optional source filter
-        
+
     Returns:
         List of code example results
     """
@@ -341,10 +397,10 @@ async def search_code_examples_agentic(
 def analyze_query_for_code_search(query: str) -> dict[str, Any]:
     """
     Standalone function to analyze if a query is code-related.
-    
+
     Args:
         query: Query to analyze
-        
+
     Returns:
         Analysis results
     """

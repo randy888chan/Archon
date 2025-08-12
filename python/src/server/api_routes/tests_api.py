@@ -4,6 +4,7 @@ Test Execution API for Archon
 Provides FastAPI endpoints for executing tests (pytest, vitest) with real-time streaming output.
 Includes WebSocket streaming, background task management, and test result tracking.
 """
+
 import asyncio
 import os
 import shutil
@@ -25,6 +26,7 @@ logger = get_logger(__name__)
 # Create router
 router = APIRouter(prefix="/api/tests", tags=["tests"])
 
+
 # Test execution status enum
 class TestStatus(str, Enum):
     PENDING = "pending"
@@ -33,15 +35,18 @@ class TestStatus(str, Enum):
     FAILED = "failed"
     CANCELLED = "cancelled"
 
+
 # Test type enum
 class TestType(str, Enum):
     MCP = "mcp"
     UI = "ui"
 
+
 # Pydantic models for API requests/responses
 class TestExecutionRequest(BaseModel):
     test_type: TestType
     options: dict[str, Any] | None = {}
+
 
 class TestExecutionResponse(BaseModel):
     execution_id: str
@@ -49,6 +54,7 @@ class TestExecutionResponse(BaseModel):
     status: TestStatus
     started_at: datetime
     message: str
+
 
 class TestStatusResponse(BaseModel):
     execution_id: str
@@ -60,9 +66,11 @@ class TestStatusResponse(BaseModel):
     exit_code: int | None = None
     summary: dict[str, Any] | None = None
 
+
 class TestHistoryResponse(BaseModel):
     executions: list[TestStatusResponse]
     total_count: int
+
 
 # Data classes for test execution tracking
 @dataclass
@@ -87,9 +95,11 @@ class TestExecution:
             return (self.completed_at - self.started_at).total_seconds()
         return None
 
+
 # Global state for test executions
 test_executions: dict[str, TestExecution] = {}
 active_websockets: dict[str, list[WebSocket]] = {}
+
 
 # WebSocket connection manager
 class TestWebSocketManager:
@@ -123,7 +133,9 @@ class TestWebSocketManager:
             for ws in disconnected:
                 self.disconnect(ws, execution_id)
 
+
 websocket_manager = TestWebSocketManager()
+
 
 # Test execution functions
 async def execute_mcp_tests(execution_id: str) -> TestExecution:
@@ -146,16 +158,18 @@ async def execute_mcp_tests(execution_id: str) -> TestExecution:
             "--disable-warnings",  # cleaner output
             "tests/test_api_essentials.py",  # run specific test files
             "tests/test_service_integration.py",
-            "tests/test_business_logic.py"
+            "tests/test_business_logic.py",
         ]
 
         logger.info(f"Starting Python test execution: {' '.join(cmd)}")
         logger.info(f"[DEBUG] Current working directory: {os.getcwd()}")
         logger.info(f"[DEBUG] /app/tests directory exists: {os.path.exists('/app/tests')}")
-        logger.info(f"[DEBUG] Test files exist: {[os.path.exists(f'/app/{f}') for f in ['tests/test_api_essentials.py', 'tests/test_service_integration.py', 'tests/test_business_logic.py']]}")
+        logger.info(
+            f"[DEBUG] Test files exist: {[os.path.exists(f'/app/{f}') for f in ['tests/test_api_essentials.py', 'tests/test_service_integration.py', 'tests/test_business_logic.py']]}"
+        )
 
         # Check if pytest is available
-        pytest_path = shutil.which('pytest')
+        pytest_path = shutil.which("pytest")
         logger.info(f"[DEBUG] pytest executable path: {pytest_path}")
         logger.info(f"[DEBUG] PATH environment: {os.environ.get('PATH', 'NOT SET')}")
 
@@ -165,7 +179,7 @@ async def execute_mcp_tests(execution_id: str) -> TestExecution:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
             cwd="/app",  # Use the app directory inside the container
-            env={**os.environ, "PYTHONUNBUFFERED": "1"}  # Ensure unbuffered output
+            env={**os.environ, "PYTHONUNBUFFERED": "1"},  # Ensure unbuffered output
         )
 
         logger.info(f"[DEBUG] Process created with PID: {process.pid if process else 'None'}")
@@ -197,22 +211,29 @@ async def execute_mcp_tests(execution_id: str) -> TestExecution:
         execution.summary = {"error": str(e)}
 
         # Broadcast error
-        await websocket_manager.broadcast_to_execution(execution_id, {
-            "type": "error",
-            "message": f"Test execution failed: {str(e)}",
-            "timestamp": datetime.now().isoformat()
-        })
+        await websocket_manager.broadcast_to_execution(
+            execution_id,
+            {
+                "type": "error",
+                "message": f"Test execution failed: {str(e)}",
+                "timestamp": datetime.now().isoformat(),
+            },
+        )
 
     # Broadcast completion
-    await websocket_manager.broadcast_to_execution(execution_id, {
-        "type": "completed",
-        "status": execution.status.value,
-        "exit_code": execution.exit_code,
-        "summary": execution.summary,
-        "timestamp": datetime.now().isoformat()
-    })
+    await websocket_manager.broadcast_to_execution(
+        execution_id,
+        {
+            "type": "completed",
+            "status": execution.status.value,
+            "exit_code": execution.exit_code,
+            "summary": execution.summary,
+            "timestamp": datetime.now().isoformat(),
+        },
+    )
 
     return execution
+
 
 async def execute_ui_tests(execution_id: str) -> TestExecution:
     """Execute React UI tests - for now, return mock results since Docker-in-Docker is not available."""
@@ -225,12 +246,15 @@ async def execute_ui_tests(execution_id: str) -> TestExecution:
         execution.status = TestStatus.RUNNING
 
         # Send initial status
-        await websocket_manager.broadcast_to_execution(execution_id, {
-            "type": "status",
-            "data": {"status": "running"},
-            "message": "UI test execution started (simulated)",
-            "timestamp": datetime.now().isoformat()
-        })
+        await websocket_manager.broadcast_to_execution(
+            execution_id,
+            {
+                "type": "status",
+                "data": {"status": "running"},
+                "message": "UI test execution started (simulated)",
+                "timestamp": datetime.now().isoformat(),
+            },
+        )
 
         # Simulate test output
         test_output = [
@@ -245,17 +269,16 @@ async def execute_ui_tests(execution_id: str) -> TestExecution:
             "     Tests  30 passed (30)",
             "  Duration  203ms",
             "",
-            "All tests passed!"
+            "All tests passed!",
         ]
 
         # Stream output lines
         for line in test_output:
             execution.output_lines.append(line)
-            await websocket_manager.broadcast_to_execution(execution_id, {
-                "type": "output",
-                "message": line,
-                "timestamp": datetime.now().isoformat()
-            })
+            await websocket_manager.broadcast_to_execution(
+                execution_id,
+                {"type": "output", "message": line, "timestamp": datetime.now().isoformat()},
+            )
             await asyncio.sleep(0.1)  # Small delay to simulate real output
 
         # Mark as completed
@@ -270,7 +293,9 @@ async def execute_ui_tests(execution_id: str) -> TestExecution:
         # 1. Install Docker CLI in the server container
         # 2. Use a separate test runner service
         # 3. Expose a test endpoint in the UI container
-        logger.warning("UI tests are currently simulated. Real execution requires Docker-in-Docker setup.")
+        logger.warning(
+            "UI tests are currently simulated. Real execution requires Docker-in-Docker setup."
+        )
 
         execution.process = process
         execution.status = TestStatus.RUNNING
@@ -288,17 +313,19 @@ async def execute_ui_tests(execution_id: str) -> TestExecution:
             try:
                 # Copy coverage summary JSON
                 copy_cmd = [
-                    "docker", "cp",
+                    "docker",
+                    "cp",
                     "archon-frontend-1:/app/archon-ui-main/coverage/coverage-summary.json",
-                    "/app/coverage_reports/vitest/"
+                    "/app/coverage_reports/vitest/",
                 ]
                 await asyncio.create_subprocess_exec(*copy_cmd)
 
                 # Copy HTML coverage report directory
                 copy_html_cmd = [
-                    "docker", "cp",
+                    "docker",
+                    "cp",
                     "archon-frontend-1:/app/archon-ui-main/coverage/",
-                    "/app/coverage_reports/vitest/html"
+                    "/app/coverage_reports/vitest/html",
                 ]
                 await asyncio.create_subprocess_exec(*copy_html_cmd)
 
@@ -321,22 +348,29 @@ async def execute_ui_tests(execution_id: str) -> TestExecution:
         execution.summary = {"error": str(e)}
 
         # Broadcast error
-        await websocket_manager.broadcast_to_execution(execution_id, {
-            "type": "error",
-            "message": f"Test execution failed: {str(e)}",
-            "timestamp": datetime.now().isoformat()
-        })
+        await websocket_manager.broadcast_to_execution(
+            execution_id,
+            {
+                "type": "error",
+                "message": f"Test execution failed: {str(e)}",
+                "timestamp": datetime.now().isoformat(),
+            },
+        )
 
     # Broadcast completion
-    await websocket_manager.broadcast_to_execution(execution_id, {
-        "type": "completed",
-        "status": execution.status.value,
-        "exit_code": execution.exit_code,
-        "summary": execution.summary,
-        "timestamp": datetime.now().isoformat()
-    })
+    await websocket_manager.broadcast_to_execution(
+        execution_id,
+        {
+            "type": "completed",
+            "status": execution.status.value,
+            "exit_code": execution.exit_code,
+            "summary": execution.summary,
+            "timestamp": datetime.now().isoformat(),
+        },
+    )
 
     return execution
+
 
 async def stream_process_output(execution_id: str, process: asyncio.subprocess.Process):
     """Stream process output to WebSocket clients with improved real-time handling."""
@@ -344,12 +378,15 @@ async def stream_process_output(execution_id: str, process: asyncio.subprocess.P
     logger.info(f"[DEBUG] Starting stream_process_output for execution_id: {execution_id}")
 
     # Send initial status update
-    await websocket_manager.broadcast_to_execution(execution_id, {
-        "type": "status",
-        "data": {"status": "running"},
-        "message": "Test execution started",
-        "timestamp": datetime.now().isoformat()
-    })
+    await websocket_manager.broadcast_to_execution(
+        execution_id,
+        {
+            "type": "status",
+            "data": {"status": "running"},
+            "message": "Test execution started",
+            "timestamp": datetime.now().isoformat(),
+        },
+    )
 
     line_count = 0
 
@@ -360,30 +397,38 @@ async def stream_process_output(execution_id: str, process: asyncio.subprocess.P
             if not line:
                 break
 
-            decoded_line = line.decode('utf-8').rstrip()
+            decoded_line = line.decode("utf-8").rstrip()
             line_count += 1
-            logger.info(f"[DEBUG] Line {line_count}: {decoded_line[:100]}...")  # Log first 100 chars
+            logger.info(
+                f"[DEBUG] Line {line_count}: {decoded_line[:100]}..."
+            )  # Log first 100 chars
             if decoded_line:  # Only add non-empty lines
                 execution.output_lines.append(decoded_line)
 
                 # Broadcast to WebSocket clients immediately
-                await websocket_manager.broadcast_to_execution(execution_id, {
-                    "type": "output",
-                    "message": decoded_line,
-                    "timestamp": datetime.now().isoformat()
-                })
+                await websocket_manager.broadcast_to_execution(
+                    execution_id,
+                    {
+                        "type": "output",
+                        "message": decoded_line,
+                        "timestamp": datetime.now().isoformat(),
+                    },
+                )
 
         except TimeoutError:
             # Check if process is still alive
             if process.returncode is not None:
                 break
             # Send heartbeat to keep connection alive
-            await websocket_manager.broadcast_to_execution(execution_id, {
-                "type": "status",
-                "data": {"status": "running"},
-                "message": "Tests still running...",
-                "timestamp": datetime.now().isoformat()
-            })
+            await websocket_manager.broadcast_to_execution(
+                execution_id,
+                {
+                    "type": "status",
+                    "data": {"status": "running"},
+                    "message": "Tests still running...",
+                    "timestamp": datetime.now().isoformat(),
+                },
+            )
         except Exception as e:
             logger.error(f"Error streaming output: {e}")
             logger.error(f"[DEBUG] Exception type: {type(e).__name__}")
@@ -391,6 +436,7 @@ async def stream_process_output(execution_id: str, process: asyncio.subprocess.P
             break
 
     logger.info(f"[DEBUG] Stream ended. Total lines read: {line_count}")
+
 
 async def execute_tests_background(execution_id: str, test_type: TestType):
     """Background task for test execution - removed ALL type."""
@@ -409,13 +455,12 @@ async def execute_tests_background(execution_id: str, test_type: TestType):
         execution.completed_at = datetime.now()
         execution.summary = {"error": str(e)}
 
+
 # API Endpoints
 
+
 @router.post("/mcp/run", response_model=TestExecutionResponse)
-async def run_mcp_tests(
-    request: TestExecutionRequest,
-    background_tasks: BackgroundTasks
-):
+async def run_mcp_tests(request: TestExecutionRequest, background_tasks: BackgroundTasks):
     """Execute Python tests using pytest with real-time streaming output."""
     execution_id = str(uuid.uuid4())
 
@@ -428,7 +473,7 @@ async def run_mcp_tests(
         execution_id=execution_id,
         test_type=TestType.MCP,
         status=TestStatus.PENDING,
-        started_at=datetime.now()
+        started_at=datetime.now(),
     )
 
     test_executions[execution_id] = execution
@@ -443,14 +488,12 @@ async def run_mcp_tests(
         test_type=TestType.MCP,
         status=TestStatus.PENDING,
         started_at=execution.started_at,
-        message="Python test execution started"
+        message="Python test execution started",
     )
 
+
 @router.post("/ui/run", response_model=TestExecutionResponse)
-async def run_ui_tests(
-    request: TestExecutionRequest,
-    background_tasks: BackgroundTasks
-):
+async def run_ui_tests(request: TestExecutionRequest, background_tasks: BackgroundTasks):
     """Execute React UI tests using vitest with real-time streaming output."""
     execution_id = str(uuid.uuid4())
 
@@ -463,7 +506,7 @@ async def run_ui_tests(
         execution_id=execution_id,
         test_type=TestType.UI,
         status=TestStatus.PENDING,
-        started_at=datetime.now()
+        started_at=datetime.now(),
     )
 
     test_executions[execution_id] = execution
@@ -478,8 +521,9 @@ async def run_ui_tests(
         test_type=TestType.UI,
         status=TestStatus.PENDING,
         started_at=execution.started_at,
-        message="React UI test execution started"
+        message="React UI test execution started",
     )
+
 
 @router.get("/status/{execution_id}", response_model=TestStatusResponse)
 async def get_test_status(execution_id: str):
@@ -493,7 +537,9 @@ async def get_test_status(execution_id: str):
 
         execution = test_executions[execution_id]
 
-        logfire.info(f"Test execution status retrieved | execution_id={execution_id} | status={execution.status} | test_type={execution.test_type}")
+        logfire.info(
+            f"Test execution status retrieved | execution_id={execution_id} | status={execution.status} | test_type={execution.test_type}"
+        )
 
         return TestStatusResponse(
             execution_id=execution.execution_id,
@@ -503,7 +549,7 @@ async def get_test_status(execution_id: str):
             completed_at=execution.completed_at,
             duration_seconds=execution.duration_seconds,
             exit_code=execution.exit_code,
-            summary=execution.summary
+            summary=execution.summary,
         )
 
     except HTTPException:
@@ -511,6 +557,7 @@ async def get_test_status(execution_id: str):
     except Exception as e:
         logfire.error(f"Failed to get test status | error={str(e)} | execution_id={execution_id}")
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.get("/history", response_model=TestHistoryResponse)
 async def get_test_history(limit: int = 50, offset: int = 0):
@@ -525,7 +572,7 @@ async def get_test_history(limit: int = 50, offset: int = 0):
 
         # Apply pagination
         total_count = len(executions)
-        paginated_executions = executions[offset:offset + limit]
+        paginated_executions = executions[offset : offset + limit]
 
         # Convert to response models
         execution_responses = [
@@ -537,21 +584,23 @@ async def get_test_history(limit: int = 50, offset: int = 0):
                 completed_at=exec.completed_at,
                 duration_seconds=exec.duration_seconds,
                 exit_code=exec.exit_code,
-                summary=exec.summary
+                summary=exec.summary,
             )
             for exec in paginated_executions
         ]
 
-        logfire.info(f"Test execution history retrieved | total_count={total_count} | returned_count={len(execution_responses)}")
-
-        return TestHistoryResponse(
-            executions=execution_responses,
-            total_count=total_count
+        logfire.info(
+            f"Test execution history retrieved | total_count={total_count} | returned_count={len(execution_responses)}"
         )
 
+        return TestHistoryResponse(executions=execution_responses, total_count=total_count)
+
     except Exception as e:
-        logfire.error(f"Failed to get test history | error={str(e)} | limit={limit} | offset={offset}")
+        logfire.error(
+            f"Failed to get test history | error={str(e)} | limit={limit} | offset={offset}"
+        )
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.delete("/execution/{execution_id}")
 async def cancel_test_execution(execution_id: str):
@@ -560,13 +609,17 @@ async def cancel_test_execution(execution_id: str):
         logfire.info(f"Cancelling test execution | execution_id={execution_id}")
 
         if execution_id not in test_executions:
-            logfire.warning(f"Test execution not found for cancellation | execution_id={execution_id}")
+            logfire.warning(
+                f"Test execution not found for cancellation | execution_id={execution_id}"
+            )
             raise HTTPException(status_code=404, detail="Test execution not found")
 
         execution = test_executions[execution_id]
 
         if execution.status not in [TestStatus.PENDING, TestStatus.RUNNING]:
-            logfire.warning(f"Test execution cannot be cancelled | execution_id={execution_id} | status={execution.status}")
+            logfire.warning(
+                f"Test execution cannot be cancelled | execution_id={execution_id} | status={execution.status}"
+            )
             raise HTTPException(status_code=400, detail="Test execution cannot be cancelled")
 
         # Try to terminate the process
@@ -577,18 +630,23 @@ async def cancel_test_execution(execution_id: str):
                 if execution.process.returncode is None:
                     execution.process.kill()
             except Exception as e:
-                logfire.warning(f"Error terminating test process | error={str(e)} | execution_id={execution_id}")
+                logfire.warning(
+                    f"Error terminating test process | error={str(e)} | execution_id={execution_id}"
+                )
 
         execution.status = TestStatus.CANCELLED
         execution.completed_at = datetime.now()
         execution.summary = {"result": "Test execution cancelled by user"}
 
         # Broadcast cancellation
-        await websocket_manager.broadcast_to_execution(execution_id, {
-            "type": "cancelled",
-            "message": "Test execution cancelled",
-            "timestamp": datetime.now().isoformat()
-        })
+        await websocket_manager.broadcast_to_execution(
+            execution_id,
+            {
+                "type": "cancelled",
+                "message": "Test execution cancelled",
+                "timestamp": datetime.now().isoformat(),
+            },
+        )
 
         logfire.info(f"Test execution cancelled successfully | execution_id={execution_id}")
 
@@ -597,8 +655,11 @@ async def cancel_test_execution(execution_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        logfire.error(f"Failed to cancel test execution | error={str(e)} | execution_id={execution_id}")
+        logfire.error(
+            f"Failed to cancel test execution | error={str(e)} | execution_id={execution_id}"
+        )
         raise HTTPException(status_code=500, detail=str(e))
+
 
 # WebSocket endpoint for real-time test output
 @router.websocket("/stream/{execution_id}")
@@ -616,7 +677,7 @@ async def test_output_websocket(websocket: WebSocket, execution_id: str):
                 "type": "status",
                 "status": execution.status.value,
                 "started_at": execution.started_at.isoformat(),
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             })
 
             # Send existing output lines
@@ -624,7 +685,7 @@ async def test_output_websocket(websocket: WebSocket, execution_id: str):
                 await websocket.send_json({
                     "type": "output",
                     "message": line,
-                    "timestamp": datetime.now().isoformat()
+                    "timestamp": datetime.now().isoformat(),
                 })
 
             # If execution is already completed, send completion message
@@ -634,7 +695,7 @@ async def test_output_websocket(websocket: WebSocket, execution_id: str):
                     "status": execution.status.value,
                     "exit_code": execution.exit_code,
                     "summary": execution.summary,
-                    "timestamp": datetime.now().isoformat()
+                    "timestamp": datetime.now().isoformat(),
                 })
 
         # Keep connection alive until client disconnects
@@ -650,7 +711,9 @@ async def test_output_websocket(websocket: WebSocket, execution_id: str):
     finally:
         websocket_manager.disconnect(websocket, execution_id)
 
+
 # Test Results API endpoint
+
 
 @router.get("/latest-results")
 async def get_latest_test_results():
@@ -680,11 +743,13 @@ async def get_latest_test_results():
             "test_type": latest_execution.test_type.value,
             "status": latest_execution.status.value,
             "started_at": latest_execution.started_at.isoformat(),
-            "completed_at": latest_execution.completed_at.isoformat() if latest_execution.completed_at else None,
+            "completed_at": latest_execution.completed_at.isoformat()
+            if latest_execution.completed_at
+            else None,
             "duration_seconds": latest_execution.duration_seconds,
             "exit_code": latest_execution.exit_code,
             "summary": latest_execution.summary,
-            "output": latest_execution.output_lines
+            "output": latest_execution.output_lines,
         }
 
     except HTTPException:

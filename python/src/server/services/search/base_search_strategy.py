@@ -29,31 +29,26 @@ class BaseSearchStrategy:
         query_embedding: list[float],
         match_count: int,
         filter_metadata: dict | None = None,
-        table_rpc: str = "match_crawled_pages"
+        table_rpc: str = "match_crawled_pages",
     ) -> list[dict[str, Any]]:
         """
         Perform basic vector similarity search.
-        
+
         This is the foundational semantic search that all strategies use.
-        
+
         Args:
             query_embedding: The embedding vector for the query
             match_count: Number of results to return
             filter_metadata: Optional metadata filters
             table_rpc: The RPC function to call (match_crawled_pages or match_code_examples)
-            
+
         Returns:
             List of matching documents with similarity scores
         """
-        with safe_span("base_vector_search",
-                      table=table_rpc,
-                      match_count=match_count) as span:
+        with safe_span("base_vector_search", table=table_rpc, match_count=match_count) as span:
             try:
                 # Build RPC parameters
-                rpc_params = {
-                    "query_embedding": query_embedding,
-                    "match_count": match_count
-                }
+                rpc_params = {"query_embedding": query_embedding, "match_count": match_count}
 
                 # Add filter parameters
                 if filter_metadata:
@@ -77,7 +72,10 @@ class BaseSearchStrategy:
                             filtered_results.append(result)
 
                 span.set_attribute("results_found", len(filtered_results))
-                span.set_attribute("results_filtered", len(response.data) - len(filtered_results) if response.data else 0)
+                span.set_attribute(
+                    "results_filtered",
+                    len(response.data) - len(filtered_results) if response.data else 0,
+                )
 
                 return filtered_results
 

@@ -3,6 +3,7 @@ Client Manager Service
 
 Manages database and API client connections.
 """
+
 import os
 import re
 
@@ -14,7 +15,7 @@ from ..config.logfire_config import search_logger
 def get_supabase_client() -> Client:
     """
     Get a Supabase client instance.
-    
+
     Returns:
         Supabase client instance
     """
@@ -22,14 +23,16 @@ def get_supabase_client() -> Client:
     key = os.getenv("SUPABASE_SERVICE_KEY")
 
     if not url or not key:
-        raise ValueError("SUPABASE_URL and SUPABASE_SERVICE_KEY must be set in environment variables")
+        raise ValueError(
+            "SUPABASE_URL and SUPABASE_SERVICE_KEY must be set in environment variables"
+        )
 
     try:
         # Let Supabase handle connection pooling internally
         client = create_client(url, key)
 
         # Extract project ID from URL for logging purposes only
-        match = re.match(r'https://([^.]+)\.supabase\.co', url)
+        match = re.match(r"https://([^.]+)\.supabase\.co", url)
         if match:
             project_id = match.group(1)
             search_logger.info(f"Supabase client initialized - project_id={project_id}")

@@ -4,6 +4,7 @@ LLM Provider Service
 Provides a unified interface for creating OpenAI-compatible clients for different LLM providers.
 Supports OpenAI, Ollama, and Google Gemini.
 """
+
 import time
 from contextlib import asynccontextmanager
 from typing import Any
@@ -19,6 +20,7 @@ logger = get_logger(__name__)
 _settings_cache: dict[str, tuple[Any, float]] = {}
 _CACHE_TTL_SECONDS = 300  # 5 minutes
 
+
 def _get_cached_settings(key: str) -> Any | None:
     """Get cached settings if not expired."""
     if key in _settings_cache:
@@ -30,6 +32,7 @@ def _get_cached_settings(key: str) -> Any | None:
             del _settings_cache[key]
     return None
 
+
 def _set_cached_settings(key: str, value: Any) -> None:
     """Cache settings with current timestamp."""
     _settings_cache[key] = (value, time.time())
@@ -39,14 +42,14 @@ def _set_cached_settings(key: str, value: Any) -> None:
 async def get_llm_client(provider: str | None = None, use_embedding_provider: bool = False):
     """
     Create an async OpenAI-compatible client based on the configured provider.
-    
+
     This context manager handles client creation for different LLM providers
     that support the OpenAI API format.
-    
+
     Args:
         provider: Override provider selection
         use_embedding_provider: Use the embedding-specific provider if different
-    
+
     Yields:
         openai.AsyncOpenAI: An OpenAI-compatible client configured for the selected provider
     """
@@ -101,7 +104,7 @@ async def get_llm_client(provider: str | None = None, use_embedding_provider: bo
             # Ollama requires an API key in the client but doesn't actually use it
             client = openai.AsyncOpenAI(
                 api_key="ollama",  # Required but unused by Ollama
-                base_url=base_url or "http://localhost:11434/v1"
+                base_url=base_url or "http://localhost:11434/v1",
             )
             logger.info(f"Ollama client created successfully with base URL: {base_url}")
 
@@ -111,7 +114,7 @@ async def get_llm_client(provider: str | None = None, use_embedding_provider: bo
 
             client = openai.AsyncOpenAI(
                 api_key=api_key,
-                base_url=base_url or "https://generativelanguage.googleapis.com/v1beta/openai/"
+                base_url=base_url or "https://generativelanguage.googleapis.com/v1beta/openai/",
             )
             logger.info("Google Gemini client created successfully")
 
@@ -121,7 +124,9 @@ async def get_llm_client(provider: str | None = None, use_embedding_provider: bo
         yield client
 
     except Exception as e:
-        logger.error(f"Error creating LLM client for provider {provider_name if 'provider_name' in locals() else 'unknown'}: {e}")
+        logger.error(
+            f"Error creating LLM client for provider {provider_name if 'provider_name' in locals() else 'unknown'}: {e}"
+        )
         raise
     finally:
         # Cleanup if needed
@@ -131,10 +136,10 @@ async def get_llm_client(provider: str | None = None, use_embedding_provider: bo
 async def get_embedding_model(provider: str | None = None) -> str:
     """
     Get the configured embedding model based on the provider.
-    
+
     Args:
         provider: Override provider selection
-    
+
     Returns:
         str: The embedding model to use
     """

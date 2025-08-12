@@ -1,6 +1,7 @@
 """
 Environment configuration management for the MCP server.
 """
+
 import os
 from dataclasses import dataclass
 from urllib.parse import urlparse
@@ -8,12 +9,14 @@ from urllib.parse import urlparse
 
 class ConfigurationError(Exception):
     """Raised when there's an error in configuration."""
+
     pass
 
 
 @dataclass
 class EnvironmentConfig:
     """Configuration loaded from environment variables."""
+
     supabase_url: str
     supabase_service_key: str
     port: int  # Required - no default
@@ -25,6 +28,7 @@ class EnvironmentConfig:
 @dataclass
 class RAGStrategyConfig:
     """Configuration for RAG strategies."""
+
     use_contextual_embeddings: bool = False
     use_hybrid_search: bool = False
     use_agentic_rag: bool = False
@@ -102,12 +106,13 @@ def load_environment_config() -> EnvironmentConfig:
         supabase_service_key=supabase_service_key,
         host=host,
         port=port,
-        transport=transport
+        transport=transport,
     )
 
 
 def get_rag_strategy_config() -> RAGStrategyConfig:
     """Load RAG strategy configuration from environment variables."""
+
     def str_to_bool(value: str | None) -> bool:
         """Convert string environment variable to boolean."""
         if value is None:
@@ -118,5 +123,5 @@ def get_rag_strategy_config() -> RAGStrategyConfig:
         use_contextual_embeddings=str_to_bool(os.getenv("USE_CONTEXTUAL_EMBEDDINGS")),
         use_hybrid_search=str_to_bool(os.getenv("USE_HYBRID_SEARCH")),
         use_agentic_rag=str_to_bool(os.getenv("USE_AGENTIC_RAG")),
-        use_reranking=str_to_bool(os.getenv("USE_RERANKING"))
+        use_reranking=str_to_bool(os.getenv("USE_RERANKING")),
     )

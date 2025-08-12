@@ -9,7 +9,7 @@ import aiohttp
 
 async def test_connectivity():
     # Determine if we're in Docker
-    in_docker = os.path.exists('/.dockerenv')
+    in_docker = os.path.exists("/.dockerenv")
 
     # Test different URLs
     urls_to_test = []
@@ -48,6 +48,7 @@ async def test_connectivity():
                 print(f"  Failed: {type(e).__name__}: {e}")
 
     print("\nDone testing connectivity")
+
 
 if __name__ == "__main__":
     asyncio.run(test_connectivity())

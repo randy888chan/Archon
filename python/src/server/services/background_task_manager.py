@@ -4,6 +4,7 @@ Background Task Manager
 Manages async background task execution with progress tracking.
 Uses pure async patterns for task execution.
 """
+
 import asyncio
 import uuid
 from collections.abc import Callable
@@ -25,7 +26,9 @@ class BackgroundTaskManager:
         self.metadata_retention_hours = metadata_retention_hours
         self._task_semaphore = asyncio.Semaphore(max_concurrent_tasks)
         self._cleanup_task: asyncio.Task | None = None
-        logger.info(f"BackgroundTaskManager initialized with max {max_concurrent_tasks} concurrent tasks, {metadata_retention_hours}h metadata retention")
+        logger.info(
+            f"BackgroundTaskManager initialized with max {max_concurrent_tasks} concurrent tasks, {metadata_retention_hours}h metadata retention"
+        )
 
     def set_main_loop(self, loop: asyncio.AbstractEventLoop):
         """Set the main event loop for the task manager"""
@@ -36,16 +39,16 @@ class BackgroundTaskManager:
         async_task_func: Callable,
         task_args: tuple,
         task_id: str | None = None,
-        progress_callback: Callable | None = None
+        progress_callback: Callable | None = None,
     ) -> str:
         """Submit an async task for background execution"""
         task_id = task_id or str(uuid.uuid4())
 
         # Store metadata
         self.task_metadata[task_id] = {
-            'created_at': datetime.utcnow(),
-            'status': 'running',
-            'progress': 0
+            "created_at": datetime.utcnow(),
+            "status": "running",
+            "progress": 0,
         }
 
         logger.info(f"Submitting async task {task_id} for background execution")
@@ -56,12 +59,7 @@ class BackgroundTaskManager:
 
         # Create and start the async task with semaphore to limit concurrency
         async_task = asyncio.create_task(
-            self._run_async_with_progress(
-                async_task_func,
-                task_args,
-                task_id,
-                progress_callback
-            )
+            self._run_async_with_progress(async_task_func, task_args, task_id, progress_callback)
         )
 
         self.active_tasks[task_id] = async_task
@@ -72,7 +70,7 @@ class BackgroundTaskManager:
         async_task_func: Callable,
         task_args: tuple,
         task_id: str,
-        progress_callback: Callable | None = None
+        progress_callback: Callable | None = None,
     ) -> Any:
         """Wrapper to run async task with progress tracking and concurrency control"""
         async with self._task_semaphore:  # Limit concurrent tasks
@@ -80,31 +78,28 @@ class BackgroundTaskManager:
                 logger.info(f"Starting execution of async task {task_id}")
 
                 # Update metadata to running state
-                self.task_metadata[task_id].update({
-                    'status': 'running',
-                    'progress': 0
-                })
+                self.task_metadata[task_id].update({"status": "running", "progress": 0})
 
                 # Execute the async task function
                 result = await async_task_func(*task_args)
 
                 # Update metadata to completed state
                 self.task_metadata[task_id].update({
-                    'status': 'complete',
-                    'progress': 100,
-                    'result': result
+                    "status": "complete",
+                    "progress": 100,
+                    "result": result,
                 })
 
                 # Send completion update via progress callback if provided
                 if progress_callback:
                     try:
-                        await progress_callback(task_id, {
-                            'status': 'complete',
-                            'percentage': 100,
-                            'result': result
-                        })
+                        await progress_callback(
+                            task_id, {"status": "complete", "percentage": 100, "result": result}
+                        )
                     except Exception as callback_error:
-                        logger.error(f"Progress callback error for completed task {task_id}: {callback_error}")
+                        logger.error(
+                            f"Progress callback error for completed task {task_id}: {callback_error}"
+                        )
 
                 logger.info(f"Async task {task_id} completed successfully")
                 return result
@@ -114,21 +109,21 @@ class BackgroundTaskManager:
 
                 # Update metadata to error state
                 self.task_metadata[task_id].update({
-                    'status': 'error',
-                    'progress': -1,
-                    'error': str(e)
+                    "status": "error",
+                    "progress": -1,
+                    "error": str(e),
                 })
 
                 # Send error update via progress callback if provided
                 if progress_callback:
                     try:
-                        await progress_callback(task_id, {
-                            'status': 'error',
-                            'percentage': -1,
-                            'error': str(e)
-                        })
+                        await progress_callback(
+                            task_id, {"status": "error", "percentage": -1, "error": str(e)}
+                        )
                     except Exception as callback_error:
-                        logger.error(f"Progress callback error for failed task {task_id}: {callback_error}")
+                        logger.error(
+                            f"Progress callback error for failed task {task_id}: {callback_error}"
+                        )
 
                 raise
             finally:
@@ -152,9 +147,9 @@ class BackgroundTaskManager:
         if task.done():
             try:
                 result = task.result()
-                metadata['result'] = result
+                metadata["result"] = result
             except Exception as e:
-                metadata['error'] = str(e)
+                metadata["error"] = str(e)
 
         return metadata
 
@@ -167,7 +162,7 @@ class BackgroundTaskManager:
 
             # Update metadata
             if task_id in self.task_metadata:
-                self.task_metadata[task_id]['status'] = 'cancelled'
+                self.task_metadata[task_id]["status"] = "cancelled"
 
             # Remove from active tasks
             del self.active_tasks[task_id]
@@ -187,8 +182,8 @@ class BackgroundTaskManager:
                 tasks_to_remove = []
                 for task_id, metadata in self.task_metadata.items():
                     # Only clean up completed/error/cancelled tasks
-                    if metadata.get('status') in ['complete', 'error', 'cancelled']:
-                        created_at = metadata.get('created_at')
+                    if metadata.get("status") in ["complete", "error", "cancelled"]:
+                        created_at = metadata.get("created_at")
                         if created_at and created_at < retention_cutoff:
                             tasks_to_remove.append(task_id)
 
@@ -226,7 +221,7 @@ class BackgroundTaskManager:
 
             # Update metadata
             if task_id in self.task_metadata:
-                self.task_metadata[task_id]['status'] = 'cancelled'
+                self.task_metadata[task_id]["status"] = "cancelled"
 
         # Wait for all tasks to complete or be cancelled
         if self.active_tasks:

@@ -23,15 +23,18 @@ from ..config.logfire_config import get_logger
 
 logger = get_logger(__name__)
 
+
 @dataclass
 class CredentialItem:
     """Represents a credential/setting item."""
+
     key: str
     value: str | None = None
     encrypted_value: str | None = None
     is_encrypted: bool = False
     category: str | None = None
     description: str | None = None
+
 
 class CredentialService:
     """Service for managing application credentials and configuration."""
@@ -63,7 +66,7 @@ class CredentialService:
                 self._supabase = create_client(url, key)
 
                 # Extract project ID from URL for logging purposes only
-                match = re.match(r'https://([^.]+)\.supabase\.co', url)
+                match = re.match(r"https://([^.]+)\.supabase\.co", url)
                 if match:
                     project_id = match.group(1)
                     logger.info(f"Supabase client initialized for project: {project_id}")
@@ -85,7 +88,7 @@ class CredentialService:
         kdf = PBKDF2HMAC(
             algorithm=hashes.SHA256(),
             length=32,
-            salt=b'static_salt_for_credentials',  # In production, consider using a configurable salt
+            salt=b"static_salt_for_credentials",  # In production, consider using a configurable salt
             iterations=100000,
         )
         key = base64.urlsafe_b64encode(kdf.derive(service_key.encode()))
@@ -98,8 +101,8 @@ class CredentialService:
 
         try:
             fernet = Fernet(self._get_encryption_key())
-            encrypted_bytes = fernet.encrypt(value.encode('utf-8'))
-            return base64.urlsafe_b64encode(encrypted_bytes).decode('utf-8')
+            encrypted_bytes = fernet.encrypt(value.encode("utf-8"))
+            return base64.urlsafe_b64encode(encrypted_bytes).decode("utf-8")
         except Exception as e:
             logger.error(f"Error encrypting value: {e}")
             raise
@@ -111,9 +114,9 @@ class CredentialService:
 
         try:
             fernet = Fernet(self._get_encryption_key())
-            encrypted_bytes = base64.urlsafe_b64decode(encrypted_value.encode('utf-8'))
+            encrypted_bytes = base64.urlsafe_b64decode(encrypted_value.encode("utf-8"))
             decrypted_bytes = fernet.decrypt(encrypted_bytes)
-            return decrypted_bytes.decode('utf-8')
+            return decrypted_bytes.decode("utf-8")
         except Exception as e:
             logger.error(f"Error decrypting value: {e}")
             raise
@@ -136,7 +139,7 @@ class CredentialService:
                         "encrypted_value": item["encrypted_value"],
                         "is_encrypted": True,
                         "category": item["category"],
-                        "description": item["description"]
+                        "description": item["description"],
                     }
                 else:
                     # Plain text values
@@ -182,8 +185,14 @@ class CredentialService:
 
         return None
 
-    async def set_credential(self, key: str, value: str, is_encrypted: bool = False,
-                           category: str = None, description: str = None) -> bool:
+    async def set_credential(
+        self,
+        key: str,
+        value: str,
+        is_encrypted: bool = False,
+        category: str = None,
+        description: str = None,
+    ) -> bool:
         """Set a credential value."""
         try:
             supabase = self._get_supabase_client()
@@ -196,14 +205,14 @@ class CredentialService:
                     "value": None,
                     "is_encrypted": True,
                     "category": category,
-                    "description": description
+                    "description": description,
                 }
                 # Update cache with encrypted info
                 self._cache[key] = {
                     "encrypted_value": encrypted_value,
                     "is_encrypted": True,
                     "category": category,
-                    "description": description
+                    "description": description,
                 }
             else:
                 data = {
@@ -212,16 +221,20 @@ class CredentialService:
                     "encrypted_value": None,
                     "is_encrypted": False,
                     "category": category,
-                    "description": description
+                    "description": description,
                 }
                 # Update cache with plain value
                 self._cache[key] = value
 
             # Upsert to database with proper conflict handling
-            result = supabase.table("archon_settings").upsert(
-                data,
-                on_conflict="key"  # Specify the unique column for conflict resolution
-            ).execute()
+            result = (
+                supabase.table("archon_settings")
+                .upsert(
+                    data,
+                    on_conflict="key",  # Specify the unique column for conflict resolution
+                )
+                .execute()
+            )
 
             # Invalidate RAG settings cache if this is a rag_strategy setting
             if category == "rag_strategy":
@@ -229,7 +242,9 @@ class CredentialService:
                 self._rag_cache_timestamp = None
                 logger.debug(f"Invalidated RAG settings cache due to update of {key}")
 
-            logger.info(f"Successfully {'encrypted and ' if is_encrypted else ''}stored credential: {key}")
+            logger.info(
+                f"Successfully {'encrypted and ' if is_encrypted else ''}stored credential: {key}"
+            )
             return True
 
         except Exception as e:
@@ -249,8 +264,7 @@ class CredentialService:
 
             # Invalidate RAG settings cache if this was a rag_strategy setting
             # We check the cache to see if the deleted key was in rag_strategy category
-            if (self._rag_settings_cache is not None and
-                key in self._rag_settings_cache):
+            if self._rag_settings_cache is not None and key in self._rag_settings_cache:
                 self._rag_settings_cache = None
                 self._rag_cache_timestamp = None
                 logger.debug(f"Invalidated RAG settings cache due to deletion of {key}")
@@ -272,15 +286,19 @@ class CredentialService:
             current_time = time.time()
 
             # Check if we have valid cached data
-            if (self._rag_settings_cache is not None and
-                self._rag_cache_timestamp is not None and
-                current_time - self._rag_cache_timestamp < self._rag_cache_ttl):
+            if (
+                self._rag_settings_cache is not None
+                and self._rag_cache_timestamp is not None
+                and current_time - self._rag_cache_timestamp < self._rag_cache_ttl
+            ):
                 logger.debug("Using cached RAG settings")
                 return self._rag_settings_cache
 
         try:
             supabase = self._get_supabase_client()
-            result = supabase.table("archon_settings").select("*").eq("category", category).execute()
+            result = (
+                supabase.table("archon_settings").select("*").eq("category", category).execute()
+            )
 
             credentials = {}
             for item in result.data:
@@ -289,7 +307,7 @@ class CredentialService:
                     credentials[key] = {
                         "encrypted_value": item["encrypted_value"],
                         "is_encrypted": True,
-                        "description": item["description"]
+                        "description": item["description"],
                     }
                 else:
                     credentials[key] = item["value"]
@@ -324,7 +342,7 @@ class CredentialService:
                             encrypted_value=None,  # Don't expose encrypted value
                             is_encrypted=item["is_encrypted"],
                             category=item["category"],
-                            description=item["description"]
+                            description=item["description"],
                         )
                     except Exception as e:
                         logger.error(f"Failed to decrypt credential {item['key']}: {e}")
@@ -335,7 +353,7 @@ class CredentialService:
                             encrypted_value=None,
                             is_encrypted=item["is_encrypted"],
                             category=item["category"],
-                            description=item["description"]
+                            description=item["description"],
                         )
                 else:
                     # Plain text values
@@ -345,7 +363,7 @@ class CredentialService:
                         encrypted_value=None,
                         is_encrypted=item["is_encrypted"],
                         category=item["category"],
-                        description=item["description"]
+                        description=item["description"],
                     )
                 credentials.append(cred)
 
@@ -379,10 +397,10 @@ class CredentialService:
     async def get_active_provider(self, service_type: str = "llm") -> dict[str, Any]:
         """
         Get the currently active provider configuration.
-        
+
         Args:
             service_type: Either 'llm' or 'embedding'
-            
+
         Returns:
             Dict with provider, api_key, base_url, and models
         """
@@ -408,7 +426,7 @@ class CredentialService:
                 "api_key": api_key,
                 "base_url": base_url,
                 "chat_model": chat_model,
-                "embedding_model": embedding_model
+                "embedding_model": embedding_model,
             }
 
         except Exception as e:
@@ -420,7 +438,7 @@ class CredentialService:
                 "api_key": os.getenv("OPENAI_API_KEY"),
                 "base_url": None,
                 "chat_model": "",
-                "embedding_model": ""
+                "embedding_model": "",
             }
 
     async def _get_provider_api_key(self, provider: str) -> str | None:
@@ -428,7 +446,7 @@ class CredentialService:
         key_mapping = {
             "openai": "OPENAI_API_KEY",
             "google": "GOOGLE_API_KEY",
-            "ollama": None  # No API key needed
+            "ollama": None,  # No API key needed
         }
 
         key_name = key_mapping.get(provider)
@@ -452,23 +470,28 @@ class CredentialService:
                 "llm_provider",
                 provider,
                 category="rag_strategy",
-                description=f"Active {service_type} provider"
+                description=f"Active {service_type} provider",
             )
         except Exception as e:
             logger.error(f"Error setting active provider {provider} for {service_type}: {e}")
             return False
 
+
 # Global instance
 credential_service = CredentialService()
+
 
 async def get_credential(key: str, default: Any = None) -> Any:
     """Convenience function to get a credential."""
     return await credential_service.get_credential(key, default)
 
-async def set_credential(key: str, value: str, is_encrypted: bool = False,
-                        category: str = None, description: str = None) -> bool:
+
+async def set_credential(
+    key: str, value: str, is_encrypted: bool = False, category: str = None, description: str = None
+) -> bool:
     """Convenience function to set a credential."""
     return await credential_service.set_credential(key, value, is_encrypted, category, description)
+
 
 async def initialize_credentials() -> None:
     """Initialize the credential service by loading all credentials and setting environment variables."""
@@ -477,21 +500,21 @@ async def initialize_credentials() -> None:
     # Only set infrastructure/startup credentials as environment variables
     # RAG settings will be looked up on-demand from the credential service
     infrastructure_credentials = [
-        "OPENAI_API_KEY",      # Required for API client initialization
-        "HOST",                # Server binding configuration
-        "PORT",                # Server binding configuration
-        "MCP_TRANSPORT",       # Server transport mode
-        "LOGFIRE_ENABLED",     # Logging infrastructure setup
-        "PROJECTS_ENABLED"     # Feature flag for module loading
+        "OPENAI_API_KEY",  # Required for API client initialization
+        "HOST",  # Server binding configuration
+        "PORT",  # Server binding configuration
+        "MCP_TRANSPORT",  # Server transport mode
+        "LOGFIRE_ENABLED",  # Logging infrastructure setup
+        "PROJECTS_ENABLED",  # Feature flag for module loading
     ]
 
     # LLM provider credentials (for sync client support)
     provider_credentials = [
-        "GOOGLE_API_KEY",      # Google Gemini API key
-        "LLM_PROVIDER",        # Selected provider
-        "LLM_BASE_URL",        # Ollama base URL
-        "EMBEDDING_MODEL",     # Custom embedding model
-        "MODEL_CHOICE"         # Chat model for sync contexts
+        "GOOGLE_API_KEY",  # Google Gemini API key
+        "LLM_PROVIDER",  # Selected provider
+        "LLM_BASE_URL",  # Ollama base URL
+        "EMBEDDING_MODEL",  # Custom embedding model
+        "MODEL_CHOICE",  # Chat model for sync contexts
     ]
 
     # RAG settings that should NOT be set as env vars (will be looked up on demand):

@@ -18,6 +18,7 @@ logger = get_logger(__name__)
 # Import Socket.IO broadcasting capability
 try:
     from ...api_routes.socketio_broadcasts import broadcast_task_update
+
     _broadcast_available = True
     logger.info("✅ Socket.IO broadcasting is AVAILABLE - real-time updates enabled")
 except ImportError as e:
@@ -27,9 +28,11 @@ except ImportError as e:
     # Dummy function when broadcasting is not available
     async def broadcast_task_update(*args, **kwargs):
         pass
+
 except Exception as e:
     logger.warning(f"❌ Socket.IO broadcasting not available - Exception: {type(e).__name__}: {e}")
     import traceback
+
     logger.warning(f"❌ Full traceback: {traceback.format_exc()}")
     _broadcast_available = False
 
@@ -41,7 +44,7 @@ except Exception as e:
 class TaskService:
     """Service class for task operations"""
 
-    VALID_STATUSES = ['todo', 'doing', 'review', 'done']
+    VALID_STATUSES = ["todo", "doing", "review", "done"]
 
     def __init__(self, supabase_client=None):
         """Initialize with optional supabase client"""
@@ -50,7 +53,10 @@ class TaskService:
     def validate_status(self, status: str) -> tuple[bool, str]:
         """Validate task status"""
         if status not in self.VALID_STATUSES:
-            return False, f"Invalid status '{status}'. Must be one of: {', '.join(self.VALID_STATUSES)}"
+            return (
+                False,
+                f"Invalid status '{status}'. Must be one of: {', '.join(self.VALID_STATUSES)}",
+            )
         return True, ""
 
     def validate_assignee(self, assignee: str) -> tuple[bool, str]:
@@ -59,13 +65,20 @@ class TaskService:
             return False, "Assignee must be a non-empty string"
         return True, ""
 
-    async def create_task(self, project_id: str, title: str, description: str = "",
-                   assignee: str = "User", task_order: int = 0, feature: str | None = None,
-                   sources: list[dict[str, Any]] = None,
-                   code_examples: list[dict[str, Any]] = None) -> tuple[bool, dict[str, Any]]:
+    async def create_task(
+        self,
+        project_id: str,
+        title: str,
+        description: str = "",
+        assignee: str = "User",
+        task_order: int = 0,
+        feature: str | None = None,
+        sources: list[dict[str, Any]] = None,
+        code_examples: list[dict[str, Any]] = None,
+    ) -> tuple[bool, dict[str, Any]]:
         """
         Create a new task under a project with automatic reordering.
-        
+
         Returns:
             Tuple of (success, result_dict)
         """
@@ -87,12 +100,14 @@ class TaskService:
             # REORDERING LOGIC: If inserting at a specific position, increment existing tasks
             if task_order > 0:
                 # Get all tasks in the same project and status with task_order >= new task's order
-                existing_tasks_response = self.supabase_client.table("archon_tasks")\
-                    .select("id, task_order")\
-                    .eq("project_id", project_id)\
-                    .eq("status", task_status)\
-                    .gte("task_order", task_order)\
+                existing_tasks_response = (
+                    self.supabase_client.table("archon_tasks")
+                    .select("id, task_order")
+                    .eq("project_id", project_id)
+                    .eq("status", task_status)
+                    .gte("task_order", task_order)
                     .execute()
+                )
 
                 if existing_tasks_response.data:
                     logger.info(f"Reordering {len(existing_tasks_response.data)} existing tasks")
@@ -102,7 +117,7 @@ class TaskService:
                         new_order = existing_task["task_order"] + 1
                         self.supabase_client.table("archon_tasks").update({
                             "task_order": new_order,
-                            "updated_at": datetime.now().isoformat()
+                            "updated_at": datetime.now().isoformat(),
                         }).eq("id", existing_task["id"]).execute()
 
             task_data = {
@@ -115,9 +130,8 @@ class TaskService:
                 "sources": sources or [],
                 "code_examples": code_examples or [],
                 "created_at": datetime.now().isoformat(),
-                "updated_at": datetime.now().isoformat()
+                "updated_at": datetime.now().isoformat(),
             }
-
 
             if feature:
                 task_data["feature"] = feature
@@ -131,13 +145,13 @@ class TaskService:
                 if _broadcast_available:
                     try:
                         await broadcast_task_update(
-                            project_id=task["project_id"],
-                            event_type="task_created",
-                            task_data=task
+                            project_id=task["project_id"], event_type="task_created", task_data=task
                         )
                         logger.info(f"Socket.IO broadcast sent for new task {task['id']}")
                     except Exception as ws_error:
-                        logger.warning(f"Failed to broadcast Socket.IO update for new task {task['id']}: {ws_error}")
+                        logger.warning(
+                            f"Failed to broadcast Socket.IO update for new task {task['id']}: {ws_error}"
+                        )
 
                 return True, {
                     "task": {
@@ -148,7 +162,7 @@ class TaskService:
                         "status": task["status"],
                         "assignee": task["assignee"],
                         "task_order": task["task_order"],
-                        "created_at": task["created_at"]
+                        "created_at": task["created_at"],
                     }
                 }
             else:
@@ -158,11 +172,12 @@ class TaskService:
             logger.error(f"Error creating task: {e}")
             return False, {"error": f"Error creating task: {str(e)}"}
 
-    def list_tasks(self, project_id: str = None,
-                  status: str = None, include_closed: bool = False) -> tuple[bool, dict[str, Any]]:
+    def list_tasks(
+        self, project_id: str = None, status: str = None, include_closed: bool = False
+    ) -> tuple[bool, dict[str, Any]]:
         """
         List tasks with various filters.
-        
+
         Returns:
             Tuple of (success, result_dict)
         """
@@ -177,7 +192,6 @@ class TaskService:
             if project_id:
                 query = query.eq("project_id", project_id)
                 filters_applied.append(f"project_id={project_id}")
-
 
             if status:
                 # Validate status
@@ -200,7 +214,9 @@ class TaskService:
             logger.info(f"Listing tasks with filters: {', '.join(filters_applied)}")
 
             # Execute query and get raw response
-            response = query.order("task_order", desc=False).order("created_at", desc=False).execute()
+            response = (
+                query.order("task_order", desc=False).order("created_at", desc=False).execute()
+            )
 
             # Debug: Log task status distribution and filter effectiveness
             if response.data:
@@ -220,13 +236,17 @@ class TaskService:
                     else:
                         archived_counts["false"] += 1
 
-                logger.info(f"Retrieved {len(response.data)} tasks. Status distribution: {status_counts}")
+                logger.info(
+                    f"Retrieved {len(response.data)} tasks. Status distribution: {status_counts}"
+                )
                 logger.info(f"Archived field distribution: {archived_counts}")
 
                 # If we're filtering by status and getting wrong results, log sample
                 if status and len(response.data) > 0:
                     first_task = response.data[0]
-                    logger.warning(f"Status filter: {status}, First task status: {first_task.get('status')}, archived: {first_task.get('archived')}")
+                    logger.warning(
+                        f"Status filter: {status}, First task status: {first_task.get('status')}, archived: {first_task.get('archived')}"
+                    )
             else:
                 logger.info("No tasks found with current filters")
 
@@ -241,7 +261,7 @@ class TaskService:
                     "assignee": task.get("assignee", "User"),
                     "task_order": task.get("task_order", 0),
                     "created_at": task["created_at"],
-                    "updated_at": task["updated_at"]
+                    "updated_at": task["updated_at"],
                 })
 
             filter_info = []
@@ -256,7 +276,7 @@ class TaskService:
                 "tasks": tasks,
                 "total_count": len(tasks),
                 "filters_applied": ", ".join(filter_info) if filter_info else "none",
-                "include_closed": include_closed
+                "include_closed": include_closed,
             }
 
         except Exception as e:
@@ -266,12 +286,14 @@ class TaskService:
     def get_task(self, task_id: str) -> tuple[bool, dict[str, Any]]:
         """
         Get a specific task by ID.
-        
+
         Returns:
             Tuple of (success, result_dict)
         """
         try:
-            response = self.supabase_client.table("archon_tasks").select("*").eq("id", task_id).execute()
+            response = (
+                self.supabase_client.table("archon_tasks").select("*").eq("id", task_id).execute()
+            )
 
             if response.data:
                 task = response.data[0]
@@ -283,18 +305,18 @@ class TaskService:
             logger.error(f"Error getting task: {e}")
             return False, {"error": f"Error getting task: {str(e)}"}
 
-    async def update_task(self, task_id: str, update_fields: dict[str, Any]) -> tuple[bool, dict[str, Any]]:
+    async def update_task(
+        self, task_id: str, update_fields: dict[str, Any]
+    ) -> tuple[bool, dict[str, Any]]:
         """
         Update task with specified fields.
-        
+
         Returns:
             Tuple of (success, result_dict)
         """
         try:
             # Build update data
-            update_data = {
-                "updated_at": datetime.now().isoformat()
-            }
+            update_data = {"updated_at": datetime.now().isoformat()}
 
             # Validate and add fields
             if "title" in update_fields:
@@ -322,7 +344,12 @@ class TaskService:
                 update_data["feature"] = update_fields["feature"]
 
             # Update task
-            response = self.supabase_client.table("archon_tasks").update(update_data).eq("id", task_id).execute()
+            response = (
+                self.supabase_client.table("archon_tasks")
+                .update(update_data)
+                .eq("id", task_id)
+                .execute()
+            )
 
             if response.data:
                 task = response.data[0]
@@ -330,25 +357,27 @@ class TaskService:
                 # Broadcast Socket.IO update
                 if _broadcast_available:
                     try:
-                        logger.info(f"Broadcasting task_updated for task {task_id} to project room {task['project_id']}")
+                        logger.info(
+                            f"Broadcasting task_updated for task {task_id} to project room {task['project_id']}"
+                        )
                         await broadcast_task_update(
-                            project_id=task["project_id"],
-                            event_type="task_updated",
-                            task_data=task
+                            project_id=task["project_id"], event_type="task_updated", task_data=task
                         )
                         logger.info(f"✅ Socket.IO broadcast successful for task {task_id}")
                     except Exception as ws_error:
                         # Don't fail the task update if Socket.IO broadcasting fails
-                        logger.error(f"❌ Failed to broadcast Socket.IO update for task {task_id}: {ws_error}")
+                        logger.error(
+                            f"❌ Failed to broadcast Socket.IO update for task {task_id}: {ws_error}"
+                        )
                         import traceback
+
                         logger.error(f"Traceback: {traceback.format_exc()}")
                 else:
-                    logger.warning(f"⚠️ Socket.IO broadcasting not available - task {task_id} update won't be real-time")
+                    logger.warning(
+                        f"⚠️ Socket.IO broadcasting not available - task {task_id} update won't be real-time"
+                    )
 
-                return True, {
-                    "task": task,
-                    "message": "Task updated successfully"
-                }
+                return True, {"task": task, "message": "Task updated successfully"}
             else:
                 return False, {"error": f"Task with ID {task_id} not found"}
 
@@ -356,16 +385,20 @@ class TaskService:
             logger.error(f"Error updating task: {e}")
             return False, {"error": f"Error updating task: {str(e)}"}
 
-    async def archive_task(self, task_id: str, archived_by: str = "mcp") -> tuple[bool, dict[str, Any]]:
+    async def archive_task(
+        self, task_id: str, archived_by: str = "mcp"
+    ) -> tuple[bool, dict[str, Any]]:
         """
         Archive a task and all its subtasks (soft delete).
-        
+
         Returns:
             Tuple of (success, result_dict)
         """
         try:
             # First, check if task exists and is not already archived
-            task_response = self.supabase_client.table("archon_tasks").select("*").eq("id", task_id).execute()
+            task_response = (
+                self.supabase_client.table("archon_tasks").select("*").eq("id", task_id).execute()
+            )
             if not task_response.data:
                 return False, {"error": f"Task with ID {task_id} not found"}
 
@@ -373,36 +406,38 @@ class TaskService:
             if task.get("archived") is True:
                 return False, {"error": f"Task with ID {task_id} is already archived"}
 
-
             # Archive the task
             archive_data = {
                 "archived": True,
                 "archived_at": datetime.now().isoformat(),
                 "archived_by": archived_by,
-                "updated_at": datetime.now().isoformat()
+                "updated_at": datetime.now().isoformat(),
             }
 
             # Archive the main task
-            response = self.supabase_client.table("archon_tasks").update(archive_data).eq("id", task_id).execute()
+            response = (
+                self.supabase_client.table("archon_tasks")
+                .update(archive_data)
+                .eq("id", task_id)
+                .execute()
+            )
 
             if response.data:
-
                 # Broadcast Socket.IO update for archived task
                 if _broadcast_available:
                     try:
                         await broadcast_task_update(
                             project_id=task["project_id"],
                             event_type="task_archived",
-                            task_data={"id": task_id, "project_id": task["project_id"]}
+                            task_data={"id": task_id, "project_id": task["project_id"]},
                         )
                         logger.info(f"Socket.IO broadcast sent for archived task {task_id}")
                     except Exception as ws_error:
-                        logger.warning(f"Failed to broadcast Socket.IO update for archived task {task_id}: {ws_error}")
+                        logger.warning(
+                            f"Failed to broadcast Socket.IO update for archived task {task_id}: {ws_error}"
+                        )
 
-                return True, {
-                    "task_id": task_id,
-                    "message": "Task archived successfully"
-                }
+                return True, {"task_id": task_id, "message": "Task archived successfully"}
             else:
                 return False, {"error": f"Failed to archive task {task_id}"}
 

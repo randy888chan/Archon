@@ -3,6 +3,7 @@ Document Storage Service
 
 Handles storage of documents in Supabase with parallel processing support.
 """
+
 import asyncio
 import os
 from typing import Any
@@ -25,13 +26,13 @@ async def add_documents_to_supabase(
     progress_callback: Any | None = None,
     enable_parallel_batches: bool = True,
     provider: str | None = None,
-    cancellation_check: Any | None = None
+    cancellation_check: Any | None = None,
 ) -> None:
     """
     Add documents to Supabase with threading optimizations.
-    
+
     This is the simpler sequential version for smaller batches.
-    
+
     Args:
         client: Supabase client
         urls: List of URLs
@@ -43,10 +44,9 @@ async def add_documents_to_supabase(
         progress_callback: Optional async callback function for progress reporting
         provider: Optional provider override for embeddings
     """
-    with safe_span("add_documents_to_supabase",
-                           total_documents=len(contents),
-                           batch_size=batch_size) as span:
-
+    with safe_span(
+        "add_documents_to_supabase", total_documents=len(contents), batch_size=batch_size
+    ) as span:
         # Simple progress reporting helper with batch info support
         async def report_progress(message: str, percentage: int, batch_info: dict = None):
             if progress_callback and asyncio.iscoroutinefunction(progress_callback):
@@ -78,12 +78,14 @@ async def add_documents_to_supabase(
                     if cancellation_check:
                         cancellation_check()
 
-                    batch_urls = unique_urls[i:i + delete_batch_size]
+                    batch_urls = unique_urls[i : i + delete_batch_size]
                     client.table("archon_crawled_pages").delete().in_("url", batch_urls).execute()
                     # Yield control to allow Socket.IO to process messages
                     if i + delete_batch_size < len(unique_urls):
                         await asyncio.sleep(0.05)  # Reduced pause between delete batches
-                search_logger.info(f"Deleted existing records for {len(unique_urls)} URLs in batches")
+                search_logger.info(
+                    f"Deleted existing records for {len(unique_urls)} URLs in batches"
+                )
         except Exception as e:
             search_logger.warning(f"Batch delete failed: {e}. Trying smaller batches as fallback.")
             # Fallback: delete in smaller batches with rate limiting
@@ -94,12 +96,14 @@ async def add_documents_to_supabase(
                 if cancellation_check:
                     cancellation_check()
 
-                batch_urls = unique_urls[i:i + 10]
+                batch_urls = unique_urls[i : i + 10]
                 try:
                     client.table("archon_crawled_pages").delete().in_("url", batch_urls).execute()
                     await asyncio.sleep(0.05)  # Rate limit to prevent overwhelming
                 except Exception as inner_e:
-                    search_logger.error(f"Error deleting batch of {len(batch_urls)} URLs: {inner_e}")
+                    search_logger.error(
+                        f"Error deleting batch of {len(batch_urls)} URLs: {inner_e}"
+                    )
                     failed_urls.extend(batch_urls)
 
             if failed_urls:
@@ -108,8 +112,11 @@ async def add_documents_to_supabase(
         # Check if contextual embeddings are enabled
         # Fix: Get from credential service instead of environment
         from ..credential_service import credential_service
+
         try:
-            use_contextual_embeddings = await credential_service.get_credential("USE_CONTEXTUAL_EMBEDDINGS", "false", decrypt=True)
+            use_contextual_embeddings = await credential_service.get_credential(
+                "USE_CONTEXTUAL_EMBEDDINGS", "false", decrypt=True
+            )
             if isinstance(use_contextual_embeddings, str):
                 use_contextual_embeddings = use_contextual_embeddings.lower() == "true"
         except:
@@ -140,7 +147,9 @@ async def add_documents_to_supabase(
             # Get max workers setting FIRST before using it
             if use_contextual_embeddings:
                 try:
-                    max_workers = await credential_service.get_credential("CONTEXTUAL_EMBEDDINGS_MAX_WORKERS", "4", decrypt=True)
+                    max_workers = await credential_service.get_credential(
+                        "CONTEXTUAL_EMBEDDINGS_MAX_WORKERS", "4", decrypt=True
+                    )
                     max_workers = int(max_workers)
                 except:
                     max_workers = 4
@@ -153,12 +162,12 @@ async def add_documents_to_supabase(
                     f"Processing batch {batch_num}/{total_batches} ({len(batch_contents)} chunks)",
                     current_percentage,
                     {
-                        'current_batch': batch_num,
-                        'total_batches': total_batches,
-                        'completed_batches': completed_batches,
-                        'chunks_in_batch': len(batch_contents),
-                        'max_workers': max_workers if use_contextual_embeddings else 0
-                    }
+                        "current_batch": batch_num,
+                        "total_batches": total_batches,
+                        "completed_batches": completed_batches,
+                        "chunks_in_batch": len(batch_contents),
+                        "max_workers": max_workers if use_contextual_embeddings else 0,
+                    },
                 )
 
             # Skip batch start progress to reduce Socket.IO traffic
@@ -166,7 +175,6 @@ async def add_documents_to_supabase(
 
             # Apply contextual embedding to each chunk if enabled
             if use_contextual_embeddings:
-
                 # Prepare full documents list for batch processing
                 full_documents = []
                 for j, content in enumerate(batch_contents):
@@ -176,7 +184,9 @@ async def add_documents_to_supabase(
 
                 # Get contextual embedding batch size from settings
                 try:
-                    contextual_batch_size = int(rag_settings.get("CONTEXTUAL_EMBEDDING_BATCH_SIZE", "50"))
+                    contextual_batch_size = int(
+                        rag_settings.get("CONTEXTUAL_EMBEDDING_BATCH_SIZE", "50")
+                    )
                 except:
                     contextual_batch_size = 50
 
@@ -197,9 +207,7 @@ async def add_documents_to_supabase(
 
                         # Process sub-batch with a single API call using asyncio.to_thread
                         sub_results = await asyncio.to_thread(
-                            generate_contextual_embeddings_batch,
-                            sub_batch_docs,
-                            sub_batch_contents
+                            generate_contextual_embeddings_batch, sub_batch_docs, sub_batch_contents
                         )
 
                         # Extract results from this sub-batch
@@ -210,23 +218,24 @@ async def add_documents_to_supabase(
                                 batch_metadatas[original_idx]["contextual_embedding"] = True
                                 successful_count += 1
 
-                    search_logger.info(f"Batch {batch_num}: Generated {successful_count}/{len(batch_contents)} contextual embeddings using batch API (sub-batch size: {contextual_batch_size})")
+                    search_logger.info(
+                        f"Batch {batch_num}: Generated {successful_count}/{len(batch_contents)} contextual embeddings using batch API (sub-batch size: {contextual_batch_size})"
+                    )
 
                 except Exception as e:
                     search_logger.error(f"Error in batch contextual embedding: {e}")
                     # Fallback to original contents
                     contextual_contents = batch_contents
-                    search_logger.warning(f"Batch {batch_num}: Falling back to original content due to error")
+                    search_logger.warning(
+                        f"Batch {batch_num}: Falling back to original content due to error"
+                    )
             else:
                 # If not using contextual embeddings, use original contents
                 contextual_contents = batch_contents
 
             # Create embeddings for the batch - no progress reporting
             # Don't pass websocket to avoid Socket.IO issues
-            result = await create_embeddings_batch(
-                contextual_contents,
-                provider=provider
-            )
+            result = await create_embeddings_batch(contextual_contents, provider=provider)
 
             # Log any failures
             if result.has_failures:
@@ -240,14 +249,18 @@ async def add_documents_to_supabase(
             successful_texts = result.texts_processed
 
             if not batch_embeddings:
-                search_logger.warning(f"Skipping batch {batch_num} - no successful embeddings created")
+                search_logger.warning(
+                    f"Skipping batch {batch_num} - no successful embeddings created"
+                )
                 completed_batches += 1
                 continue
 
             # Prepare batch data - only for successful embeddings
             batch_data = []
             # Map successful texts back to their original indices
-            for j, (embedding, text) in enumerate(zip(batch_embeddings, successful_texts, strict=False)):
+            for j, (embedding, text) in enumerate(
+                zip(batch_embeddings, successful_texts, strict=False)
+            ):
                 # Find the original index of this text
                 orig_idx = None
                 for idx, orig_text in enumerate(contextual_contents):
@@ -261,8 +274,8 @@ async def add_documents_to_supabase(
 
                 j = orig_idx  # Use original index for metadata lookup
                 # Use source_id from metadata if available, otherwise extract from URL
-                if batch_metadatas[j].get('source_id'):
-                    source_id = batch_metadatas[j]['source_id']
+                if batch_metadatas[j].get("source_id"):
+                    source_id = batch_metadatas[j]["source_id"]
                 else:
                     # Fallback: Extract source_id from URL
                     parsed_url = urlparse(batch_urls[j])
@@ -272,12 +285,9 @@ async def add_documents_to_supabase(
                     "url": batch_urls[j],
                     "chunk_number": batch_chunk_numbers[j],
                     "content": text,  # Use the successful text
-                    "metadata": {
-                        "chunk_size": len(text),
-                        **batch_metadatas[j]
-                    },
+                    "metadata": {"chunk_size": len(text), **batch_metadatas[j]},
                     "source_id": source_id,
-                    "embedding": embedding  # Use the successful embedding
+                    "embedding": embedding,  # Use the successful embedding
                 }
                 batch_data.append(data)
 
@@ -302,26 +312,32 @@ async def add_documents_to_supabase(
                     else:
                         new_percentage = int((completed_batches / total_batches) * 100)
 
-                    complete_msg = f"Completed batch {batch_num}/{total_batches} ({len(batch_data)} chunks)"
+                    complete_msg = (
+                        f"Completed batch {batch_num}/{total_batches} ({len(batch_data)} chunks)"
+                    )
 
                     # Simple batch completion info
                     batch_info = {
-                        'completed_batches': completed_batches,
-                        'total_batches': total_batches,
-                        'current_batch': batch_num,
-                        'chunks_processed': len(batch_data),
-                        'max_workers': max_workers if use_contextual_embeddings else 0
+                        "completed_batches": completed_batches,
+                        "total_batches": total_batches,
+                        "current_batch": batch_num,
+                        "chunks_processed": len(batch_data),
+                        "max_workers": max_workers if use_contextual_embeddings else 0,
                     }
                     await report_progress(complete_msg, new_percentage, batch_info)
                     break
 
                 except Exception as e:
                     if retry < max_retries - 1:
-                        search_logger.warning(f"Error inserting batch (attempt {retry + 1}/{max_retries}): {e}")
+                        search_logger.warning(
+                            f"Error inserting batch (attempt {retry + 1}/{max_retries}): {e}"
+                        )
                         await asyncio.sleep(retry_delay)
                         retry_delay *= 2  # Exponential backoff
                     else:
-                        search_logger.error(f"Failed to insert batch after {max_retries} attempts: {e}")
+                        search_logger.error(
+                            f"Failed to insert batch after {max_retries} attempts: {e}"
+                        )
                         # Try individual inserts as last resort
                         successful_inserts = 0
                         for record in batch_data:
@@ -333,9 +349,13 @@ async def add_documents_to_supabase(
                                 client.table("archon_crawled_pages").insert(record).execute()
                                 successful_inserts += 1
                             except Exception as individual_error:
-                                search_logger.error(f"Failed individual insert for {record['url']}: {individual_error}")
+                                search_logger.error(
+                                    f"Failed individual insert for {record['url']}: {individual_error}"
+                                )
 
-                        search_logger.info(f"Individual inserts: {successful_inserts}/{len(batch_data)} successful")
+                        search_logger.info(
+                            f"Individual inserts: {successful_inserts}/{len(batch_data)} successful"
+                        )
 
             # Minimal delay between batches to prevent overwhelming
             if i + batch_size < len(contents):
@@ -348,15 +368,13 @@ async def add_documents_to_supabase(
                 f"Document storage completed: {len(contents)} chunks stored in {total_batches} batches",
                 100,  # Ensure we report 100%
                 {
-                    'completed_batches': total_batches,
-                    'total_batches': total_batches,
-                    'current_batch': total_batches,
-                    'chunks_processed': len(contents)
+                    "completed_batches": total_batches,
+                    "total_batches": total_batches,
+                    "current_batch": total_batches,
+                    "chunks_processed": len(contents),
                     # DON'T send 'status': 'completed' - that's for the orchestration service only!
-                }
+                },
             )
 
         span.set_attribute("success", True)
         span.set_attribute("total_processed", len(contents))
-
-

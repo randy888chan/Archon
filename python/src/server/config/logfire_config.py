@@ -6,10 +6,10 @@ Simple toggle: LOGFIRE_ENABLED=true/false controls all logging behavior.
 
 Usage:
     from .config.logfire_config import get_logger, safe_span, safe_set_attribute
-    
+
     logger = get_logger(__name__)
     logger.info("This works with or without Logfire")
-    
+
     with safe_span("operation_name") as span:
         logger.info("Processing data")
         safe_set_attribute(span, "key", "value")
@@ -26,6 +26,7 @@ logfire = None
 
 try:
     import logfire
+
     LOGFIRE_AVAILABLE = True
 except ImportError:
     logfire = None
@@ -50,17 +51,15 @@ def is_logfire_enabled() -> bool:
 
 
 def setup_logfire(
-    token: str | None = None,
-    environment: str = "development",
-    service_name: str = "archon-server"
+    token: str | None = None, environment: str = "development", service_name: str = "archon-server"
 ) -> None:
     """
     Configure logging with optional Logfire integration.
-    
+
     Simple behavior:
     - If LOGFIRE_ENABLED=true and token available: Enable Logfire + unified logging
     - If LOGFIRE_ENABLED=false or no token: Standard Python logging only
-    
+
     Args:
         token: Logfire token (reads from LOGFIRE_TOKEN env if not provided)
         environment: Environment name (development, staging, production)
@@ -85,7 +84,7 @@ def setup_logfire(
                     token=logfire_token,
                     service_name=service_name,
                     environment=environment,
-                    send_to_logfire=True
+                    send_to_logfire=True,
                 )
 
                 # Add LogfireLoggingHandler to capture all standard logging
@@ -114,23 +113,25 @@ def setup_logfire(
     # Configure root logging
     logging.basicConfig(
         level=logging.INFO,
-        format='%(asctime)s | %(name)s | %(levelname)s | %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S',
+        format="%(asctime)s | %(name)s | %(levelname)s | %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
         handlers=handlers,
-        force=True
+        force=True,
     )
 
     _logfire_configured = True
-    logging.info(f"📋 Logging configured (Logfire: {'enabled' if _logfire_enabled else 'disabled'})")
+    logging.info(
+        f"📋 Logging configured (Logfire: {'enabled' if _logfire_enabled else 'disabled'})"
+    )
 
 
 def get_logger(name: str) -> logging.Logger:
     """
     Get a standard Python logger that works with or without Logfire.
-    
+
     Args:
         name: Logger name (typically __name__)
-    
+
     Returns:
         Standard Python Logger instance
     """
@@ -141,11 +142,11 @@ def get_logger(name: str) -> logging.Logger:
 def safe_span(name: str, **kwargs):
     """
     Safe span context manager that works with or without Logfire.
-    
+
     Args:
         name: Span name
         **kwargs: Additional span attributes
-    
+
     Usage:
         with safe_span("operation_name", key="value") as span:
             # Your code here
@@ -183,13 +184,13 @@ class NoOpSpan:
 def safe_set_attribute(span: Any, key: str, value: Any) -> None:
     """
     Safely set a span attribute.
-    
+
     Args:
         span: Span object (from safe_span or logfire.span)
         key: Attribute key
         value: Attribute value
     """
-    if hasattr(span, 'set_attribute'):
+    if hasattr(span, "set_attribute"):
         try:
             span.set_attribute(key, value)
         except Exception:
@@ -199,12 +200,12 @@ def safe_set_attribute(span: Any, key: str, value: Any) -> None:
 def safe_record_exception(span: Any, exception: Exception) -> None:
     """
     Safely record an exception on a span.
-    
+
     Args:
         span: Span object
         exception: Exception to record
     """
-    if hasattr(span, 'record_exception'):
+    if hasattr(span, "record_exception"):
         try:
             span.record_exception(exception)
         except Exception:
@@ -214,7 +215,7 @@ def safe_record_exception(span: Any, exception: Exception) -> None:
 def safe_logfire_info(message: str, **kwargs) -> None:
     """
     Safely call logfire.info if available.
-    
+
     Args:
         message: Log message
         **kwargs: Additional log data
@@ -229,7 +230,7 @@ def safe_logfire_info(message: str, **kwargs) -> None:
 def safe_logfire_error(message: str, **kwargs) -> None:
     """
     Safely call logfire.error if available.
-    
+
     Args:
         message: Log message
         **kwargs: Additional log data
@@ -244,7 +245,7 @@ def safe_logfire_error(message: str, **kwargs) -> None:
 def safe_logfire_warning(message: str, **kwargs) -> None:
     """
     Safely call logfire.warning if available.
-    
+
     Args:
         message: Log message
         **kwargs: Additional log data
@@ -259,7 +260,7 @@ def safe_logfire_warning(message: str, **kwargs) -> None:
 def safe_logfire_debug(message: str, **kwargs) -> None:
     """
     Safely call logfire.debug if available.
-    
+
     Args:
         message: Log message
         **kwargs: Additional log data
@@ -284,24 +285,24 @@ embedding_logger = get_logger("embedding")
 
 # Export everything needed
 __all__ = [
-    'setup_logfire',
-    'get_logger',
-    'safe_span',
-    'safe_set_attribute',
-    'safe_record_exception',
-    'safe_logfire_info',
-    'safe_logfire_error',
-    'safe_logfire_warning',
-    'safe_logfire_debug',
-    'is_logfire_enabled',
-    'api_logger',
-    'mcp_logger',
-    'rag_logger',
-    'search_logger',
-    'crawl_logger',
-    'project_logger',
-    'storage_logger',
-    'embedding_logger',
-    'NoOpSpan',
-    'LOGFIRE_AVAILABLE'
+    "setup_logfire",
+    "get_logger",
+    "safe_span",
+    "safe_set_attribute",
+    "safe_record_exception",
+    "safe_logfire_info",
+    "safe_logfire_error",
+    "safe_logfire_warning",
+    "safe_logfire_debug",
+    "is_logfire_enabled",
+    "api_logger",
+    "mcp_logger",
+    "rag_logger",
+    "search_logger",
+    "crawl_logger",
+    "project_logger",
+    "storage_logger",
+    "embedding_logger",
+    "NoOpSpan",
+    "LOGFIRE_AVAILABLE",
 ]

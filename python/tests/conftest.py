@@ -1,4 +1,5 @@
 """Simple test configuration for Archon - Essential tests only."""
+
 import os
 from unittest.mock import MagicMock, patch
 
@@ -20,7 +21,7 @@ os.environ.setdefault("ARCHON_AGENTS_PORT", "8052")
 @pytest.fixture(autouse=True)
 def prevent_real_db_calls():
     """Automatically prevent any real database calls in all tests."""
-    with patch('supabase.create_client') as mock_create:
+    with patch("supabase.create_client") as mock_create:
         # Make create_client raise an error if called without our mock
         mock_create.side_effect = Exception("Real database calls are not allowed in tests!")
         yield
@@ -77,22 +78,28 @@ def mock_supabase_client():
 def client(mock_supabase_client):
     """FastAPI test client with mocked database."""
     # Patch all the ways Supabase client can be created
-    with patch('src.server.services.client_manager.create_client', return_value=mock_supabase_client):
-        with patch('src.server.services.credential_service.create_client', return_value=mock_supabase_client):
-            with patch('src.server.services.client_manager.get_supabase_client', return_value=mock_supabase_client):
-                with patch('supabase.create_client', return_value=mock_supabase_client):
+    with patch(
+        "src.server.services.client_manager.create_client", return_value=mock_supabase_client
+    ):
+        with patch(
+            "src.server.services.credential_service.create_client",
+            return_value=mock_supabase_client,
+        ):
+            with patch(
+                "src.server.services.client_manager.get_supabase_client",
+                return_value=mock_supabase_client,
+            ):
+                with patch("supabase.create_client", return_value=mock_supabase_client):
                     # Import app after patching to ensure mocks are used
                     from src.server.main import app
+
                     return TestClient(app)
 
 
 @pytest.fixture
 def test_project():
     """Simple test project data."""
-    return {
-        "title": "Test Project",
-        "description": "A test project for essential tests"
-    }
+    return {"title": "Test Project", "description": "A test project for essential tests"}
 
 
 @pytest.fixture
@@ -102,7 +109,7 @@ def test_task():
         "title": "Test Task",
         "description": "A test task for essential tests",
         "status": "todo",
-        "assignee": "User"
+        "assignee": "User",
     }
 
 
@@ -113,5 +120,5 @@ def test_knowledge_item():
         "url": "https://example.com/test",
         "title": "Test Knowledge Item",
         "content": "This is test content for knowledge base",
-        "source_id": "test-source"
+        "source_id": "test-source",
     }

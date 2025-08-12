@@ -37,12 +37,11 @@ class PromptService:
             logger.info("Loading prompts from database...")
             supabase = get_supabase_client()
 
-            response = supabase.table('archon_prompts').select('*').execute()
+            response = supabase.table("archon_prompts").select("*").execute()
 
             if response.data:
                 self._prompts = {
-                    prompt['prompt_name']: prompt['prompt']
-                    for prompt in response.data
+                    prompt["prompt_name"]: prompt["prompt"] for prompt in response.data
                 }
                 self._last_loaded = datetime.now()
                 logger.info(f"Loaded {len(self._prompts)} prompts into memory")
@@ -57,11 +56,11 @@ class PromptService:
     def get_prompt(self, prompt_name: str, default: str | None = None) -> str:
         """
         Get a prompt by name.
-        
+
         Args:
             prompt_name: The name of the prompt to retrieve
             default: Default prompt to return if not found
-            
+
         Returns:
             The prompt text or default value
         """

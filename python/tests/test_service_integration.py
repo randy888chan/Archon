@@ -15,11 +15,7 @@ def test_project_with_tasks_flow(client):
 def test_crawl_to_knowledge_flow(client):
     """Test crawling workflow."""
     # Start crawl
-    crawl_data = {
-        "url": "https://example.com",
-        "max_depth": 1,
-        "max_pages": 5
-    }
+    crawl_data = {"url": "https://example.com", "max_depth": 1, "max_pages": 5}
     response = client.post("/api/knowledge/crawl", json=crawl_data)
     assert response.status_code in [200, 201, 400, 404, 422, 500]
 
@@ -34,10 +30,9 @@ def test_document_storage_flow(client):
 
 def test_code_extraction_flow(client):
     """Test code extraction endpoint."""
-    response = client.post("/api/knowledge/extract-code", json={
-        "document_id": "test-doc-id",
-        "languages": ["python"]
-    })
+    response = client.post(
+        "/api/knowledge/extract-code", json={"document_id": "test-doc-id", "languages": ["python"]}
+    )
     assert response.status_code in [200, 400, 404, 422, 500]
 
 
@@ -54,10 +49,7 @@ def test_search_and_retrieve_flow(client):
 
 def test_mcp_tool_execution(client):
     """Test MCP tool execution endpoint."""
-    response = client.post("/api/mcp/tools/execute", json={
-        "tool": "test_tool",
-        "params": {}
-    })
+    response = client.post("/api/mcp/tools/execute", json={"tool": "test_tool", "params": {}})
     assert response.status_code in [200, 400, 404, 422, 500]
 
 

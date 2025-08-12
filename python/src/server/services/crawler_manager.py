@@ -4,6 +4,7 @@ Crawler Manager Service
 Handles initialization and management of the Crawl4AI crawler instance.
 This avoids circular imports by providing a service-level access to the crawler.
 """
+
 import os
 from typing import Optional
 
@@ -21,7 +22,7 @@ logger = get_logger(__name__)
 class CrawlerManager:
     """Manages the global crawler instance."""
 
-    _instance: Optional['CrawlerManager'] = None
+    _instance: Optional["CrawlerManager"] = None
     _crawler: AsyncWebCrawler | None = None
     _initialized: bool = False
 
@@ -54,7 +55,7 @@ class CrawlerManager:
                 raise ImportError("crawl4ai is not installed or available")
 
             # Check for Docker environment
-            in_docker = os.path.exists('/.dockerenv') or os.getenv('DOCKER_CONTAINER', False)
+            in_docker = os.path.exists("/.dockerenv") or os.getenv("DOCKER_CONTAINER", False)
 
             # Initialize browser config - same for Docker and local
             # crawl4ai/Playwright will handle Docker-specific settings internally
@@ -70,34 +71,34 @@ class CrawlerManager:
                 browser_type="chromium",
                 # Extra args for Chromium - optimized for speed
                 extra_args=[
-                    '--disable-blink-features=AutomationControlled',
-                    '--disable-dev-shm-usage',
-                    '--no-sandbox',
-                    '--disable-setuid-sandbox',
-                    '--disable-web-security',
-                    '--disable-features=IsolateOrigins,site-per-process',
+                    "--disable-blink-features=AutomationControlled",
+                    "--disable-dev-shm-usage",
+                    "--no-sandbox",
+                    "--disable-setuid-sandbox",
+                    "--disable-web-security",
+                    "--disable-features=IsolateOrigins,site-per-process",
                     # Performance optimizations
-                    '--disable-images',  # Skip image loading for faster page loads
-                    '--disable-gpu',
-                    '--disable-extensions',
-                    '--disable-plugins',
-                    '--disable-background-timer-throttling',
-                    '--disable-backgrounding-occluded-windows',
-                    '--disable-renderer-backgrounding',
-                    '--disable-features=TranslateUI',
-                    '--disable-ipc-flooding-protection',
+                    "--disable-images",  # Skip image loading for faster page loads
+                    "--disable-gpu",
+                    "--disable-extensions",
+                    "--disable-plugins",
+                    "--disable-background-timer-throttling",
+                    "--disable-backgrounding-occluded-windows",
+                    "--disable-renderer-backgrounding",
+                    "--disable-features=TranslateUI",
+                    "--disable-ipc-flooding-protection",
                     # Additional speed optimizations
-                    '--aggressive-cache-discard',
-                    '--disable-background-networking',
-                    '--disable-default-apps',
-                    '--disable-sync',
-                    '--metrics-recording-only',
-                    '--no-first-run',
-                    '--disable-popup-blocking',
-                    '--disable-prompt-on-repost',
-                    '--disable-domain-reliability',
-                    '--disable-component-update'
-                ]
+                    "--aggressive-cache-discard",
+                    "--disable-background-networking",
+                    "--disable-default-apps",
+                    "--disable-sync",
+                    "--metrics-recording-only",
+                    "--no-first-run",
+                    "--disable-popup-blocking",
+                    "--disable-prompt-on-repost",
+                    "--disable-domain-reliability",
+                    "--disable-component-update",
+                ],
             )
 
             safe_logfire_info(f"Creating AsyncWebCrawler with config | in_docker={in_docker}")
@@ -117,6 +118,7 @@ class CrawlerManager:
         except Exception as e:
             safe_logfire_error(f"Failed to initialize crawler: {e}")
             import traceback
+
             tb = traceback.format_exc()
             safe_logfire_error(f"Crawler initialization traceback: {tb}")
             # Log error details
@@ -154,8 +156,12 @@ async def get_crawler() -> AsyncWebCrawler | None:
     if crawler is None:
         logger.warning("get_crawler() returning None")
         logger.warning(f"_crawler_manager: {_crawler_manager}")
-        logger.warning(f"_crawler_manager._crawler: {_crawler_manager._crawler if _crawler_manager else 'N/A'}")
-        logger.warning(f"_crawler_manager._initialized: {_crawler_manager._initialized if _crawler_manager else 'N/A'}")
+        logger.warning(
+            f"_crawler_manager._crawler: {_crawler_manager._crawler if _crawler_manager else 'N/A'}"
+        )
+        logger.warning(
+            f"_crawler_manager._initialized: {_crawler_manager._initialized if _crawler_manager else 'N/A'}"
+        )
     return crawler
 
 

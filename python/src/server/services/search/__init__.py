@@ -3,6 +3,7 @@ Search Services
 
 Consolidated search and RAG functionality with strategy pattern support.
 """
+
 # Main RAG service
 from .agentic_rag_strategy import AgenticRAGStrategy
 
@@ -14,11 +15,10 @@ from .reranking_strategy import RerankingStrategy
 
 __all__ = [
     # Main service classes
-    'RAGService',
-
+    "RAGService",
     # Strategy classes
-    'BaseSearchStrategy',
-    'HybridSearchStrategy',
-    'RerankingStrategy',
-    'AgenticRAGStrategy'
+    "BaseSearchStrategy",
+    "HybridSearchStrategy",
+    "RerankingStrategy",
+    "AgenticRAGStrategy",
 ]

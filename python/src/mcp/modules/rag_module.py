@@ -43,9 +43,9 @@ def register_rag_tools(mcp: FastMCP):
     async def get_available_sources(ctx: Context) -> str:
         """
         Get list of available sources in the knowledge base.
-        
+
         This tool uses HTTP call to the API service.
-        
+
         Returns:
             JSON string with list of sources
         """
@@ -60,39 +60,36 @@ def register_rag_tools(mcp: FastMCP):
                     result = response.json()
                     sources = result.get("sources", [])
 
-                    return json.dumps({
-                        "success": True,
-                        "sources": sources,
-                        "count": len(sources)
-                    }, indent=2)
+                    return json.dumps(
+                        {"success": True, "sources": sources, "count": len(sources)}, indent=2
+                    )
                 else:
                     error_detail = response.text
-                    return json.dumps({
-                        "success": False,
-                        "error": f"HTTP {response.status_code}: {error_detail}"
-                    }, indent=2)
+                    return json.dumps(
+                        {"success": False, "error": f"HTTP {response.status_code}: {error_detail}"},
+                        indent=2,
+                    )
 
         except Exception as e:
             logger.error(f"Error getting sources: {e}")
-            return json.dumps({
-                "success": False,
-                "error": str(e)
-            }, indent=2)
+            return json.dumps({"success": False, "error": str(e)}, indent=2)
 
     @mcp.tool()
-    async def perform_rag_query(ctx: Context, query: str, source: str = None, match_count: int = 5) -> str:
+    async def perform_rag_query(
+        ctx: Context, query: str, source: str = None, match_count: int = 5
+    ) -> str:
         """
         Perform a RAG (Retrieval Augmented Generation) query on stored content.
-        
+
         This tool searches the vector database for content relevant to the query and returns
         the matching documents. Optionally filter by source domain.
         Get the source by using the get_available_sources tool before calling this search!
-        
+
         Args:
             query: The search query
             source: Optional source domain to filter results (e.g., 'example.com')
             match_count: Maximum number of results to return (default: 5)
-        
+
         Returns:
             JSON string with search results
         """
@@ -101,58 +98,56 @@ def register_rag_tools(mcp: FastMCP):
             timeout = httpx.Timeout(30.0, connect=5.0)
 
             async with httpx.AsyncClient(timeout=timeout) as client:
-                request_data = {
-                    "query": query,
-                    "match_count": match_count
-                }
+                request_data = {"query": query, "match_count": match_count}
                 if source:
                     request_data["source"] = source
 
-                response = await client.post(
-                    urljoin(api_url, "/api/rag/query"),
-                    json=request_data
-                )
+                response = await client.post(urljoin(api_url, "/api/rag/query"), json=request_data)
 
                 if response.status_code == 200:
                     result = response.json()
-                    return json.dumps({
-                        "success": True,
-                        "results": result.get("results", []),
-                        "reranked": result.get("reranked", False),
-                        "error": None
-                    }, indent=2)
+                    return json.dumps(
+                        {
+                            "success": True,
+                            "results": result.get("results", []),
+                            "reranked": result.get("reranked", False),
+                            "error": None,
+                        },
+                        indent=2,
+                    )
                 else:
                     error_detail = response.text
-                    return json.dumps({
-                        "success": False,
-                        "results": [],
-                        "error": f"HTTP {response.status_code}: {error_detail}"
-                    }, indent=2)
+                    return json.dumps(
+                        {
+                            "success": False,
+                            "results": [],
+                            "error": f"HTTP {response.status_code}: {error_detail}",
+                        },
+                        indent=2,
+                    )
 
         except Exception as e:
             logger.error(f"Error performing RAG query: {e}")
-            return json.dumps({
-                "success": False,
-                "results": [],
-                "error": str(e)
-            }, indent=2)
+            return json.dumps({"success": False, "results": [], "error": str(e)}, indent=2)
 
     @mcp.tool()
-    async def search_code_examples(ctx: Context, query: str, source_id: str = None, match_count: int = 5) -> str:
+    async def search_code_examples(
+        ctx: Context, query: str, source_id: str = None, match_count: int = 5
+    ) -> str:
         """
         Search for code examples relevant to the query.
-        
+
         This tool searches the vector database for code examples relevant to the query and returns
         the matching examples with their summaries. Optionally filter by source_id.
         Get the source_id by using the get_available_sources tool before calling this search!
 
         Use the get_available_sources tool first to see what sources are available for filtering.
-        
+
         Args:
             query: The search query
             source_id: Optional source ID to filter results (e.g., 'example.com')
             match_count: Maximum number of results to return (default: 5)
-        
+
         Returns:
             JSON string with search results
         """
@@ -161,43 +156,40 @@ def register_rag_tools(mcp: FastMCP):
             timeout = httpx.Timeout(30.0, connect=5.0)
 
             async with httpx.AsyncClient(timeout=timeout) as client:
-                request_data = {
-                    "query": query,
-                    "match_count": match_count
-                }
+                request_data = {"query": query, "match_count": match_count}
                 if source_id:
                     request_data["source"] = source_id
 
                 # Call the dedicated code examples endpoint
                 response = await client.post(
-                    urljoin(api_url, "/api/rag/code-examples"),
-                    json=request_data
+                    urljoin(api_url, "/api/rag/code-examples"), json=request_data
                 )
 
                 if response.status_code == 200:
                     result = response.json()
-                    return json.dumps({
-                        "success": True,
-                        "results": result.get("results", []),
-                        "reranked": result.get("reranked", False),
-                        "error": None
-                    }, indent=2)
+                    return json.dumps(
+                        {
+                            "success": True,
+                            "results": result.get("results", []),
+                            "reranked": result.get("reranked", False),
+                            "error": None,
+                        },
+                        indent=2,
+                    )
                 else:
                     error_detail = response.text
-                    return json.dumps({
-                        "success": False,
-                        "results": [],
-                        "error": f"HTTP {response.status_code}: {error_detail}"
-                    }, indent=2)
+                    return json.dumps(
+                        {
+                            "success": False,
+                            "results": [],
+                            "error": f"HTTP {response.status_code}: {error_detail}",
+                        },
+                        indent=2,
+                    )
 
         except Exception as e:
             logger.error(f"Error searching code examples: {e}")
-            return json.dumps({
-                "success": False,
-                "results": [],
-                "error": str(e)
-            }, indent=2)
-
+            return json.dumps({"success": False, "results": [], "error": str(e)}, indent=2)
 
     # Log successful registration
     logger.info("✓ RAG tools registered (HTTP-based version)")

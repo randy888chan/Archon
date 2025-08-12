@@ -16,11 +16,11 @@ class EmbeddingError(Exception):
         message: str,
         text_preview: str | None = None,
         batch_index: int | None = None,
-        **kwargs
+        **kwargs,
     ):
         """
         Initialize embedding error with context.
-        
+
         Args:
             message: Error description
             text_preview: Preview of text that failed (max 200 chars)
@@ -39,14 +39,14 @@ class EmbeddingError(Exception):
             "message": str(self),
             "text_preview": self.text_preview,
             "batch_index": self.batch_index,
-            "metadata": self.metadata
+            "metadata": self.metadata,
         }
 
 
 class EmbeddingQuotaExhaustedError(EmbeddingError):
     """
     Raised when API quota is exhausted.
-    
+
     This is a CRITICAL error that should stop the entire process
     as continuing would be pointless without ability to create embeddings.
     """
@@ -61,7 +61,7 @@ class EmbeddingQuotaExhaustedError(EmbeddingError):
 class EmbeddingRateLimitError(EmbeddingError):
     """
     Raised when rate limit is hit after max retries.
-    
+
     This error should skip the current batch but allow the process to continue
     with other batches after appropriate delay.
     """
@@ -75,17 +75,18 @@ class EmbeddingRateLimitError(EmbeddingError):
 class EmbeddingAsyncContextError(EmbeddingError):
     """
     Raised when sync embedding function is called from async context.
-    
+
     This indicates a code design issue that needs to be fixed by using
     the async version of the function.
     """
+
     pass
 
 
 class EmbeddingAPIError(EmbeddingError):
     """
     Raised for general API failures (network, invalid response, etc).
-    
+
     These errors should skip the affected item but allow the process
     to continue with other items.
     """
@@ -101,7 +102,7 @@ class EmbeddingAPIError(EmbeddingError):
 class EmbeddingValidationError(EmbeddingError):
     """
     Raised when embedding validation fails (e.g., zero vector detected).
-    
+
     This should never happen in normal operation but indicates
     a serious issue if it does.
     """

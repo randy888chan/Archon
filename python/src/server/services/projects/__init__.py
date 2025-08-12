@@ -22,5 +22,5 @@ __all__ = [
     "ProgressService",
     "progress_service",
     "ProjectCreationService",
-    "SourceLinkingService"
+    "SourceLinkingService",
 ]

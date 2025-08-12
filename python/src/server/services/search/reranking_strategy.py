@@ -13,6 +13,7 @@ from typing import Any
 
 try:
     from sentence_transformers import CrossEncoder
+
     CROSSENCODER_AVAILABLE = True
 except ImportError:
     CrossEncoder = None
@@ -29,10 +30,12 @@ DEFAULT_RERANKING_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 class RerankingStrategy:
     """Strategy class implementing result reranking using CrossEncoder models"""
 
-    def __init__(self, model_name: str = DEFAULT_RERANKING_MODEL, model_instance: Any | None = None):
+    def __init__(
+        self, model_name: str = DEFAULT_RERANKING_MODEL, model_instance: Any | None = None
+    ):
         """
         Initialize reranking strategy.
-        
+
         Args:
             model_name: Name/path of the CrossEncoder model to use
             model_instance: Pre-loaded CrossEncoder instance or any object with a predict method (optional)
@@ -44,13 +47,13 @@ class RerankingStrategy:
     def from_model(cls, model: Any, model_name: str = "custom_model") -> "RerankingStrategy":
         """
         Create a RerankingStrategy from any model with a predict method.
-        
+
         This factory method is useful for tests or when using non-CrossEncoder models.
-        
+
         Args:
             model: Any object with a predict(pairs) method
             model_name: Optional name for the model
-            
+
         Returns:
             RerankingStrategy instance using the provided model
         """
@@ -74,19 +77,16 @@ class RerankingStrategy:
         return self.model is not None
 
     def build_query_document_pairs(
-        self,
-        query: str,
-        results: list[dict[str, Any]],
-        content_key: str = "content"
+        self, query: str, results: list[dict[str, Any]], content_key: str = "content"
     ) -> tuple[list[list[str]], list[int]]:
         """
         Build query-document pairs for the reranking model.
-        
+
         Args:
             query: The search query
             results: List of search results
             content_key: The key in each result dict containing text content
-            
+
         Returns:
             Tuple of (query-document pairs, valid indices)
         """
@@ -109,17 +109,17 @@ class RerankingStrategy:
         results: list[dict[str, Any]],
         scores: list[float],
         valid_indices: list[int],
-        top_k: int | None = None
+        top_k: int | None = None,
     ) -> list[dict[str, Any]]:
         """
         Apply reranking scores to results and sort them.
-        
+
         Args:
             results: Original search results
             scores: Reranking scores from the model
             valid_indices: Indices of results that were scored
             top_k: Optional limit on number of results to return
-            
+
         Returns:
             Reranked and sorted list of results
         """
@@ -128,11 +128,7 @@ class RerankingStrategy:
             results[valid_idx]["rerank_score"] = float(scores[i])
 
         # Sort results by rerank score (descending - highest relevance first)
-        reranked_results = sorted(
-            results,
-            key=lambda x: x.get("rerank_score", -1.0),
-            reverse=True
-        )
+        reranked_results = sorted(results, key=lambda x: x.get("rerank_score", -1.0), reverse=True)
 
         # Apply top_k limit if specified
         if top_k is not None and top_k > 0:
@@ -145,17 +141,17 @@ class RerankingStrategy:
         query: str,
         results: list[dict[str, Any]],
         content_key: str = "content",
-        top_k: int | None = None
+        top_k: int | None = None,
     ) -> list[dict[str, Any]]:
         """
         Rerank search results using the CrossEncoder model.
-        
+
         Args:
             query: The search query used to retrieve results
             results: List of search results to rerank
             content_key: The key in each result dict containing text content for reranking
             top_k: Optional limit on number of results to return after reranking
-            
+
         Returns:
             Reranked list of results ordered by rerank_score (highest first)
         """
@@ -163,9 +159,9 @@ class RerankingStrategy:
             logger.debug("Reranking skipped - no model or no results")
             return results
 
-        with safe_span("rerank_results",
-                      result_count=len(results),
-                      model_name=self.model_name) as span:
+        with safe_span(
+            "rerank_results", result_count=len(results), model_name=self.model_name
+        ) as span:
             try:
                 # Build query-document pairs
                 query_doc_pairs, valid_indices = self.build_query_document_pairs(
@@ -181,14 +177,14 @@ class RerankingStrategy:
                     scores = self.model.predict(query_doc_pairs)
 
                 # Apply scores and sort results
-                reranked_results = self.apply_rerank_scores(
-                    results, scores, valid_indices, top_k
-                )
+                reranked_results = self.apply_rerank_scores(results, scores, valid_indices, top_k)
 
                 span.set_attribute("reranked_count", len(reranked_results))
                 if len(scores) > 0:
                     span.set_attribute("score_range", f"{min(scores):.3f}-{max(scores):.3f}")
-                    logger.debug(f"Reranked {len(query_doc_pairs)} results, score range: {min(scores):.3f}-{max(scores):.3f}")
+                    logger.debug(
+                        f"Reranked {len(query_doc_pairs)} results, score range: {min(scores):.3f}-{max(scores):.3f}"
+                    )
 
                 return reranked_results
 
@@ -203,7 +199,7 @@ class RerankingStrategy:
             "model_name": self.model_name,
             "available": self.is_available(),
             "crossencoder_available": CROSSENCODER_AVAILABLE,
-            "model_loaded": self.model is not None
+            "model_loaded": self.model is not None,
         }
 
 
@@ -221,15 +217,11 @@ class RerankingConfig:
             return {
                 "enabled": use_reranking,
                 "model_name": model_name,
-                "top_k": top_k if top_k > 0 else None
+                "top_k": top_k if top_k > 0 else None,
             }
         except Exception as e:
             logger.error(f"Error loading reranking config: {e}")
-            return {
-                "enabled": False,
-                "model_name": DEFAULT_RERANKING_MODEL,
-                "top_k": None
-            }
+            return {"enabled": False, "model_name": DEFAULT_RERANKING_MODEL, "top_k": None}
 
     @staticmethod
     def from_env() -> dict[str, Any]:
@@ -237,7 +229,5 @@ class RerankingConfig:
         return {
             "enabled": os.getenv("USE_RERANKING", "false").lower() in ("true", "1", "yes", "on"),
             "model_name": os.getenv("RERANKING_MODEL", DEFAULT_RERANKING_MODEL),
-            "top_k": int(os.getenv("RERANKING_TOP_K", "0")) or None
+            "top_k": int(os.getenv("RERANKING_TOP_K", "0")) or None,
         }
-
-

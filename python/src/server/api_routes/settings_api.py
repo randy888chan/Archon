@@ -20,6 +20,7 @@ from ..utils import get_supabase_client
 
 router = APIRouter(prefix="/api", tags=["settings"])
 
+
 class CredentialRequest(BaseModel):
     key: str
     value: str
@@ -27,15 +28,18 @@ class CredentialRequest(BaseModel):
     category: str | None = None
     description: str | None = None
 
+
 class CredentialUpdateRequest(BaseModel):
     value: str
     is_encrypted: bool | None = None
     category: str | None = None
     description: str | None = None
 
+
 class CredentialResponse(BaseModel):
     success: bool
     message: str
+
 
 # Credential Management Endpoints
 @router.get("/credentials")
@@ -50,22 +54,25 @@ async def list_credentials(category: str | None = None):
             credentials = [cred for cred in credentials if cred.category == category]
 
         result_count = len(credentials)
-        logfire.info(f"Credentials listed successfully | count={result_count} | category={category}")
+        logfire.info(
+            f"Credentials listed successfully | count={result_count} | category={category}"
+        )
 
         return [
             {
-                'key': cred.key,
-                'value': cred.value,
-                'encrypted_value': cred.encrypted_value,
-                'is_encrypted': cred.is_encrypted,
-                'category': cred.category,
-                'description': cred.description
+                "key": cred.key,
+                "value": cred.value,
+                "encrypted_value": cred.encrypted_value,
+                "is_encrypted": cred.is_encrypted,
+                "category": cred.category,
+                "description": cred.description,
             }
             for cred in credentials
         ]
     except Exception as e:
         logfire.error(f"Error listing credentials | category={category} | error={str(e)}")
-        raise HTTPException(status_code=500, detail={'error': str(e)})
+        raise HTTPException(status_code=500, detail={"error": str(e)})
+
 
 @router.get("/credentials/categories/{category}")
 async def get_credentials_by_category(category: str):
@@ -74,51 +81,62 @@ async def get_credentials_by_category(category: str):
         logfire.info(f"Getting credentials by category | category={category}")
         credentials = await credential_service.get_credentials_by_category(category)
 
-        logfire.info(f"Credentials retrieved by category | category={category} | count={len(credentials)}")
+        logfire.info(
+            f"Credentials retrieved by category | category={category} | count={len(credentials)}"
+        )
 
-        return {'credentials': credentials}
+        return {"credentials": credentials}
     except Exception as e:
-        logfire.error(f"Error getting credentials by category | category={category} | error={str(e)}")
-        raise HTTPException(status_code=500, detail={'error': str(e)})
+        logfire.error(
+            f"Error getting credentials by category | category={category} | error={str(e)}"
+        )
+        raise HTTPException(status_code=500, detail={"error": str(e)})
+
 
 @router.post("/credentials")
 async def create_credential(request: CredentialRequest):
     """Create or update a credential."""
     try:
-        logfire.info(f"Creating/updating credential | key={request.key} | is_encrypted={request.is_encrypted} | category={request.category}")
+        logfire.info(
+            f"Creating/updating credential | key={request.key} | is_encrypted={request.is_encrypted} | category={request.category}"
+        )
 
         success = await credential_service.set_credential(
             key=request.key,
             value=request.value,
             is_encrypted=request.is_encrypted,
             category=request.category,
-            description=request.description
+            description=request.description,
         )
 
         if success:
-            logfire.info(f"Credential saved successfully | key={request.key} | is_encrypted={request.is_encrypted}")
+            logfire.info(
+                f"Credential saved successfully | key={request.key} | is_encrypted={request.is_encrypted}"
+            )
 
             return {
-                'success': True,
-                'message': f'Credential {request.key} {"encrypted and " if request.is_encrypted else ""}saved successfully'
+                "success": True,
+                "message": f"Credential {request.key} {'encrypted and ' if request.is_encrypted else ''}saved successfully",
             }
         else:
             logfire.error(f"Failed to save credential | key={request.key}")
-            raise HTTPException(status_code=500, detail={'error': 'Failed to save credential'})
+            raise HTTPException(status_code=500, detail={"error": "Failed to save credential"})
 
     except Exception as e:
         logfire.error(f"Error creating credential | key={request.key} | error={str(e)}")
-        raise HTTPException(status_code=500, detail={'error': str(e)})
+        raise HTTPException(status_code=500, detail={"error": str(e)})
+
 
 # Define optional settings with their default values
 # These are user preferences that should return defaults instead of 404
 # This prevents console errors in the frontend when settings haven't been explicitly set
 # The frontend can check the 'is_default' flag to know if it's a default or user-set value
 OPTIONAL_SETTINGS_WITH_DEFAULTS = {
-    'DISCONNECT_SCREEN_ENABLED': 'true',  # Show disconnect screen when server is unavailable
-    'PROJECTS_ENABLED': 'false',          # Enable project management features
-    'LOGFIRE_ENABLED': 'false',           # Enable Pydantic Logfire integration
+    "DISCONNECT_SCREEN_ENABLED": "true",  # Show disconnect screen when server is unavailable
+    "PROJECTS_ENABLED": "false",  # Enable project management features
+    "LOGFIRE_ENABLED": "false",  # Enable Pydantic Logfire integration
 }
+
 
 @router.get("/credentials/{key}")
 async def get_credential(key: str, decrypt: bool = True):
@@ -132,39 +150,36 @@ async def get_credential(key: str, decrypt: bool = True):
             if key in OPTIONAL_SETTINGS_WITH_DEFAULTS:
                 logfire.info(f"Returning default value for optional setting | key={key}")
                 return {
-                    'key': key,
-                    'value': OPTIONAL_SETTINGS_WITH_DEFAULTS[key],
-                    'is_default': True,
-                    'category': 'features',
-                    'description': f'Default value for {key}'
+                    "key": key,
+                    "value": OPTIONAL_SETTINGS_WITH_DEFAULTS[key],
+                    "is_default": True,
+                    "category": "features",
+                    "description": f"Default value for {key}",
                 }
 
             logfire.warning(f"Credential not found | key={key}")
-            raise HTTPException(status_code=404, detail={'error': f'Credential {key} not found'})
+            raise HTTPException(status_code=404, detail={"error": f"Credential {key} not found"})
 
         logfire.info(f"Credential retrieved successfully | key={key}")
 
         # For encrypted credentials, return metadata instead of the actual value for security
-        if isinstance(value, dict) and value.get('is_encrypted') and not decrypt:
+        if isinstance(value, dict) and value.get("is_encrypted") and not decrypt:
             return {
-                'key': key,
-                'is_encrypted': True,
-                'category': value.get('category'),
-                'description': value.get('description'),
-                'has_value': bool(value.get('encrypted_value'))
+                "key": key,
+                "is_encrypted": True,
+                "category": value.get("category"),
+                "description": value.get("description"),
+                "has_value": bool(value.get("encrypted_value")),
             }
 
-        return {
-            'key': key,
-            'value': value,
-            'is_encrypted': False
-        }
+        return {"key": key, "value": value, "is_encrypted": False}
 
     except HTTPException:
         raise
     except Exception as e:
         logfire.error(f"Error getting credential | key={key} | error={str(e)}")
-        raise HTTPException(status_code=500, detail={'error': str(e)})
+        raise HTTPException(status_code=500, detail={"error": str(e)})
+
 
 @router.put("/credentials/{key}")
 async def update_credential(key: str, request: dict[str, Any]):
@@ -175,10 +190,10 @@ async def update_credential(key: str, request: dict[str, Any]):
         # Handle both CredentialUpdateRequest and full Credential object formats
         if isinstance(request, dict):
             # If the request contains a 'value' field directly, use it
-            value = request.get('value', '')
-            is_encrypted = request.get('is_encrypted')
-            category = request.get('category')
-            description = request.get('description')
+            value = request.get("value", "")
+            is_encrypted = request.get("is_encrypted")
+            category = request.get("category")
+            description = request.get("description")
         else:
             value = request.value
             is_encrypted = request.is_encrypted
@@ -208,23 +223,23 @@ async def update_credential(key: str, request: dict[str, Any]):
             value=value,
             is_encrypted=is_encrypted,
             category=category,
-            description=description
+            description=description,
         )
 
         if success:
-            logfire.info(f"Credential updated successfully | key={key} | is_encrypted={is_encrypted}")
+            logfire.info(
+                f"Credential updated successfully | key={key} | is_encrypted={is_encrypted}"
+            )
 
-            return {
-                'success': True,
-                'message': f'Credential {key} updated successfully'
-            }
+            return {"success": True, "message": f"Credential {key} updated successfully"}
         else:
             logfire.error(f"Failed to update credential | key={key}")
-            raise HTTPException(status_code=500, detail={'error': 'Failed to update credential'})
+            raise HTTPException(status_code=500, detail={"error": "Failed to update credential"})
 
     except Exception as e:
         logfire.error(f"Error updating credential | key={key} | error={str(e)}")
-        raise HTTPException(status_code=500, detail={'error': str(e)})
+        raise HTTPException(status_code=500, detail={"error": str(e)})
+
 
 @router.delete("/credentials/{key}")
 async def delete_credential(key: str):
@@ -236,17 +251,15 @@ async def delete_credential(key: str):
         if success:
             logfire.info(f"Credential deleted successfully | key={key}")
 
-            return {
-                'success': True,
-                'message': f'Credential {key} deleted successfully'
-            }
+            return {"success": True, "message": f"Credential {key} deleted successfully"}
         else:
             logfire.error(f"Failed to delete credential | key={key}")
-            raise HTTPException(status_code=500, detail={'error': 'Failed to delete credential'})
+            raise HTTPException(status_code=500, detail={"error": "Failed to delete credential"})
 
     except Exception as e:
         logfire.error(f"Error deleting credential | key={key} | error={str(e)}")
-        raise HTTPException(status_code=500, detail={'error': str(e)})
+        raise HTTPException(status_code=500, detail={"error": str(e)})
+
 
 @router.post("/credentials/initialize")
 async def initialize_credentials_endpoint():
@@ -257,13 +270,11 @@ async def initialize_credentials_endpoint():
 
         logfire.info("Credentials reloaded successfully")
 
-        return {
-            'success': True,
-            'message': 'Credentials reloaded from database'
-        }
+        return {"success": True, "message": "Credentials reloaded from database"}
     except Exception as e:
         logfire.error(f"Error reloading credentials | error={str(e)}")
-        raise HTTPException(status_code=500, detail={'error': str(e)})
+        raise HTTPException(status_code=500, detail={"error": str(e)})
+
 
 @router.get("/database/metrics")
 async def database_metrics():
@@ -276,35 +287,50 @@ async def database_metrics():
         tables_info = {}
 
         # Get projects count
-        projects_response = supabase_client.table("archon_projects").select("id", count="exact").execute()
-        tables_info["projects"] = projects_response.count if projects_response.count is not None else 0
+        projects_response = (
+            supabase_client.table("archon_projects").select("id", count="exact").execute()
+        )
+        tables_info["projects"] = (
+            projects_response.count if projects_response.count is not None else 0
+        )
 
         # Get tasks count
         tasks_response = supabase_client.table("archon_tasks").select("id", count="exact").execute()
         tables_info["tasks"] = tasks_response.count if tasks_response.count is not None else 0
 
         # Get crawled pages count
-        pages_response = supabase_client.table("archon_crawled_pages").select("id", count="exact").execute()
-        tables_info["crawled_pages"] = pages_response.count if pages_response.count is not None else 0
+        pages_response = (
+            supabase_client.table("archon_crawled_pages").select("id", count="exact").execute()
+        )
+        tables_info["crawled_pages"] = (
+            pages_response.count if pages_response.count is not None else 0
+        )
 
         # Get settings count
-        settings_response = supabase_client.table("archon_settings").select("id", count="exact").execute()
-        tables_info["settings"] = settings_response.count if settings_response.count is not None else 0
+        settings_response = (
+            supabase_client.table("archon_settings").select("id", count="exact").execute()
+        )
+        tables_info["settings"] = (
+            settings_response.count if settings_response.count is not None else 0
+        )
 
         total_records = sum(tables_info.values())
-        logfire.info(f"Database metrics retrieved | total_records={total_records} | tables={tables_info}")
+        logfire.info(
+            f"Database metrics retrieved | total_records={total_records} | tables={tables_info}"
+        )
 
         return {
             "status": "healthy",
             "database": "supabase",
             "tables": tables_info,
             "total_records": total_records,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
         }
 
     except Exception as e:
         logfire.error(f"Error getting database metrics | error={str(e)}")
-        raise HTTPException(status_code=500, detail={'error': str(e)})
+        raise HTTPException(status_code=500, detail={"error": str(e)})
+
 
 @router.get("/settings/health")
 async def settings_health():

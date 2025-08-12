@@ -14,13 +14,15 @@ import httpx
 
 class Environment(Enum):
     """Deployment environment types"""
+
     DOCKER_COMPOSE = "docker_compose"
     LOCAL = "local"
+
 
 class ServiceDiscovery:
     """
     Service discovery that automatically adapts to the deployment environment.
-    
+
     In Docker Compose: Uses container names
     In Local: Uses localhost with different ports
     """
@@ -53,7 +55,7 @@ class ServiceDiscovery:
         self.DEFAULT_PORTS = {
             "api": int(server_port),
             "mcp": int(mcp_port),
-            "agents": int(agents_port)
+            "agents": int(agents_port),
         }
 
         self.environment = self._detect_environment()
@@ -66,7 +68,7 @@ class ServiceDiscovery:
         "agents": "archon-agents",
         "archon-server": "archon-server",
         "archon-mcp": "archon-mcp",
-        "archon-agents": "archon-agents"
+        "archon-agents": "archon-agents",
     }
 
     @staticmethod
@@ -82,11 +84,11 @@ class ServiceDiscovery:
     def get_service_url(self, service: str, protocol: str = "http") -> str:
         """
         Get the URL for a service based on the current environment.
-        
+
         Args:
             service: Service name (e.g., "api", "mcp", "agents")
             protocol: Protocol to use (default: "http")
-            
+
         Returns:
             Full service URL (e.g., "http://archon-api:8080")
         """
@@ -98,7 +100,9 @@ class ServiceDiscovery:
         service_name = self.SERVICE_NAMES.get(service, service)
         port = self.DEFAULT_PORTS.get(service)
         if port is None:
-            raise ValueError(f"Unknown service: {service}. Valid services are: {list(self.DEFAULT_PORTS.keys())}")
+            raise ValueError(
+                f"Unknown service: {service}. Valid services are: {list(self.DEFAULT_PORTS.keys())}"
+            )
 
         if self.environment == Environment.DOCKER_COMPOSE:
             # Docker Compose uses service names directly
@@ -122,11 +126,11 @@ class ServiceDiscovery:
     async def health_check(self, service: str, timeout: float = 5.0) -> bool:
         """
         Check if a service is healthy.
-        
+
         Args:
             service: Service name to check
             timeout: Timeout in seconds
-            
+
         Returns:
             True if service is healthy, False otherwise
         """
@@ -140,16 +144,17 @@ class ServiceDiscovery:
         except Exception:
             return False
 
-    async def wait_for_service(self, service: str, max_attempts: int = 30,
-                              delay: float = 2.0) -> bool:
+    async def wait_for_service(
+        self, service: str, max_attempts: int = 30, delay: float = 2.0
+    ) -> bool:
         """
         Wait for a service to become healthy.
-        
+
         Args:
             service: Service name to wait for
             max_attempts: Maximum number of attempts
             delay: Delay between attempts in seconds
-            
+
         Returns:
             True if service became healthy, False if timeout
         """
@@ -186,6 +191,7 @@ class ServiceDiscovery:
 # Global instance for convenience - lazy loaded
 _discovery = None
 
+
 def get_discovery() -> ServiceDiscovery:
     """Get or create the global ServiceDiscovery instance"""
     global _discovery
@@ -193,29 +199,36 @@ def get_discovery() -> ServiceDiscovery:
         _discovery = ServiceDiscovery()
     return _discovery
 
+
 # For backward compatibility - create a property that lazy-loads
 class _LazyDiscovery:
     def __getattr__(self, name):
         return getattr(get_discovery(), name)
 
+
 discovery = _LazyDiscovery()
+
 
 # Convenience functions
 def get_api_url() -> str:
     """Get the API service URL"""
     return get_discovery().get_service_url("api")
 
+
 def get_mcp_url() -> str:
     """Get the MCP service URL"""
     return get_discovery().get_service_url("mcp")
+
 
 def get_agents_url() -> str:
     """Get the Agents service URL"""
     return get_discovery().get_service_url("agents")
 
+
 async def is_service_healthy(service: str) -> bool:
     """Check if a service is healthy"""
     return await get_discovery().health_check(service)
+
 
 # Export key functions and classes
 __all__ = [
@@ -225,5 +238,5 @@ __all__ = [
     "get_api_url",
     "get_mcp_url",
     "get_agents_url",
-    "is_service_healthy"
+    "is_service_healthy",
 ]

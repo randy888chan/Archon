@@ -40,22 +40,30 @@ from ..services.source_management_service import (
 )
 
 # Re-export threading service imports for compatibility
-from ..services.threading_service import ProcessingMode, RateLimitConfig, ThreadingConfig, get_threading_service
+from ..services.threading_service import (
+    ProcessingMode,
+    RateLimitConfig,
+    ThreadingConfig,
+    get_threading_service,
+)
 
 # Global threading service instance for optimization
 _threading_service = None
 
+
 async def initialize_threading_service(
     threading_config: ThreadingConfig | None = None,
-    rate_limit_config: RateLimitConfig | None = None
+    rate_limit_config: RateLimitConfig | None = None,
 ):
     """Initialize the global threading service for utilities"""
     global _threading_service
     if _threading_service is None:
         from ..services.threading_service import ThreadingService
+
         _threading_service = ThreadingService(threading_config, rate_limit_config)
         await _threading_service.start()
     return _threading_service
+
 
 def get_utils_threading_service():
     """Get the threading service instance (lazy initialization)"""
@@ -64,38 +72,34 @@ def get_utils_threading_service():
         _threading_service = get_threading_service()
     return _threading_service
 
+
 # Export all imported functions for backward compatibility
 __all__ = [
     # Threading functions
-    'initialize_threading_service',
-    'get_utils_threading_service',
-    'get_threading_service',
-    'ProcessingMode',
-    'ThreadingConfig',
-    'RateLimitConfig',
-
+    "initialize_threading_service",
+    "get_utils_threading_service",
+    "get_threading_service",
+    "ProcessingMode",
+    "ThreadingConfig",
+    "RateLimitConfig",
     # Client functions
-    'get_supabase_client',
-
+    "get_supabase_client",
     # Embedding functions
-    'create_embedding',
-    'create_embeddings_batch',
-    'create_embedding_async',
-    'create_embeddings_batch_async',
-    'get_openai_client',
-
+    "create_embedding",
+    "create_embeddings_batch",
+    "create_embedding_async",
+    "create_embeddings_batch_async",
+    "get_openai_client",
     # Contextual embedding functions
-    'generate_contextual_embedding',
-    'generate_contextual_embedding_async',
-    'generate_contextual_embeddings_batch',
-    'process_chunk_with_context',
-    'process_chunk_with_context_async',
-
+    "generate_contextual_embedding",
+    "generate_contextual_embedding_async",
+    "generate_contextual_embeddings_batch",
+    "process_chunk_with_context",
+    "process_chunk_with_context_async",
     # Note: Document storage and search functions not exported from utils
     # to avoid circular dependencies. Import directly from services modules.
-
     # Source management functions
-    'extract_source_summary',
-    'generate_source_title_and_metadata',
-    'update_source_info',
+    "extract_source_summary",
+    "generate_source_title_and_metadata",
+    "update_source_info",
 ]

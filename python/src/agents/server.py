@@ -31,20 +31,25 @@ from .rag_agent import RagAgent
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 # Request/Response models
 class AgentRequest(BaseModel):
     """Request model for agent interactions"""
+
     agent_type: str  # "document", "rag", etc.
     prompt: str
     context: dict[str, Any] | None = None
     options: dict[str, Any] | None = None
 
+
 class AgentResponse(BaseModel):
     """Response model for agent interactions"""
+
     success: bool
     result: Any | None = None
     error: str | None = None
     metadata: dict[str, Any] | None = None
+
 
 # Agent registry
 AVAILABLE_AGENTS = {
@@ -54,6 +59,7 @@ AVAILABLE_AGENTS = {
 
 # Global credentials storage
 AGENT_CREDENTIALS = {}
+
 
 async def fetch_credentials_from_server():
     """Fetch credentials from the server's internal API."""
@@ -71,8 +77,7 @@ async def fetch_credentials_from_server():
                         "Please set it in your .env file or environment."
                     )
                 response = await client.get(
-                    f"http://archon-server:{server_port}/internal/credentials/agents",
-                    timeout=10.0
+                    f"http://archon-server:{server_port}/internal/credentials/agents", timeout=10.0
                 )
                 response.raise_for_status()
                 credentials = response.json()
@@ -92,12 +97,15 @@ async def fetch_credentials_from_server():
 
         except (httpx.HTTPError, httpx.RequestError) as e:
             if attempt < max_retries - 1:
-                logger.warning(f"Failed to fetch credentials (attempt {attempt + 1}/{max_retries}): {e}")
+                logger.warning(
+                    f"Failed to fetch credentials (attempt {attempt + 1}/{max_retries}): {e}"
+                )
                 logger.info(f"Retrying in {retry_delay} seconds...")
                 await asyncio.sleep(retry_delay)
             else:
                 logger.error(f"Failed to fetch credentials after {max_retries} attempts")
                 raise Exception("Could not fetch credentials from server")
+
 
 # Lifespan context manager
 @asynccontextmanager
@@ -130,13 +138,15 @@ async def lifespan(app: FastAPI):
     # Cleanup
     logger.info("Shutting down Agents service...")
 
+
 # Create FastAPI app
 app = FastAPI(
     title="Archon Agents Service",
     description="Lightweight service hosting PydanticAI agents",
     version="1.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
 )
+
 
 @app.get("/health")
 async def health_check():
@@ -145,23 +155,21 @@ async def health_check():
         "status": "healthy",
         "service": "agents",
         "agents_available": list(AVAILABLE_AGENTS.keys()),
-        "note": "This service only hosts PydanticAI agents"
+        "note": "This service only hosts PydanticAI agents",
     }
+
 
 @app.post("/agents/run", response_model=AgentResponse)
 async def run_agent(request: AgentRequest):
     """
     Run a specific agent with the given prompt.
-    
+
     The agent will use MCP tools for any data operations.
     """
     try:
         # Get the requested agent
         if request.agent_type not in app.state.agents:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Unknown agent type: {request.agent_type}"
-            )
+            raise HTTPException(status_code=400, detail=f"Unknown agent type: {request.agent_type}")
 
         agent = app.state.agents[request.agent_type]
 
@@ -169,7 +177,7 @@ async def run_agent(request: AgentRequest):
         deps = {
             "context": request.context or {},
             "options": request.options or {},
-            "mcp_endpoint": os.getenv("MCP_SERVICE_URL", "http://archon-mcp:8051")
+            "mcp_endpoint": os.getenv("MCP_SERVICE_URL", "http://archon-mcp:8051"),
         }
 
         # Run the agent
@@ -178,18 +186,13 @@ async def run_agent(request: AgentRequest):
         return AgentResponse(
             success=True,
             result=result,
-            metadata={
-                "agent_type": request.agent_type,
-                "model": agent.model
-            }
+            metadata={"agent_type": request.agent_type, "model": agent.model},
         )
 
     except Exception as e:
         logger.error(f"Error running {request.agent_type} agent: {e}")
-        return AgentResponse(
-            success=False,
-            error=str(e)
-        )
+        return AgentResponse(success=False, error=str(e))
+
 
 @app.get("/agents/list")
 async def list_agents():
@@ -201,28 +204,23 @@ async def list_agents():
             "name": agent.name,
             "model": agent.model,
             "description": agent.__class__.__doc__ or "No description available",
-            "available": True
+            "available": True,
         }
 
-    return {
-        "agents": agents_info,
-        "total": len(agents_info)
-    }
+    return {"agents": agents_info, "total": len(agents_info)}
+
 
 @app.post("/agents/{agent_type}/stream")
 async def stream_agent(agent_type: str, request: AgentRequest):
     """
     Stream responses from an agent using Server-Sent Events (SSE).
-    
+
     This endpoint streams the agent's response in real-time, allowing
     for a more interactive experience.
     """
     # Get the requested agent
     if agent_type not in app.state.agents:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unknown agent type: {agent_type}"
-        )
+        raise HTTPException(status_code=400, detail=f"Unknown agent type: {agent_type}")
 
     agent = app.state.agents[agent_type]
 
@@ -232,20 +230,23 @@ async def stream_agent(agent_type: str, request: AgentRequest):
             # Import dependency classes
             if agent_type == "rag":
                 from .rag_agent import RagDependencies
+
                 deps = RagDependencies(
                     source_filter=request.context.get("source_filter") if request.context else None,
                     match_count=request.context.get("match_count", 5) if request.context else 5,
-                    project_id=request.context.get("project_id") if request.context else None
+                    project_id=request.context.get("project_id") if request.context else None,
                 )
             elif agent_type == "document":
                 from .document_agent import DocumentDependencies
+
                 deps = DocumentDependencies(
                     project_id=request.context.get("project_id") if request.context else None,
-                    user_id=request.context.get("user_id") if request.context else None
+                    user_id=request.context.get("user_id") if request.context else None,
                 )
             else:
                 # Default dependencies
                 from .base_agent import ArchonDependencies
+
                 deps = ArchonDependencies()
 
             # Use PydanticAI's run_stream method
@@ -253,34 +254,22 @@ async def stream_agent(agent_type: str, request: AgentRequest):
             async with agent.run_stream(request.prompt, deps) as stream:
                 # Stream text chunks as they arrive
                 async for chunk in stream.stream_text():
-                    event_data = json.dumps({
-                        'type': 'stream_chunk',
-                        'content': chunk
-                    })
+                    event_data = json.dumps({"type": "stream_chunk", "content": chunk})
                     yield f"data: {event_data}\n\n"
 
                 # Get the final structured result
                 try:
                     final_result = await stream.get_data()
-                    event_data = json.dumps({
-                        'type': 'stream_complete',
-                        'content': final_result
-                    })
+                    event_data = json.dumps({"type": "stream_complete", "content": final_result})
                     yield f"data: {event_data}\n\n"
                 except Exception:
                     # If we can't get structured data, just send completion
-                    event_data = json.dumps({
-                        'type': 'stream_complete',
-                        'content': ""
-                    })
+                    event_data = json.dumps({"type": "stream_complete", "content": ""})
                     yield f"data: {event_data}\n\n"
 
         except Exception as e:
             logger.error(f"Error streaming {agent_type} agent: {e}")
-            event_data = json.dumps({
-                'type': 'error',
-                'error': str(e)
-            })
+            event_data = json.dumps({"type": "error", "error": str(e)})
             yield f"data: {event_data}\n\n"
 
     # Return SSE response
@@ -290,8 +279,9 @@ async def stream_agent(agent_type: str, request: AgentRequest):
         headers={
             "Cache-Control": "no-cache",
             "X-Accel-Buffering": "no",  # Disable Nginx buffering
-        }
+        },
     )
+
 
 # Main entry point
 if __name__ == "__main__":
@@ -309,5 +299,5 @@ if __name__ == "__main__":
         host="0.0.0.0",
         port=port,
         log_level="info",
-        reload=False  # Disable reload in production
+        reload=False,  # Disable reload in production
     )

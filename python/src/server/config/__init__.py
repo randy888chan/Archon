@@ -22,5 +22,5 @@ __all__ = [
     "get_api_url",
     "get_mcp_url",
     "get_agents_url",
-    "is_service_healthy"
+    "is_service_healthy",
 ]

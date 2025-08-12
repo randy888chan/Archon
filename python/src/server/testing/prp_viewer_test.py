@@ -2,7 +2,7 @@
 """
 PRP Viewer Test Tool
 
-This script tests the rendering consistency between the Milkdown editor view 
+This script tests the rendering consistency between the Milkdown editor view
 and the PRPViewer (beautiful view) in the Archon UI.
 
 Usage:
@@ -28,10 +28,11 @@ from supabase import Client, create_client
 
 # Load environment variables
 # When in Docker, load from the mounted .env file
-if os.path.exists('/.dockerenv') and os.path.exists('/app/.env'):
-    load_dotenv('/app/.env')
+if os.path.exists("/.dockerenv") and os.path.exists("/app/.env"):
+    load_dotenv("/app/.env")
 else:
     load_dotenv()
+
 
 class PRPViewerTester:
     """Tests PRP Viewer rendering consistency"""
@@ -49,8 +50,8 @@ class PRPViewerTester:
             raise ValueError("Missing Supabase credentials in environment")
 
         self.supabase: Client = create_client(supabase_url, supabase_key)
-                # When running inside Docker, use host.docker.internal
-        if os.path.exists('/.dockerenv'):
+        # When running inside Docker, use host.docker.internal
+        if os.path.exists("/.dockerenv"):
             ui_port = os.getenv("ARCHON_UI_PORT", "3737")
             self.base_url = f"http://host.docker.internal:{ui_port}"
         else:
@@ -63,18 +64,19 @@ class PRPViewerTester:
             "project_id": project_id,
             "test_date": datetime.now().isoformat(),
             "documents": [],
-            "summary": {
-                "total_documents": 0,
-                "documents_with_issues": 0,
-                "common_issues": []
-            }
+            "summary": {"total_documents": 0, "documents_with_issues": 0, "common_issues": []},
         }
 
     async def fetch_project_data(self) -> dict[str, Any]:
         """Fetch project and its documents from database"""
         try:
             # Fetch project
-            project_response = self.supabase.table("archon_projects").select("*").eq("id", self.project_id).execute()
+            project_response = (
+                self.supabase.table("archon_projects")
+                .select("*")
+                .eq("id", self.project_id)
+                .execute()
+            )
             if not project_response.data:
                 raise ValueError(f"Project {self.project_id} not found")
 
@@ -91,7 +93,7 @@ class PRPViewerTester:
                         "title": doc.get("title", "Untitled"),
                         "type": doc.get("document_type", doc.get("type", "unknown")),
                         "content": doc.get("content", doc),
-                        "source": "project.docs"
+                        "source": "project.docs",
                     })
 
             # Check if project has prd field
@@ -101,13 +103,10 @@ class PRPViewerTester:
                     "title": project.get("prd", {}).get("title", "Main PRD"),
                     "type": "prd",
                     "content": project["prd"],
-                    "source": "project.prd"
+                    "source": "project.prd",
                 })
 
-            return {
-                "project": project,
-                "documents": documents
-            }
+            return {"project": project, "documents": documents}
 
         except Exception as e:
             print(f"Error fetching project data: {e}")
@@ -130,7 +129,7 @@ class PRPViewerTester:
                     () => {
                         const editor = document.querySelector('.milkdown-editor');
                         if (!editor) return null;
-                        
+
                         // Try to get content from various possible sources
                         const prosemirror = editor.querySelector('.ProseMirror');
                         if (prosemirror) {
@@ -143,7 +142,7 @@ class PRPViewerTester:
                                 }))
                             };
                         }
-                        
+
                         return {
                             text: editor.innerText,
                             html: editor.innerHTML,
@@ -159,7 +158,7 @@ class PRPViewerTester:
                 return {
                     "type": view_type,
                     "content": markdown_content,
-                    "screenshot": str(screenshot_path)
+                    "screenshot": str(screenshot_path),
                 }
 
             elif view_type == "beautiful":
@@ -172,7 +171,7 @@ class PRPViewerTester:
                     () => {
                         const viewer = document.querySelector('.prp-viewer');
                         if (!viewer) return null;
-                        
+
                         return {
                             text: viewer.innerText,
                             html: viewer.innerHTML,
@@ -208,18 +207,16 @@ class PRPViewerTester:
                 return {
                     "type": view_type,
                     "content": viewer_content,
-                    "screenshot": str(screenshot_path)
+                    "screenshot": str(screenshot_path),
                 }
 
         except Exception as e:
             print(f"Error capturing {view_type} view: {e}")
-            return {
-                "type": view_type,
-                "error": str(e),
-                "content": None
-            }
+            return {"type": view_type, "error": str(e), "content": None}
 
-    async def compare_views(self, doc: dict[str, Any], markdown_view: dict[str, Any], beautiful_view: dict[str, Any]) -> list[dict[str, Any]]:
+    async def compare_views(
+        self, doc: dict[str, Any], markdown_view: dict[str, Any], beautiful_view: dict[str, Any]
+    ) -> list[dict[str, Any]]:
         """Compare the two views and identify issues"""
         issues = []
 
@@ -229,7 +226,7 @@ class PRPViewerTester:
                 "type": "render_failure",
                 "description": "One or both views failed to render",
                 "markdown_loaded": bool(markdown_view.get("content")),
-                "beautiful_loaded": bool(beautiful_view.get("content"))
+                "beautiful_loaded": bool(beautiful_view.get("content")),
             })
             return issues
 
@@ -249,7 +246,7 @@ class PRPViewerTester:
                 "type": "missing_section",
                 "section": section,
                 "visible_in": ["markdown"],
-                "missing_from": ["beautiful_view"]
+                "missing_from": ["beautiful_view"],
             })
 
         for section in missing_in_markdown:
@@ -257,7 +254,7 @@ class PRPViewerTester:
                 "type": "missing_section",
                 "section": section,
                 "visible_in": ["beautiful_view"],
-                "missing_from": ["markdown"]
+                "missing_from": ["markdown"],
             })
 
         # Check for image placeholder issues
@@ -268,7 +265,7 @@ class PRPViewerTester:
                         "type": "image_placeholder",
                         "src": img["src"],
                         "alt": img["alt"],
-                        "displayed": img["displayed"]
+                        "displayed": img["displayed"],
                     })
 
         # Check for JSON artifacts (raw JSON visible in the view)
@@ -278,7 +275,9 @@ class PRPViewerTester:
                     issues.append({
                         "type": "json_artifact",
                         "description": "Raw JSON visible instead of formatted content",
-                        "preview": artifact["content"][:100] + "..." if len(artifact["content"]) > 100 else artifact["content"]
+                        "preview": artifact["content"][:100] + "..."
+                        if len(artifact["content"]) > 100
+                        else artifact["content"],
                     })
 
         # Check for significant content length differences
@@ -292,7 +291,7 @@ class PRPViewerTester:
                     "type": "content_length_mismatch",
                     "markdown_length": markdown_length,
                     "beautiful_length": beautiful_length,
-                    "ratio": length_ratio
+                    "ratio": length_ratio,
                 })
 
         return issues
@@ -304,7 +303,7 @@ class PRPViewerTester:
             "title": doc["title"],
             "type": doc["type"],
             "source": doc["source"],
-            "issues": []
+            "issues": [],
         }
 
         try:
@@ -317,11 +316,11 @@ class PRPViewerTester:
 
             # Vite dev server might block direct navigation, so use browser context
             try:
-                await page.goto(url, wait_until='domcontentloaded', timeout=30000)
+                await page.goto(url, wait_until="domcontentloaded", timeout=30000)
             except Exception as e:
                 print(f"Initial navigation failed: {e}")
                 # Try without waiting for full load
-                await page.goto(url, wait_until='commit', timeout=30000)
+                await page.goto(url, wait_until="commit", timeout=30000)
 
             # Click on the Docs tab first
             try:
@@ -335,10 +334,12 @@ class PRPViewerTester:
             # Wait for any sign of the page being loaded
             try:
                 # First wait for React app to be ready
-                await page.wait_for_selector('#root', timeout=10000)
+                await page.wait_for_selector("#root", timeout=10000)
 
                 # Then wait for either docs content or project content
-                await page.wait_for_selector('h2:has-text("Project Docs"), .prp-viewer, .milkdown-editor', timeout=15000)
+                await page.wait_for_selector(
+                    'h2:has-text("Project Docs"), .prp-viewer, .milkdown-editor', timeout=15000
+                )
                 print("Page loaded successfully")
             except Exception as e:
                 print(f"Warning: Page might not have loaded fully: {e}")
@@ -349,10 +350,10 @@ class PRPViewerTester:
             # Look for document cards in the horizontal scroll area
             try:
                 # Wait for document cards to be visible
-                await page.wait_for_selector('.flex.gap-4 .cursor-pointer', timeout=5000)
+                await page.wait_for_selector(".flex.gap-4 .cursor-pointer", timeout=5000)
 
                 # Try to find and click on the document by title
-                doc_cards = await page.query_selector_all('.flex.gap-4 .cursor-pointer')
+                doc_cards = await page.query_selector_all(".flex.gap-4 .cursor-pointer")
                 for card in doc_cards:
                     card_text = await card.inner_text()
                     if doc["title"] in card_text:
@@ -369,7 +370,9 @@ class PRPViewerTester:
             markdown_view = await self.capture_view_content(page, "markdown")
 
             # Test beautiful view
-            await page.click('button:has-text("Beautiful"), button:has-text("View"), [data-view="beautiful"]')
+            await page.click(
+                'button:has-text("Beautiful"), button:has-text("View"), [data-view="beautiful"]'
+            )
             beautiful_view = await self.capture_view_content(page, "beautiful")
 
             # Compare views
@@ -380,21 +383,22 @@ class PRPViewerTester:
             result["views"] = {
                 "markdown": {
                     "screenshot": markdown_view.get("screenshot"),
-                    "sections_found": len(markdown_view.get("content", {}).get("sections", [])) if markdown_view.get("content") else 0
+                    "sections_found": len(markdown_view.get("content", {}).get("sections", []))
+                    if markdown_view.get("content")
+                    else 0,
                 },
                 "beautiful": {
                     "screenshot": beautiful_view.get("screenshot"),
-                    "sections_found": len(beautiful_view.get("content", {}).get("sections", [])) if beautiful_view.get("content") else 0
-                }
+                    "sections_found": len(beautiful_view.get("content", {}).get("sections", []))
+                    if beautiful_view.get("content")
+                    else 0,
+                },
             }
 
             await page.close()
 
         except Exception as e:
-            result["issues"].append({
-                "type": "test_error",
-                "error": str(e)
-            })
+            result["issues"].append({"type": "test_error", "error": str(e)})
 
         return result
 
@@ -417,14 +421,16 @@ class PRPViewerTester:
         # Launch browser
         async with async_playwright() as p:
             print("Launching browser...")
-                        # Always use headless mode in Docker
-            headless = os.path.exists('/.dockerenv')
+            # Always use headless mode in Docker
+            headless = os.path.exists("/.dockerenv")
             browser = await p.chromium.launch(headless=headless)
 
             try:
                 # Test each document
                 for i, doc in enumerate(documents):
-                    print(f"\nTesting document {i+1}/{len(documents)}: {doc['title']} ({doc['type']})")
+                    print(
+                        f"\nTesting document {i + 1}/{len(documents)}: {doc['title']} ({doc['type']})"
+                    )
 
                     result = await self.test_document(browser, doc)
                     self.results["documents"].append(result)
@@ -445,7 +451,9 @@ class PRPViewerTester:
         self.save_results()
 
         print(f"\nTest completed. Results saved to {self.output_dir}")
-        print(f"Summary: {self.results['summary']['documents_with_issues']} out of {self.results['summary']['total_documents']} documents have issues")
+        print(
+            f"Summary: {self.results['summary']['documents_with_issues']} out of {self.results['summary']['total_documents']} documents have issues"
+        )
 
     def analyze_common_issues(self):
         """Analyze and summarize common issues across all documents"""
@@ -478,18 +486,20 @@ class PRPViewerTester:
             f.write(f"Project ID: {self.project_id}\n")
             f.write(f"Test Date: {self.results['test_date']}\n")
             f.write(f"Total Documents: {self.results['summary']['total_documents']}\n")
-            f.write(f"Documents with Issues: {self.results['summary']['documents_with_issues']}\n\n")
+            f.write(
+                f"Documents with Issues: {self.results['summary']['documents_with_issues']}\n\n"
+            )
 
             f.write("Common Issues:\n")
-            for issue_type, count in self.results['summary'].get('issue_breakdown', {}).items():
+            for issue_type, count in self.results["summary"].get("issue_breakdown", {}).items():
                 f.write(f"  - {issue_type}: {count} occurrences\n")
 
             f.write("\nDetailed Issues by Document:\n")
             f.write("---------------------------\n")
-            for doc in self.results['documents']:
-                if doc['issues']:
+            for doc in self.results["documents"]:
+                if doc["issues"]:
                     f.write(f"\n{doc['title']} ({doc['type']}):\n")
-                    for issue in doc['issues']:
+                    for issue in doc["issues"]:
                         f.write(f"  - {issue['type']}: {issue.get('description', issue)}\n")
 
 
@@ -497,14 +507,16 @@ async def main():
     """Main entry point"""
     parser = argparse.ArgumentParser(description="Test PRP Viewer rendering consistency")
     parser.add_argument("--project-id", required=True, help="UUID of the project to test")
-    parser.add_argument("--output-dir", default="./test_results", help="Directory to save test results")
+    parser.add_argument(
+        "--output-dir", default="./test_results", help="Directory to save test results"
+    )
 
     args = parser.parse_args()
 
     # Check if UI server is running
 
     # Determine UI URL based on environment
-    if os.path.exists('/.dockerenv'):
+    if os.path.exists("/.dockerenv"):
         ui_port = os.getenv("ARCHON_UI_PORT", "3737")
         ui_url = f"http://host.docker.internal:{ui_port}"
     else:

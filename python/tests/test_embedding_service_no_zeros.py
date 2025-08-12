@@ -4,6 +4,7 @@ Tests for embedding service to ensure no zero embeddings are returned.
 These tests verify that the embedding service raises appropriate exceptions
 instead of returning zero embeddings, following the "fail fast and loud" principle.
 """
+
 from unittest.mock import AsyncMock, Mock, patch
 
 import openai
@@ -30,13 +31,13 @@ class TestNoZeroEmbeddings:
     @pytest.mark.asyncio
     async def test_async_quota_exhausted_returns_failure(self) -> None:
         """Test that quota exhaustion returns failure result instead of zeros."""
-        with patch('src.server.services.embeddings.embedding_service.get_llm_client') as mock_client:
+        with patch(
+            "src.server.services.embeddings.embedding_service.get_llm_client"
+        ) as mock_client:
             # Mock the client to raise quota error
             mock_ctx = AsyncMock()
             mock_ctx.__aenter__.return_value.embeddings.create.side_effect = openai.RateLimitError(
-                "insufficient_quota: You have exceeded your quota",
-                response=Mock(),
-                body=None
+                "insufficient_quota: You have exceeded your quota", response=Mock(), body=None
             )
             mock_client.return_value = mock_ctx
 
@@ -49,13 +50,13 @@ class TestNoZeroEmbeddings:
     @pytest.mark.asyncio
     async def test_async_rate_limit_raises_exception(self) -> None:
         """Test that rate limit errors raise exception after retries."""
-        with patch('src.server.services.embeddings.embedding_service.get_llm_client') as mock_client:
+        with patch(
+            "src.server.services.embeddings.embedding_service.get_llm_client"
+        ) as mock_client:
             # Mock the client to raise rate limit error
             mock_ctx = AsyncMock()
             mock_ctx.__aenter__.return_value.embeddings.create.side_effect = openai.RateLimitError(
-                "rate_limit_exceeded: Too many requests",
-                response=Mock(),
-                body=None
+                "rate_limit_exceeded: Too many requests", response=Mock(), body=None
             )
             mock_client.return_value = mock_ctx
 
@@ -67,10 +68,14 @@ class TestNoZeroEmbeddings:
     @pytest.mark.asyncio
     async def test_async_api_error_raises_exception(self) -> None:
         """Test that API errors raise exception instead of returning zeros."""
-        with patch('src.server.services.embeddings.embedding_service.get_llm_client') as mock_client:
+        with patch(
+            "src.server.services.embeddings.embedding_service.get_llm_client"
+        ) as mock_client:
             # Mock the client to raise generic error
             mock_ctx = AsyncMock()
-            mock_ctx.__aenter__.return_value.embeddings.create.side_effect = Exception("Network error")
+            mock_ctx.__aenter__.return_value.embeddings.create.side_effect = Exception(
+                "Network error"
+            )
             mock_client.return_value = mock_ctx
 
             with pytest.raises(EmbeddingAPIError) as exc_info:
@@ -81,28 +86,32 @@ class TestNoZeroEmbeddings:
     @pytest.mark.asyncio
     async def test_batch_handles_partial_failures(self) -> None:
         """Test that batch processing can handle partial failures gracefully."""
-        with patch('src.server.services.embeddings.embedding_service.get_llm_client') as mock_client:
+        with patch(
+            "src.server.services.embeddings.embedding_service.get_llm_client"
+        ) as mock_client:
             # Mock successful response for first batch, failure for second
             mock_ctx = AsyncMock()
             mock_response = Mock()
-            mock_response.data = [
-                Mock(embedding=[0.1] * 1536),
-                Mock(embedding=[0.2] * 1536)
-            ]
+            mock_response.data = [Mock(embedding=[0.1] * 1536), Mock(embedding=[0.2] * 1536)]
 
             # First call succeeds, second fails
             mock_ctx.__aenter__.return_value.embeddings.create.side_effect = [
                 mock_response,
-                Exception("API Error")
+                Exception("API Error"),
             ]
             mock_client.return_value = mock_ctx
 
-            with patch('src.server.services.embeddings.embedding_service.get_embedding_model',
-                      new_callable=AsyncMock, return_value="text-embedding-ada-002"):
+            with patch(
+                "src.server.services.embeddings.embedding_service.get_embedding_model",
+                new_callable=AsyncMock,
+                return_value="text-embedding-ada-002",
+            ):
                 # Mock credential service to return batch size of 2
-                with patch('src.server.services.embeddings.embedding_service.credential_service.get_credentials_by_category',
-                          new_callable=AsyncMock, return_value={"EMBEDDING_BATCH_SIZE": "2"}):
-
+                with patch(
+                    "src.server.services.embeddings.embedding_service.credential_service.get_credentials_by_category",
+                    new_callable=AsyncMock,
+                    return_value={"EMBEDDING_BATCH_SIZE": "2"},
+                ):
                     # Process 4 texts (batch size will be 2)
                     texts = ["text1", "text2", "text3", "text4"]
                     result = await create_embeddings_batch(texts)
@@ -121,7 +130,9 @@ class TestNoZeroEmbeddings:
     @pytest.mark.asyncio
     async def test_configurable_embedding_dimensions(self) -> None:
         """Test that embedding dimensions can be configured via settings."""
-        with patch('src.server.services.embeddings.embedding_service.get_llm_client') as mock_client:
+        with patch(
+            "src.server.services.embeddings.embedding_service.get_llm_client"
+        ) as mock_client:
             # Mock successful response
             mock_ctx = AsyncMock()
             mock_create = AsyncMock()
@@ -133,18 +144,23 @@ class TestNoZeroEmbeddings:
             mock_create.return_value = mock_response
             mock_client.return_value = mock_ctx
 
-            with patch('src.server.services.embeddings.embedding_service.get_embedding_model',
-                      new_callable=AsyncMock, return_value="text-embedding-3-large"):
+            with patch(
+                "src.server.services.embeddings.embedding_service.get_embedding_model",
+                new_callable=AsyncMock,
+                return_value="text-embedding-3-large",
+            ):
                 # Mock credential service to return custom dimensions
-                with patch('src.server.services.embeddings.embedding_service.credential_service.get_credentials_by_category',
-                          new_callable=AsyncMock, return_value={"EMBEDDING_DIMENSIONS": "3072"}):
-
+                with patch(
+                    "src.server.services.embeddings.embedding_service.credential_service.get_credentials_by_category",
+                    new_callable=AsyncMock,
+                    return_value={"EMBEDDING_DIMENSIONS": "3072"},
+                ):
                     result = await create_embeddings_batch(["test text"])
 
                     # Verify the dimensions parameter was passed correctly
                     mock_create.assert_called_once()
                     call_args = mock_create.call_args
-                    assert call_args.kwargs['dimensions'] == 3072
+                    assert call_args.kwargs["dimensions"] == 3072
 
                     # Verify result
                     assert result.success_count == 1
@@ -153,7 +169,9 @@ class TestNoZeroEmbeddings:
     @pytest.mark.asyncio
     async def test_default_embedding_dimensions(self) -> None:
         """Test that default dimensions (1536) are used when not configured."""
-        with patch('src.server.services.embeddings.embedding_service.get_llm_client') as mock_client:
+        with patch(
+            "src.server.services.embeddings.embedding_service.get_llm_client"
+        ) as mock_client:
             # Mock successful response
             mock_ctx = AsyncMock()
             mock_create = AsyncMock()
@@ -165,18 +183,23 @@ class TestNoZeroEmbeddings:
             mock_create.return_value = mock_response
             mock_client.return_value = mock_ctx
 
-            with patch('src.server.services.embeddings.embedding_service.get_embedding_model',
-                      new_callable=AsyncMock, return_value="text-embedding-3-small"):
+            with patch(
+                "src.server.services.embeddings.embedding_service.get_embedding_model",
+                new_callable=AsyncMock,
+                return_value="text-embedding-3-small",
+            ):
                 # Mock credential service to return empty settings (no dimensions specified)
-                with patch('src.server.services.embeddings.embedding_service.credential_service.get_credentials_by_category',
-                          new_callable=AsyncMock, return_value={}):
-
+                with patch(
+                    "src.server.services.embeddings.embedding_service.credential_service.get_credentials_by_category",
+                    new_callable=AsyncMock,
+                    return_value={},
+                ):
                     result = await create_embeddings_batch(["test text"])
 
                     # Verify the default dimensions parameter was used
                     mock_create.assert_called_once()
                     call_args = mock_create.call_args
-                    assert call_args.kwargs['dimensions'] == 1536
+                    assert call_args.kwargs["dimensions"] == 1536
 
                     # Verify result
                     assert result.success_count == 1
@@ -185,19 +208,21 @@ class TestNoZeroEmbeddings:
     @pytest.mark.asyncio
     async def test_batch_quota_exhausted_stops_process(self) -> None:
         """Test that quota exhaustion stops processing remaining batches."""
-        with patch('src.server.services.embeddings.embedding_service.get_llm_client') as mock_client:
+        with patch(
+            "src.server.services.embeddings.embedding_service.get_llm_client"
+        ) as mock_client:
             # Mock quota exhaustion
             mock_ctx = AsyncMock()
             mock_ctx.__aenter__.return_value.embeddings.create.side_effect = openai.RateLimitError(
-                "insufficient_quota: Quota exceeded",
-                response=Mock(),
-                body=None
+                "insufficient_quota: Quota exceeded", response=Mock(), body=None
             )
             mock_client.return_value = mock_ctx
 
-            with patch('src.server.services.embeddings.embedding_service.get_embedding_model',
-                      new_callable=AsyncMock, return_value="text-embedding-ada-002"):
-
+            with patch(
+                "src.server.services.embeddings.embedding_service.get_embedding_model",
+                new_callable=AsyncMock,
+                return_value="text-embedding-ada-002",
+            ):
                 texts = ["text1", "text2", "text3", "text4"]
                 result = await create_embeddings_batch(texts)
 
@@ -205,10 +230,7 @@ class TestNoZeroEmbeddings:
                 assert result.success_count == 0
                 assert result.failure_count == 4
                 assert len(result.embeddings) == 0
-                assert all(
-                    "quota" in item["error"].lower()
-                    for item in result.failed_items
-                )
+                assert all("quota" in item["error"].lower() for item in result.failed_items)
 
     @pytest.mark.asyncio
     async def test_no_zero_vectors_in_results(self) -> None:
@@ -227,7 +249,9 @@ class TestNoZeroEmbeddings:
         test_text = "This is a test"
 
         # Test: Batch function with error should return failure result, not zeros
-        with patch('src.server.services.embeddings.embedding_service.get_llm_client') as mock_client:
+        with patch(
+            "src.server.services.embeddings.embedding_service.get_llm_client"
+        ) as mock_client:
             # Mock the client to raise an error
             mock_ctx = AsyncMock()
             mock_ctx.__aenter__.return_value.embeddings.create.side_effect = Exception("Test error")

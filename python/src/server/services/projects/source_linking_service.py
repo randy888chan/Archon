@@ -25,12 +25,17 @@ class SourceLinkingService:
     def get_project_sources(self, project_id: str) -> tuple[bool, dict[str, list[str]]]:
         """
         Get all linked sources for a project, separated by type.
-        
+
         Returns:
             Tuple of (success, {"technical_sources": [...], "business_sources": [...]})
         """
         try:
-            response = self.supabase_client.table("archon_project_sources").select("source_id, notes").eq("project_id", project_id).execute()
+            response = (
+                self.supabase_client.table("archon_project_sources")
+                .select("source_id, notes")
+                .eq("project_id", project_id)
+                .execute()
+            )
 
             technical_sources = []
             business_sources = []
@@ -43,21 +48,25 @@ class SourceLinkingService:
 
             return True, {
                 "technical_sources": technical_sources,
-                "business_sources": business_sources
+                "business_sources": business_sources,
             }
         except Exception as e:
             logger.error(f"Error getting project sources: {e}")
             return False, {
                 "error": f"Failed to retrieve linked sources: {str(e)}",
                 "technical_sources": [],
-                "business_sources": []
+                "business_sources": [],
             }
 
-    def update_project_sources(self, project_id: str, technical_sources: list[str] | None = None,
-                             business_sources: list[str] | None = None) -> tuple[bool, dict[str, Any]]:
+    def update_project_sources(
+        self,
+        project_id: str,
+        technical_sources: list[str] | None = None,
+        business_sources: list[str] | None = None,
+    ) -> tuple[bool, dict[str, Any]]:
         """
         Update project sources, replacing existing ones if provided.
-        
+
         Returns:
             Tuple of (success, result_dict with counts)
         """
@@ -65,14 +74,16 @@ class SourceLinkingService:
             "technical_success": 0,
             "technical_failed": 0,
             "business_success": 0,
-            "business_failed": 0
+            "business_failed": 0,
         }
 
         try:
             # Update technical sources if provided
             if technical_sources is not None:
                 # Remove existing technical sources
-                self.supabase_client.table("archon_project_sources").delete().eq("project_id", project_id).eq("notes", "technical").execute()
+                self.supabase_client.table("archon_project_sources").delete().eq(
+                    "project_id", project_id
+                ).eq("notes", "technical").execute()
 
                 # Add new technical sources
                 for source_id in technical_sources:
@@ -80,7 +91,7 @@ class SourceLinkingService:
                         self.supabase_client.table("archon_project_sources").insert({
                             "project_id": project_id,
                             "source_id": source_id,
-                            "notes": "technical"
+                            "notes": "technical",
                         }).execute()
                         result["technical_success"] += 1
                     except Exception as e:
@@ -90,7 +101,9 @@ class SourceLinkingService:
             # Update business sources if provided
             if business_sources is not None:
                 # Remove existing business sources
-                self.supabase_client.table("archon_project_sources").delete().eq("project_id", project_id).eq("notes", "business").execute()
+                self.supabase_client.table("archon_project_sources").delete().eq(
+                    "project_id", project_id
+                ).eq("notes", "business").execute()
 
                 # Add new business sources
                 for source_id in business_sources:
@@ -98,7 +111,7 @@ class SourceLinkingService:
                         self.supabase_client.table("archon_project_sources").insert({
                             "project_id": project_id,
                             "source_id": source_id,
-                            "notes": "business"
+                            "notes": "business",
                         }).execute()
                         result["business_success"] += 1
                     except Exception as e:
@@ -118,7 +131,7 @@ class SourceLinkingService:
         """
         Format a project dict with its linked sources included.
         Also handles datetime conversion for Socket.IO compatibility.
-        
+
         Returns:
             Formatted project dict with technical_sources and business_sources
         """
@@ -131,9 +144,9 @@ class SourceLinkingService:
         # Ensure datetime objects are converted to strings
         created_at = project.get("created_at", "")
         updated_at = project.get("updated_at", "")
-        if hasattr(created_at, 'isoformat'):
+        if hasattr(created_at, "isoformat"):
             created_at = created_at.isoformat()
-        if hasattr(updated_at, 'isoformat'):
+        if hasattr(updated_at, "isoformat"):
             updated_at = updated_at.isoformat()
 
         return {
@@ -148,13 +161,13 @@ class SourceLinkingService:
             "data": project.get("data", []),
             "technical_sources": sources["technical_sources"],
             "business_sources": sources["business_sources"],
-            "pinned": project.get("pinned", False)
+            "pinned": project.get("pinned", False),
         }
 
     def format_projects_with_sources(self, projects: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """
         Format a list of projects with their linked sources.
-        
+
         Returns:
             List of formatted project dicts
         """

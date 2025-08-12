@@ -6,7 +6,7 @@ It uses a modular approach with separate API modules for different functionality
 
 Modules:
 - settings_api: Settings and credentials management
-- mcp_api: MCP server management and WebSocket streaming  
+- mcp_api: MCP server management and WebSocket streaming
 - knowledge_api: Knowledge base, crawling, and RAG operations
 - projects_api: Project and task management with streaming
 """
@@ -67,6 +67,7 @@ uvicorn_logger.setLevel(logging.WARNING)  # Only log warnings and errors, not ev
 # Global flag to track if initialization is complete
 _initialization_complete = False
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan manager for startup and shutdown tasks."""
@@ -107,6 +108,7 @@ async def lifespan(app: FastAPI):
         # Initialize prompt service
         try:
             from .services.prompt_service import prompt_service
+
             await prompt_service.load_prompts()
             api_logger.info("✅ Prompt service initialized")
         except Exception as e:
@@ -115,6 +117,7 @@ async def lifespan(app: FastAPI):
         # Set the main event loop for background tasks
         try:
             from .services.background_task_manager import get_task_manager
+
             task_manager = get_task_manager()
             current_loop = asyncio.get_running_loop()
             task_manager.set_main_loop(current_loop)
@@ -160,12 +163,13 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         api_logger.error(f"❌ Error during shutdown: {str(e)}")
 
+
 # Create FastAPI application
 app = FastAPI(
     title="Archon Knowledge Engine API",
     description="Backend API for the Archon knowledge management and project automation platform",
     version="1.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
 )
 
 # Configure CORS
@@ -177,6 +181,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 # Add middleware to skip logging for health checks
 @app.middleware("http")
 async def skip_health_check_logs(request, call_next):
@@ -184,6 +189,7 @@ async def skip_health_check_logs(request, call_next):
     if request.url.path in ["/health", "/api/health"]:
         # Temporarily suppress the log
         import logging
+
         logger = logging.getLogger("uvicorn.access")
         old_level = logger.level
         logger.setLevel(logging.ERROR)
@@ -191,6 +197,7 @@ async def skip_health_check_logs(request, call_next):
         logger.setLevel(old_level)
         return response
     return await call_next(request)
+
 
 # Include API routers
 app.include_router(settings_router)
@@ -204,6 +211,7 @@ app.include_router(internal_router)
 app.include_router(coverage_router)
 app.include_router(bug_report_router)
 
+
 # Root endpoint
 @app.get("/")
 async def root():
@@ -213,14 +221,9 @@ async def root():
         "version": "1.0.0",
         "description": "Backend API for knowledge management and project automation",
         "status": "healthy",
-        "modules": [
-            "settings",
-            "mcp",
-            "mcp-clients",
-            "knowledge",
-            "projects"
-        ]
+        "modules": ["settings", "mcp", "mcp-clients", "knowledge", "projects"],
     }
+
 
 # Health check endpoint
 @app.get("/health")
@@ -235,7 +238,7 @@ async def health_check():
             "service": "archon-backend",
             "timestamp": datetime.now().isoformat(),
             "message": "Backend is starting up, credentials loading...",
-            "ready": False
+            "ready": False,
         }
 
     return {
@@ -243,8 +246,9 @@ async def health_check():
         "service": "archon-backend",
         "timestamp": datetime.now().isoformat(),
         "ready": True,
-        "credentials_loaded": True
+        "credentials_loaded": True,
     }
+
 
 # API health check endpoint (alias for /health at /api/health)
 @app.get("/api/health")
@@ -252,12 +256,14 @@ async def api_health_check():
     """API health check endpoint - alias for /health."""
     return await health_check()
 
+
 # Create Socket.IO app wrapper
 # This wraps the FastAPI app with Socket.IO functionality
 socket_app = create_socketio_app(app)
 
 # Export the socket_app for uvicorn to use
 # The socket_app still handles all FastAPI routes, but also adds Socket.IO support
+
 
 def main():
     """Main entry point for running the server."""
@@ -277,8 +283,9 @@ def main():
         host="0.0.0.0",
         port=int(server_port),
         reload=True,
-        log_level="info"
+        log_level="info",
     )
+
 
 if __name__ == "__main__":
     main()

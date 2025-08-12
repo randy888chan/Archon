@@ -1,9 +1,14 @@
 """
 Tests for keyword extraction and improved hybrid search
 """
+
 import pytest
 
-from src.server.services.search.keyword_extractor import KeywordExtractor, build_search_terms, extract_keywords
+from src.server.services.search.keyword_extractor import (
+    KeywordExtractor,
+    build_search_terms,
+    extract_keywords,
+)
 
 
 class TestKeywordExtractor:
