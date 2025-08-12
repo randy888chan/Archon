@@ -1,6 +1,4 @@
 """Business logic tests - Test core business rules and logic."""
-import pytest
-from datetime import datetime, timedelta
 
 
 def test_task_status_transitions(client):
@@ -29,11 +27,11 @@ def test_data_validation(client):
     # Empty title
     response = client.post("/api/projects", json={"title": ""})
     assert response.status_code in [400, 422]
-    
+
     # Missing required fields
     response = client.post("/api/projects", json={})
     assert response.status_code in [400, 422]
-    
+
     # Valid data
     response = client.post("/api/projects", json={"title": "Valid Project"})
     assert response.status_code in [200, 201, 422]
@@ -49,47 +47,41 @@ def test_permission_checks(client):
 def test_crawl_depth_limits(client):
     """Test crawl depth validation."""
     # Too deep
-    response = client.post("/api/knowledge/crawl", json={
-        "url": "https://example.com",
-        "max_depth": 100
-    })
+    response = client.post(
+        "/api/knowledge/crawl", json={"url": "https://example.com", "max_depth": 100}
+    )
     assert response.status_code in [200, 400, 404, 422]
-    
+
     # Valid depth
-    response = client.post("/api/knowledge/crawl", json={
-        "url": "https://example.com",
-        "max_depth": 2
-    })
+    response = client.post(
+        "/api/knowledge/crawl", json={"url": "https://example.com", "max_depth": 2}
+    )
     assert response.status_code in [200, 201, 400, 404, 422, 500]
 
 
 def test_document_chunking(client):
     """Test document chunking endpoint."""
-    response = client.post("/api/knowledge/documents/chunk", json={
-        "content": "x" * 1000,
-        "chunk_size": 500
-    })
+    response = client.post(
+        "/api/knowledge/documents/chunk", json={"content": "x" * 1000, "chunk_size": 500}
+    )
     assert response.status_code in [200, 400, 404, 422, 500]
 
 
 def test_embedding_generation(client):
     """Test embedding generation endpoint."""
-    response = client.post("/api/knowledge/embeddings", json={
-        "texts": ["Test text for embedding"]
-    })
+    response = client.post("/api/knowledge/embeddings", json={"texts": ["Test text for embedding"]})
     assert response.status_code in [200, 400, 404, 422, 500]
 
 
 def test_source_management(client):
     """Test knowledge source management."""
     # Create source
-    response = client.post("/api/knowledge/sources", json={
-        "name": "Test Source",
-        "url": "https://example.com",
-        "type": "documentation"
-    })
+    response = client.post(
+        "/api/knowledge/sources",
+        json={"name": "Test Source", "url": "https://example.com", "type": "documentation"},
+    )
     assert response.status_code in [200, 201, 400, 404, 422, 500]
-    
+
     # List sources
     response = client.get("/api/knowledge/sources")
     assert response.status_code in [200, 404, 500]
@@ -98,11 +90,9 @@ def test_source_management(client):
 def test_version_control(client):
     """Test document versioning."""
     # Create version
-    response = client.post("/api/documents/test-id/versions", json={
-        "content": "Version 1 content"
-    })
+    response = client.post("/api/documents/test-id/versions", json={"content": "Version 1 content"})
     assert response.status_code in [200, 201, 404, 422, 500]
-    
+
     # List versions
     response = client.get("/api/documents/test-id/versions")
     assert response.status_code in [200, 404, 500]

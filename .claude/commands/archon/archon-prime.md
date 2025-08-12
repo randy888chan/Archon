@@ -120,7 +120,7 @@ Key files to consider:
 
 - `python/src/server/main.py` - FastAPI app setup
 - `python/src/server/services/knowledge/knowledge_item_service.py` - Service pattern example
-- `python/src/server/fastapi/knowledge_api.py` - API endpoint pattern
+- `python/src/server/api_routes/knowledge_api.py` - API endpoint pattern
 
 ### When working on MCP
 

@@ -3,17 +3,13 @@ Embedding Services
 
 Handles all embedding-related operations.
 """
-from .embedding_service import (
-    create_embedding,
-    create_embeddings_batch,
-    get_openai_client
-)
 
 from .contextual_embedding_service import (
     generate_contextual_embedding,
     generate_contextual_embeddings_batch,
-    process_chunk_with_context
+    process_chunk_with_context,
 )
+from .embedding_service import create_embedding, create_embeddings_batch, get_openai_client
 
 from .embedding_dimension_service import (
     embedding_dimension_service,
@@ -22,16 +18,15 @@ from .embedding_dimension_service import (
 
 __all__ = [
     # Embedding functions
-    'create_embedding',
-    'create_embeddings_batch',
-    'get_openai_client',
-    
+    "create_embedding",
+    "create_embeddings_batch",
+    "get_openai_client",
     # Contextual embedding functions
-    'generate_contextual_embedding',
-    'generate_contextual_embeddings_batch',
-    'process_chunk_with_context',
+    "generate_contextual_embedding",
+    "generate_contextual_embeddings_batch",
+    "process_chunk_with_context",
     
     # Dimension service
-    'embedding_dimension_service',
-    'RECOMMENDED_MODELS'
+    "embedding_dimension_service",
+    "RECOMMENDED_MODELS"
 ]

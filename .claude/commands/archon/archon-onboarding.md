@@ -87,7 +87,7 @@ Your report to the user should include:
 
 **If the user chose Backend API:**
 
-- Start with `python/src/server/fastapi/knowledge_api.py`
+- Start with `python/src/server/api_routes/knowledge_api.py`
 - See how it calls `services/knowledge/knowledge_item_service.py`
 - Take a deep dive into the FastAPI service architecture and patterns
 - Identify a potential API improvement that the user can implement

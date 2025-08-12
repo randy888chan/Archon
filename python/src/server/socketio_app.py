@@ -5,10 +5,10 @@ Simple Socket.IO server setup with FastAPI integration.
 All events are handled in projects_api.py using @sio.event decorators.
 """
 
+import logging
+
 import socketio
 from fastapi import FastAPI
-from typing import Optional
-import logging
 
 from .config.logfire_config import safe_logfire_info
 
@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 # Create Socket.IO server with FastAPI integration
 sio = socketio.AsyncServer(
-    async_mode='asgi',
+    async_mode="asgi",
     cors_allowed_origins="*",  # TODO: Configure for production with specific origins
     logger=False,  # Disable verbose Socket.IO logging
     engineio_logger=False,  # Disable verbose Engine.IO logging
@@ -27,7 +27,8 @@ sio = socketio.AsyncServer(
 )
 
 # Global Socket.IO instance for use across modules
-_socketio_instance: Optional[socketio.AsyncServer] = None
+_socketio_instance: socketio.AsyncServer | None = None
+
 
 def get_socketio_instance() -> socketio.AsyncServer:
     """Get the global Socket.IO server instance."""
@@ -36,29 +37,29 @@ def get_socketio_instance() -> socketio.AsyncServer:
         _socketio_instance = sio
     return _socketio_instance
 
+
 def create_socketio_app(app: FastAPI) -> socketio.ASGIApp:
     """
     Wrap FastAPI app with Socket.IO ASGI app.
-    
+
     Args:
         app: FastAPI application instance
-        
+
     Returns:
         Socket.IO ASGI app that wraps the FastAPI app
     """
     # Log Socket.IO server creation
-    safe_logfire_info("Creating Socket.IO server", 
-                 cors_origins="*", 
-                 ping_timeout=300,
-                 ping_interval=60)
-    
+    safe_logfire_info(
+        "Creating Socket.IO server", cors_origins="*", ping_timeout=300, ping_interval=60
+    )
+
     # Note: Socket.IO event handlers are registered in socketio_handlers.py
     # This module only creates the Socket.IO server instance
-    
+
     # Create and return the Socket.IO ASGI app
     socket_app = socketio.ASGIApp(sio, other_asgi_app=app)
-    
+
     # Store the app reference for later use
     sio.app = app
-    
+
     return socket_app
