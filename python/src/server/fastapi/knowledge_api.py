@@ -791,7 +791,7 @@ async def get_crawl_task_status(task_id: str):
 async def stop_crawl_task(progress_id: str):
     """Stop a running crawl task."""
     try:
-        from ..services.crawling.crawl_orchestration_service import get_active_orchestration, unregister_orchestration
+        from ..services.crawling import get_active_orchestration, unregister_orchestration
         
         # Emit stopping status immediately
         await sio.emit('crawl:stopping', {

@@ -1,665 +1,502 @@
 """
 Crawling Service Module for Archon RAG
 
-This module provides core crawling functionality that can be shared between
-MCP tools and FastAPI endpoints. It handles web crawling operations including
-single page crawling, batch crawling, and recursive crawling.
+This module combines crawling functionality and orchestration.
+It handles web crawling operations including single page crawling,
+batch crawling, recursive crawling, and overall orchestration with progress tracking.
 """
 
 import asyncio
-from typing import List, Dict, Any
-from urllib.parse import urlparse, urldefrag
-from xml.etree import ElementTree
-import requests
-import traceback
+import uuid
+from typing import Dict, Any, List, Optional
+from urllib.parse import urlparse
 
-from crawl4ai import CrawlerRunConfig, CacheMode, MemoryAdaptiveDispatcher
-from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
-from src.server.utils import get_supabase_client
-from ...config.logfire_config import get_logger
-from ..credential_service import credential_service
+from ...config.logfire_config import safe_logfire_info, safe_logfire_error, get_logger
+from ...utils import get_supabase_client
+
+# Import strategies
+from .strategies.batch import BatchCrawlStrategy
+from .strategies.recursive import RecursiveCrawlStrategy
+from .strategies.single_page import SinglePageCrawlStrategy
+from .strategies.sitemap import SitemapCrawlStrategy
+
+# Import helpers
+from .helpers.url_handler import URLHandler
+from .helpers.site_config import SiteConfig
+
+# Import operations
+from .document_storage_operations import DocumentStorageOperations
+from .progress_mapper import ProgressMapper
 
 logger = get_logger(__name__)
 
+# Global registry to track active orchestration services for cancellation support
+_active_orchestrations: Dict[str, 'CrawlingService'] = {}
+
+
+def get_active_orchestration(progress_id: str) -> Optional['CrawlingService']:
+    """Get an active orchestration service by progress ID."""
+    return _active_orchestrations.get(progress_id)
+
+
+def register_orchestration(progress_id: str, orchestration: 'CrawlingService'):
+    """Register an active orchestration service."""
+    _active_orchestrations[progress_id] = orchestration
+
+
+def unregister_orchestration(progress_id: str):
+    """Unregister an orchestration service."""
+    if progress_id in _active_orchestrations:
+        del _active_orchestrations[progress_id]
+
 
 class CrawlingService:
-    """Service class for web crawling operations"""
+    """
+    Service class for web crawling and orchestration operations.
+    Combines functionality from both CrawlingService and CrawlOrchestrationService.
+    """
     
-    # Common code block selectors for various editors and documentation frameworks
-    CODE_BLOCK_SELECTORS = [
-        # Milkdown
-        ".milkdown-code-block pre",
-        
-        # Monaco Editor
-        ".monaco-editor .view-lines",
-        
-        # CodeMirror
-        ".cm-editor .cm-content",
-        ".cm-line",
-        
-        # Prism.js (used by Docusaurus, Docsify, Gatsby)
-        "pre[class*='language-']",
-        "code[class*='language-']",
-        ".prism-code",
-        
-        # highlight.js
-        "pre code.hljs",
-        ".hljs",
-        
-        # Shiki (used by VitePress, Nextra)
-        ".shiki",
-        "div[class*='language-'] pre",
-        ".astro-code",
-        
-        # Generic patterns
-        "pre code",
-        ".code-block",
-        ".codeblock",
-        ".highlight pre"
-    ]
-    
-    def __init__(self, crawler=None, supabase_client=None):
-        """Initialize with optional crawler and supabase client"""
-        self.crawler = crawler
-        self.supabase_client = supabase_client or get_supabase_client()
-    
-    def _get_markdown_generator(self):
-        """Get markdown generator that preserves code blocks."""
-        return DefaultMarkdownGenerator(
-            content_source="html",  # Use raw HTML to preserve code blocks
-            options={
-                "mark_code": True,         # Mark code blocks properly
-                "handle_code_in_pre": True,  # Handle <pre><code> tags
-                "body_width": 0,            # No line wrapping
-                "skip_internal_links": True,  # Add to reduce noise
-                "include_raw_html": False,    # Prevent HTML in markdown
-                "escape": False,             # Don't escape special chars in code
-                "decode_unicode": True,      # Decode unicode characters
-                "strip_empty_lines": False,  # Preserve empty lines in code
-                "preserve_code_formatting": True,  # Custom option if supported
-                "code_language_callback": lambda el: el.get('class', '').replace('language-', '') if el else ''
-            }
-        )
-    
-    def is_sitemap(self, url: str) -> bool:
-        """Check if a URL is a sitemap with error handling."""
-        try:
-            return url.endswith('sitemap.xml') or 'sitemap' in urlparse(url).path
-        except Exception as e:
-            logger.warning(f"Error checking if URL is sitemap: {e}")
-            return False
-
-    def is_txt(self, url: str) -> bool:
-        """Check if a URL is a text file with error handling."""
-        try:
-            return url.endswith('.txt')
-        except Exception as e:
-            logger.warning(f"Error checking if URL is text file: {e}")
-            return False
-
-    def parse_sitemap(self, sitemap_url: str) -> List[str]:
-        """Parse a sitemap and extract URLs with comprehensive error handling."""
-        urls = []
-        
-        try:
-            logger.info(f"Parsing sitemap: {sitemap_url}")
-            resp = requests.get(sitemap_url, timeout=30)
-            
-            if resp.status_code != 200:
-                logger.error(f"Failed to fetch sitemap: HTTP {resp.status_code}")
-                return urls
-                
-            try:
-                tree = ElementTree.fromstring(resp.content)
-                urls = [loc.text for loc in tree.findall('.//{*}loc') if loc.text]
-                logger.info(f"Successfully extracted {len(urls)} URLs from sitemap")
-                
-            except ElementTree.ParseError as e:
-                logger.error(f"Error parsing sitemap XML: {e}")
-            except Exception as e:
-                logger.error(f"Unexpected error parsing sitemap: {e}")
-                
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Network error fetching sitemap: {e}")
-        except Exception as e:
-            logger.error(f"Unexpected error in sitemap parsing: {e}")
-            logger.error(traceback.format_exc())
-
-        return urls
-
-    def _transform_github_url(self, url: str) -> str:
-        """Transform GitHub URLs to raw content URLs for better content extraction."""
-        import re
-        
-        # Pattern for GitHub file URLs
-        github_file_pattern = r'https://github\.com/([^/]+)/([^/]+)/blob/([^/]+)/(.+)'
-        match = re.match(github_file_pattern, url)
-        if match:
-            owner, repo, branch, path = match.groups()
-            raw_url = f'https://raw.githubusercontent.com/{owner}/{repo}/{branch}/{path}'
-            logger.info(f"Transformed GitHub file URL to raw: {url} -> {raw_url}")
-            return raw_url
-        
-        # Pattern for GitHub directory URLs
-        github_dir_pattern = r'https://github\.com/([^/]+)/([^/]+)/tree/([^/]+)/(.+)'
-        match = re.match(github_dir_pattern, url)
-        if match:
-            # For directories, we can't directly get raw content
-            # Return original URL but log a warning
-            logger.warning(f"GitHub directory URL detected: {url} - consider using specific file URLs or GitHub API")
-        
-        return url
-    
-    def _is_documentation_site(self, url: str) -> bool:
-        """Check if URL is likely a documentation site that needs special handling."""
-        doc_patterns = [
-            'docs.',
-            'documentation.',
-            '/docs/',
-            '/documentation/',
-            'readthedocs',
-            'gitbook',
-            'docusaurus',
-            'vitepress',
-            'docsify',
-            'mkdocs'
-        ]
-        
-        url_lower = url.lower()
-        return any(pattern in url_lower for pattern in doc_patterns)
-    
-    def _get_wait_selector_for_docs(self, url: str) -> str:
-        """Get appropriate wait selector based on documentation framework."""
-        url_lower = url.lower()
-        
-        # Common selectors for different documentation frameworks
-        if 'docusaurus' in url_lower:
-            return '.markdown, .theme-doc-markdown, article'
-        elif 'vitepress' in url_lower:
-            return '.VPDoc, .vp-doc, .content'
-        elif 'gitbook' in url_lower:
-            return '.markdown-section, .page-wrapper'
-        elif 'mkdocs' in url_lower:
-            return '.md-content, article'
-        elif 'docsify' in url_lower:
-            return '#main, .markdown-section'
-        elif 'copilotkit' in url_lower:
-            # CopilotKit uses a custom setup, wait for any content
-            return 'div[class*="content"], div[class*="doc"], #__next'
-        elif 'milkdown' in url_lower:
-            # Milkdown uses a custom rendering system
-            return 'main, article, .prose, [class*="content"]'
-        else:
-            # Simplified generic selector - just wait for body to have content
-            return 'body'
-
-    async def crawl_single_page(self, url: str, retry_count: int = 3) -> Dict[str, Any]:
+    def __init__(self, crawler=None, supabase_client=None, progress_id=None):
         """
-        Crawl a single web page and return the result with retry logic.
+        Initialize the crawling service.
         
         Args:
-            url: URL of the web page to crawl
-            retry_count: Number of retry attempts
+            crawler: The Crawl4AI crawler instance
+            supabase_client: The Supabase client for database operations
+            progress_id: Optional progress ID for Socket.IO updates
+        """
+        self.crawler = crawler
+        self.supabase_client = supabase_client or get_supabase_client()
+        self.progress_id = progress_id
+        
+        # Initialize helpers
+        self.url_handler = URLHandler()
+        self.site_config = SiteConfig()
+        self.markdown_generator = self.site_config.get_markdown_generator()
+        
+        # Initialize strategies
+        self.batch_strategy = BatchCrawlStrategy(crawler, self.markdown_generator)
+        self.recursive_strategy = RecursiveCrawlStrategy(crawler, self.markdown_generator)
+        self.single_page_strategy = SinglePageCrawlStrategy(crawler, self.markdown_generator)
+        self.sitemap_strategy = SitemapCrawlStrategy()
+        
+        # Initialize operations
+        self.doc_storage_ops = DocumentStorageOperations(self.supabase_client)
+        
+        # Track progress state across all stages to prevent UI resets
+        self.progress_state = {'progressId': self.progress_id} if self.progress_id else {}
+        # Initialize progress mapper to prevent backwards jumps
+        self.progress_mapper = ProgressMapper()
+        # Cancellation support
+        self._cancelled = False
+    
+    def set_progress_id(self, progress_id: str):
+        """Set the progress ID for Socket.IO updates."""
+        self.progress_id = progress_id
+        if self.progress_id:
+            self.progress_state = {'progressId': self.progress_id}
+    
+    def cancel(self):
+        """Cancel the crawl operation."""
+        self._cancelled = True
+        safe_logfire_info(f"Crawl operation cancelled | progress_id={self.progress_id}")
+    
+    def is_cancelled(self) -> bool:
+        """Check if the crawl operation has been cancelled."""
+        return self._cancelled
+    
+    def _check_cancellation(self):
+        """Check if cancelled and raise an exception if so."""
+        if self._cancelled:
+            raise asyncio.CancelledError("Crawl operation was cancelled by user")
+    
+    async def _create_crawl_progress_callback(self, base_status: str):
+        """Create a progress callback for crawling operations."""
+        from ...fastapi.socketio_handlers import update_crawl_progress
+        
+        async def callback(status: str, percentage: int, message: str, **kwargs):
+            if self.progress_id:
+                # Update and preserve progress state
+                self.progress_state.update({
+                    'status': base_status,
+                    'percentage': percentage,
+                    'log': message,
+                    **kwargs
+                })
+                safe_logfire_info(f"Emitting crawl progress | progress_id={self.progress_id} | status={base_status} | percentage={percentage}")
+                await update_crawl_progress(self.progress_id, self.progress_state)
+        return callback
+    
+    async def _handle_progress_update(self, task_id: str, update: Dict[str, Any]):
+        """
+        Handle progress updates from background task.
+        """
+        from ...fastapi.socketio_handlers import update_crawl_progress
+        
+        if self.progress_id:
+            # Update and preserve progress state
+            self.progress_state.update(update)
+            # Ensure progressId is always included
+            if self.progress_id and 'progressId' not in self.progress_state:
+                self.progress_state['progressId'] = self.progress_id
+            
+            # Always emit progress updates for real-time feedback
+            await update_crawl_progress(self.progress_id, self.progress_state)
+    
+    # Simple delegation methods for backward compatibility
+    async def crawl_single_page(self, url: str, retry_count: int = 3) -> Dict[str, Any]:
+        """Crawl a single web page."""
+        return await self.single_page_strategy.crawl_single_page(
+            url,
+            self.url_handler.transform_github_url,
+            self.site_config.is_documentation_site,
+            retry_count
+        )
+    
+    async def crawl_markdown_file(self, url: str, progress_callback=None,
+                                  start_progress: int = 10, end_progress: int = 20) -> List[Dict[str, Any]]:
+        """Crawl a .txt or markdown file."""
+        return await self.single_page_strategy.crawl_markdown_file(
+            url,
+            self.url_handler.transform_github_url,
+            progress_callback,
+            start_progress,
+            end_progress
+        )
+    
+    def parse_sitemap(self, sitemap_url: str) -> List[str]:
+        """Parse a sitemap and extract URLs."""
+        return self.sitemap_strategy.parse_sitemap(sitemap_url)
+    
+    async def crawl_batch_with_progress(self, urls: List[str], max_concurrent: int = None,
+                                        progress_callback=None, start_progress: int = 15,
+                                        end_progress: int = 60) -> List[Dict[str, Any]]:
+        """Batch crawl multiple URLs in parallel."""
+        return await self.batch_strategy.crawl_batch_with_progress(
+            urls,
+            self.url_handler.transform_github_url,
+            self.site_config.is_documentation_site,
+            max_concurrent,
+            progress_callback,
+            start_progress,
+            end_progress
+        )
+    
+    async def crawl_recursive_with_progress(self, start_urls: List[str], max_depth: int = 3,
+                                           max_concurrent: int = None, progress_callback=None,
+                                           start_progress: int = 10, end_progress: int = 60) -> List[Dict[str, Any]]:
+        """Recursively crawl internal links from start URLs."""
+        return await self.recursive_strategy.crawl_recursive_with_progress(
+            start_urls,
+            self.url_handler.transform_github_url,
+            self.site_config.is_documentation_site,
+            max_depth,
+            max_concurrent,
+            progress_callback,
+            start_progress,
+            end_progress
+        )
+    
+    # Orchestration methods
+    async def orchestrate_crawl(self, request: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Main orchestration method - non-blocking using asyncio.create_task.
+        
+        Args:
+            request: The crawl request containing url, knowledge_type, tags, max_depth, etc.
             
         Returns:
-            Dict with success status, content, and metadata
+            Dict containing task_id and status
         """
-        # Transform GitHub URLs to raw content URLs if applicable
-        original_url = url
-        url = self._transform_github_url(url)
+        url = str(request.get('url', ''))
+        safe_logfire_info(f"Starting background crawl orchestration | url={url}")
         
-        last_error = None
+        # Create task ID
+        task_id = self.progress_id or str(uuid.uuid4())
         
-        for attempt in range(retry_count):
-            try:
-                if not self.crawler:
-                    logger.error(f"No crawler instance available for URL: {url}")
-                    return {
-                        "success": False,
-                        "error": "No crawler instance available - crawler initialization may have failed"
-                    }
-                
-                # Use ENABLED cache mode for better performance, BYPASS only on retries
-                cache_mode = CacheMode.BYPASS if attempt > 0 else CacheMode.ENABLED
-                
-                # Check if this is a documentation site that needs special handling
-                is_doc_site = self._is_documentation_site(url)
-                
-                # Enhanced configuration for documentation sites
-                if is_doc_site:
-                    wait_selector = self._get_wait_selector_for_docs(url)
-                    logger.info(f"Detected documentation site, using wait selector: {wait_selector}")
-                    
-                    crawl_config = CrawlerRunConfig(
-                        cache_mode=cache_mode, 
-                        stream=True,  # Enable streaming for faster parallel processing
-                        markdown_generator=self._get_markdown_generator(),
-                        # Wait for documentation content to load
-                        wait_for=wait_selector,
-                        # Use domcontentloaded for problematic sites
-                        wait_until='domcontentloaded',  # Always use domcontentloaded for speed
-                        # Increased timeout for JavaScript rendering
-                        page_timeout=30000,  # 30 seconds
-                        # Give JavaScript time to render
-                        delay_before_return_html=0.5,  # Reduced from 2.0s
-                        # Enable image waiting for completeness
-                        wait_for_images=False,  # Skip images for faster crawling
-                        # Scan full page to trigger lazy loading
-                        scan_full_page=True,
-                        # Keep images for documentation sites
-                        exclude_all_images=False,
-                        # Still remove popups
-                        remove_overlay_elements=True,
-                        # Process iframes for complete content
-                        process_iframes=True
-                    )
-                else:
-                    # Configuration for regular sites
-                    crawl_config = CrawlerRunConfig(
-                        cache_mode=cache_mode, 
-                        stream=True,  # Enable streaming
-                        markdown_generator=self._get_markdown_generator(),
-                        wait_until='domcontentloaded',  # Use domcontentloaded for better reliability
-                        page_timeout=45000,  # 45 seconds timeout
-                        delay_before_return_html=0.3,  # Reduced from 1.0s
-                        scan_full_page=True  # Trigger lazy loading
-                    )
-                
-                logger.info(f"Crawling {url} (attempt {attempt + 1}/{retry_count})")
-                logger.info(f"Using wait_until: {crawl_config.wait_until}, page_timeout: {crawl_config.page_timeout}")
-                
-                try:
-                    result = await self.crawler.arun(url=url, config=crawl_config)
-                except Exception as e:
-                    last_error = f"Crawler exception for {url}: {str(e)}"
-                    logger.error(last_error)
-                    if attempt < retry_count - 1:
-                        await asyncio.sleep(2 ** attempt)
-                    continue
-                
-                if not result.success:
-                    last_error = f"Failed to crawl {url}: {result.error_message}"
-                    logger.warning(f"Crawl attempt {attempt + 1} failed: {last_error}")
-                    
-                    # Exponential backoff before retry
-                    if attempt < retry_count - 1:
-                        await asyncio.sleep(2 ** attempt)
-                    continue
-                
-                # Validate content
-                if not result.markdown or len(result.markdown.strip()) < 50:
-                    last_error = f"Insufficient content from {url}"
-                    logger.warning(f"Crawl attempt {attempt + 1}: {last_error}")
-                    
-                    if attempt < retry_count - 1:
-                        await asyncio.sleep(2 ** attempt)
-                    continue
-                
-                # Success! Return both markdown AND HTML
-                # Debug logging to see what we got
-                markdown_sample = result.markdown[:1000] if result.markdown else "NO MARKDOWN"
-                has_triple_backticks = '```' in result.markdown if result.markdown else False
-                backtick_count = result.markdown.count('```') if result.markdown else 0
-                
-                logger.info(f"Crawl result for {url} | has_markdown={bool(result.markdown)} | markdown_length={len(result.markdown) if result.markdown else 0} | has_triple_backticks={has_triple_backticks} | backtick_count={backtick_count}")
-                
-                # Log markdown info for debugging if needed
-                if backtick_count > 0:
-                    logger.info(f"Markdown has {backtick_count} code blocks for {url}")
-                
-                if 'getting-started' in url:
-                    logger.info(f"Markdown sample for getting-started: {markdown_sample}")
-                
-                return {
-                    "success": True,
-                    "url": original_url,  # Use original URL for tracking
-                    "markdown": result.markdown,
-                    "html": result.html,  # Use raw HTML instead of cleaned_html for code extraction
-                    "title": result.title or "Untitled",
-                    "links": result.links,
-                    "content_length": len(result.markdown)
-                }
-                
-            except asyncio.TimeoutError:
-                last_error = f"Timeout crawling {url}"
-                logger.warning(f"Crawl attempt {attempt + 1} timed out")
-            except Exception as e:
-                last_error = f"Error crawling page: {str(e)}"
-                logger.error(f"Error on attempt {attempt + 1} crawling {url}: {e}")
-                logger.error(traceback.format_exc())
-            
-            # Exponential backoff before retry
-            if attempt < retry_count - 1:
-                await asyncio.sleep(2 ** attempt)
+        # Register this orchestration service for cancellation support
+        if self.progress_id:
+            register_orchestration(self.progress_id, self)
         
-        # All retries failed
+        # Start the crawl as an async task in the main event loop
+        asyncio.create_task(self._async_orchestrate_crawl(request, task_id))
+        
+        # Return immediately
         return {
-            "success": False,
-            "error": last_error or f"Failed to crawl {url} after {retry_count} attempts"
+            "task_id": task_id,
+            "status": "started",
+            "message": f"Crawl operation started for {url}",
+            "progress_id": self.progress_id
         }
-
-    async def crawl_markdown_file(self, url: str, progress_callback=None, 
-                                 start_progress: int = 10, end_progress: int = 20) -> List[Dict[str, Any]]:
-        """Crawl a .txt or markdown file with comprehensive error handling and progress reporting."""
+    
+    async def _async_orchestrate_crawl(self, request: Dict[str, Any], task_id: str):
+        """
+        Async orchestration that runs in the main event loop.
+        """
+        last_heartbeat = asyncio.get_event_loop().time()
+        heartbeat_interval = 30.0  # Send heartbeat every 30 seconds
+        
+        async def send_heartbeat_if_needed():
+            """Send heartbeat to keep Socket.IO connection alive"""
+            nonlocal last_heartbeat
+            current_time = asyncio.get_event_loop().time()
+            if current_time - last_heartbeat >= heartbeat_interval:
+                await self._handle_progress_update(task_id, {
+                    'status': self.progress_mapper.get_current_stage(),
+                    'percentage': self.progress_mapper.get_current_progress(),
+                    'heartbeat': True,
+                    'log': 'Background task still running...',
+                    'message': 'Processing...'
+                })
+                last_heartbeat = current_time
+        
         try:
-            # Transform GitHub URLs to raw content URLs if applicable
-            original_url = url
-            url = self._transform_github_url(url)
-            logger.info(f"Crawling markdown file: {url}")
+            url = str(request.get('url', ''))
+            safe_logfire_info(f"Starting async crawl orchestration | url={url} | task_id={task_id}")
             
-            # Define local report_progress helper like in other methods
-            async def report_progress(percentage: int, message: str):
-                """Helper to report progress if callback is available"""
-                if progress_callback:
-                    await progress_callback('crawling', percentage, message)
+            # Extract source_id from the original URL
+            parsed_original_url = urlparse(url)
+            original_source_id = parsed_original_url.netloc or parsed_original_url.path
+            safe_logfire_info(f"Using source_id '{original_source_id}' from original URL '{url}'")
             
-            # Report initial progress
-            await report_progress(start_progress, f"Fetching text file: {url}")
-            
-            # Use consistent configuration even for text files
-            crawl_config = CrawlerRunConfig(
-                cache_mode=CacheMode.ENABLED,
-                stream=False
-            )
-
-            result = await self.crawler.arun(url=url, config=crawl_config)
-            if result.success and result.markdown:
-                logger.info(f"Successfully crawled markdown file: {url}")
-                
-                # Report completion progress
-                await report_progress(end_progress, f"Text file crawled successfully: {original_url}")
-                
-                return [{'url': original_url, 'markdown': result.markdown, 'html': result.html}]
-            else:
-                logger.error(f"Failed to crawl {url}: {result.error_message}")
-                return []
-        except Exception as e:
-            logger.error(f"Exception while crawling markdown file {url}: {e}")
-            logger.error(traceback.format_exc())
-            return []
-
-    async def crawl_batch_with_progress(self, urls: List[str], max_concurrent: int = None, 
-                                       progress_callback=None, start_progress: int = 15, 
-                                       end_progress: int = 60) -> List[Dict[str, Any]]:
-        """Batch crawl multiple URLs in parallel with progress reporting."""
-        if not self.crawler:
-            logger.error("No crawler instance available for batch crawling")
-            if progress_callback:
-                await progress_callback('error', 0, 'Crawler not available')
-            return []
-            
-        # Load settings from database first
-        try:
-            settings = await credential_service.get_credentials_by_category("rag_strategy")
-            batch_size = int(settings.get("CRAWL_BATCH_SIZE", "50"))
-            if max_concurrent is None:
-                max_concurrent = int(settings.get("CRAWL_MAX_CONCURRENT", "10"))
-            memory_threshold = float(settings.get("MEMORY_THRESHOLD_PERCENT", "80"))
-            check_interval = float(settings.get("DISPATCHER_CHECK_INTERVAL", "0.5"))
-        except Exception as e:
-            logger.warning(f"Failed to load crawl settings: {e}, using defaults")
-            batch_size = 50
-            if max_concurrent is None:
-                max_concurrent = 10
-            memory_threshold = 80.0
-            check_interval = 0.5
-            settings = {}  # Empty dict for defaults
-            
-        # Check if any URLs are documentation sites
-        has_doc_sites = any(self._is_documentation_site(url) for url in urls)
-        
-        if has_doc_sites:
-            logger.info("Detected documentation sites in batch, using enhanced configuration")
-            # Use generic documentation selectors for batch crawling
-            crawl_config = CrawlerRunConfig(
-                cache_mode=CacheMode.BYPASS, 
-                stream=True,  # Enable streaming for faster parallel processing
-                markdown_generator=self._get_markdown_generator(),
-                wait_for='body',  # Simple selector for batch
-                wait_until=settings.get("CRAWL_WAIT_STRATEGY", "domcontentloaded"),
-                page_timeout=int(settings.get("CRAWL_PAGE_TIMEOUT", "30000")),
-                delay_before_return_html=float(settings.get("CRAWL_DELAY_BEFORE_HTML", "1.0")),
-                wait_for_images=False,  # Skip images for faster crawling
-                scan_full_page=True,  # Trigger lazy loading
-                exclude_all_images=False,
-                remove_overlay_elements=True,
-                process_iframes=True
-            )
-        else:
-            # Configuration for regular batch crawling
-            crawl_config = CrawlerRunConfig(
-                cache_mode=CacheMode.BYPASS, 
-                stream=True,  # Enable streaming
-                markdown_generator=self._get_markdown_generator(),
-                wait_until=settings.get("CRAWL_WAIT_STRATEGY", "domcontentloaded"),
-                page_timeout=int(settings.get("CRAWL_PAGE_TIMEOUT", "45000")),
-                delay_before_return_html=float(settings.get("CRAWL_DELAY_BEFORE_HTML", "0.5")),
-                scan_full_page=True
-            )
-            
-        dispatcher = MemoryAdaptiveDispatcher(
-            memory_threshold_percent=memory_threshold,
-            check_interval=check_interval,
-            max_session_permit=max_concurrent
-        )
-
-        async def report_progress(percentage: int, message: str):
-            """Helper to report progress if callback is available"""
-            if progress_callback:
-                await progress_callback('crawling', percentage, message)
-
-        total_urls = len(urls)
-        await report_progress(start_progress, f'Starting to crawl {total_urls} URLs...')
-        
-        # Use configured batch size
-        successful_results = []
-        processed = 0
-        
-        # Transform all URLs at the beginning
-        url_mapping = {}  # Map transformed URLs back to original
-        transformed_urls = []
-        for url in urls:
-            transformed = self._transform_github_url(url)
-            transformed_urls.append(transformed)
-            url_mapping[transformed] = url
-        
-        for i in range(0, total_urls, batch_size):
-            batch_urls = transformed_urls[i:i + batch_size]
-            batch_start = i
-            batch_end = min(i + batch_size, total_urls)
-            
-            # Report batch start with smooth progress
-            progress_percentage = start_progress + int((i / total_urls) * (end_progress - start_progress))
-            await report_progress(progress_percentage, f'Processing batch {batch_start+1}-{batch_end} of {total_urls} URLs...')
-            
-            # Crawl this batch using arun_many with streaming
-            logger.info(f"Starting parallel crawl of batch {batch_start+1}-{batch_end} ({len(batch_urls)} URLs)")
-            batch_results = await self.crawler.arun_many(urls=batch_urls, config=crawl_config, dispatcher=dispatcher)
-            
-            # Handle streaming results
-            j = 0
-            async for result in batch_results:
-                processed += 1
-                if result.success and result.markdown:
-                    # Map back to original URL
-                    original_url = url_mapping.get(result.url, result.url)
-                    successful_results.append({
-                        'url': original_url, 
-                        'markdown': result.markdown,
-                        'html': result.html  # Use raw HTML
-                    })
-                else:
-                    logger.warning(f"Failed to crawl {result.url}: {getattr(result, 'error_message', 'Unknown error')}")
-                
-                # Report individual URL progress with smooth increments
-                progress_percentage = start_progress + int((processed / total_urls) * (end_progress - start_progress))
-                # Report more frequently for smoother progress
-                if processed % 5 == 0 or processed == total_urls:  # Report every 5 URLs or at the end
-                    await report_progress(progress_percentage, f'Crawled {processed}/{total_urls} pages ({len(successful_results)} successful)')
-                j += 1
-        
-        await report_progress(end_progress, f'Batch crawling completed: {len(successful_results)}/{total_urls} pages successful')
-        return successful_results
-
-    async def crawl_recursive_with_progress(self, start_urls: List[str], max_depth: int = 3, 
-                                          max_concurrent: int = None, progress_callback=None, 
-                                          start_progress: int = 10, end_progress: int = 60) -> List[Dict[str, Any]]:
-        """Recursively crawl internal links from start URLs up to a maximum depth with progress reporting."""
-        if not self.crawler:
-            logger.error("No crawler instance available for recursive crawling")
-            if progress_callback:
-                await progress_callback('error', 0, 'Crawler not available')
-            return []
-            
-        # Load settings from database
-        try:
-            settings = await credential_service.get_credentials_by_category("rag_strategy")
-            batch_size = int(settings.get("CRAWL_BATCH_SIZE", "50"))
-            if max_concurrent is None:
-                max_concurrent = int(settings.get("CRAWL_MAX_CONCURRENT", "10"))
-            memory_threshold = float(settings.get("MEMORY_THRESHOLD_PERCENT", "80"))
-            check_interval = float(settings.get("DISPATCHER_CHECK_INTERVAL", "0.5"))
-        except Exception as e:
-            logger.warning(f"Failed to load crawl settings: {e}, using defaults")
-            batch_size = 50
-            if max_concurrent is None:
-                max_concurrent = 10
-            memory_threshold = 80.0
-            check_interval = 0.5
-            settings = {}  # Empty dict for defaults
-            
-        # Check if start URLs include documentation sites
-        has_doc_sites = any(self._is_documentation_site(url) for url in start_urls)
-        
-        if has_doc_sites:
-            logger.info("Detected documentation sites for recursive crawl, using enhanced configuration")
-            run_config = CrawlerRunConfig(
-                cache_mode=CacheMode.BYPASS, 
-                stream=True,  # Enable streaming for faster parallel processing
-                markdown_generator=self._get_markdown_generator(),
-                wait_for='body',
-                wait_until=settings.get("CRAWL_WAIT_STRATEGY", "domcontentloaded"),
-                page_timeout=int(settings.get("CRAWL_PAGE_TIMEOUT", "30000")),
-                delay_before_return_html=float(settings.get("CRAWL_DELAY_BEFORE_HTML", "1.0")),
-                wait_for_images=False,  # Skip images for faster crawling
-                scan_full_page=True,  # Trigger lazy loading
-                exclude_all_images=False,
-                remove_overlay_elements=True,
-                process_iframes=True
-            )
-        else:
-            # Configuration for regular recursive crawling
-            run_config = CrawlerRunConfig(
-                cache_mode=CacheMode.BYPASS, 
-                stream=True,  # Enable streaming
-                markdown_generator=self._get_markdown_generator(),
-                wait_until=settings.get("CRAWL_WAIT_STRATEGY", "domcontentloaded"),
-                page_timeout=int(settings.get("CRAWL_PAGE_TIMEOUT", "45000")),
-                delay_before_return_html=float(settings.get("CRAWL_DELAY_BEFORE_HTML", "0.5")),
-                scan_full_page=True
-            )
-            
-        dispatcher = MemoryAdaptiveDispatcher(
-            memory_threshold_percent=memory_threshold,
-            check_interval=check_interval,
-            max_session_permit=max_concurrent
-        )
-
-        async def report_progress(percentage: int, message: str, **kwargs):
-            """Helper to report progress if callback is available"""
-            if progress_callback:
-                # Add step information for multi-progress tracking
-                step_info = {
-                    'currentStep': message,
-                    'stepMessage': message,
+            # Helper to update progress with mapper
+            async def update_mapped_progress(stage: str, stage_progress: int, message: str, **kwargs):
+                overall_progress = self.progress_mapper.map_progress(stage, stage_progress)
+                await self._handle_progress_update(task_id, {
+                    'status': stage,
+                    'percentage': overall_progress,
+                    'log': message,
+                    'message': message,
                     **kwargs
-                }
-                await progress_callback('crawling', percentage, message, **step_info)
-
-        visited = set()
-
-        def normalize_url(url):
-            return urldefrag(url)[0]
-
-        current_urls = set([normalize_url(u) for u in start_urls])
-        results_all = []
-        total_processed = 0
-
-        for depth in range(max_depth):
-            urls_to_crawl = [normalize_url(url) for url in current_urls if normalize_url(url) not in visited]
-            if not urls_to_crawl:
-                break
-
-            # Calculate progress for this depth level
-            depth_start = start_progress + int((depth / max_depth) * (end_progress - start_progress) * 0.8)
-            depth_end = start_progress + int(((depth + 1) / max_depth) * (end_progress - start_progress) * 0.8)
+                })
             
-            await report_progress(depth_start, f'Crawling depth {depth + 1}/{max_depth}: {len(urls_to_crawl)} URLs to process')
-
-            # Use configured batch size for recursive crawling
-            next_level_urls = set()
-            depth_successful = 0
+            # Initial progress
+            await update_mapped_progress('starting', 100, f'Starting crawl of {url}', currentUrl=url)
             
-            for batch_idx in range(0, len(urls_to_crawl), batch_size):
-                batch_urls = urls_to_crawl[batch_idx:batch_idx + batch_size]
-                batch_end_idx = min(batch_idx + batch_size, len(urls_to_crawl))
-                
-                # Calculate progress for this batch within the depth
-                batch_progress = depth_start + int((batch_idx / len(urls_to_crawl)) * (depth_end - depth_start))
-                await report_progress(batch_progress, 
-                                    f'Depth {depth + 1}: crawling URLs {batch_idx + 1}-{batch_end_idx} of {len(urls_to_crawl)}',
-                                    totalPages=total_processed + batch_idx, 
-                                    processedPages=len(results_all))
-                
-                # Use arun_many for native parallel crawling with streaming
-                logger.info(f"Starting parallel crawl of {len(batch_urls)} URLs with arun_many")
-                batch_results = await self.crawler.arun_many(urls=batch_urls, config=run_config, dispatcher=dispatcher)
-                
-                # Handle streaming results from arun_many
-                i = 0
-                async for result in batch_results:
-                    # Map back to original URL if transformed
-                    original_url = result.url
-                    for orig_url in batch_urls:
-                        if self._transform_github_url(orig_url) == result.url:
-                            original_url = orig_url
-                            break
-                    
-                    norm_url = normalize_url(original_url)
-                    visited.add(norm_url)
-                    total_processed += 1
-                    
-                    if result.success and result.markdown:
-                        results_all.append({
-                            'url': original_url, 
-                            'markdown': result.markdown,
-                            'html': result.html  # Always use raw HTML for code extraction
-                        })
-                        depth_successful += 1
-                        
-                        # Find internal links for next depth
-                        for link in result.links.get("internal", []):
-                            next_url = normalize_url(link["href"])
-                            if next_url not in visited:
-                                next_level_urls.add(next_url)
-                    else:
-                        logger.warning(f"Failed to crawl {original_url}: {getattr(result, 'error_message', 'Unknown error')}")
-                    
-                    # Report progress every few URLs
-                    current_idx = batch_idx + i + 1
-                    if current_idx % 5 == 0 or current_idx == len(urls_to_crawl):
-                        current_progress = depth_start + int((current_idx / len(urls_to_crawl)) * (depth_end - depth_start))
-                        await report_progress(current_progress,
-                                            f'Depth {depth + 1}: processed {current_idx}/{len(urls_to_crawl)} URLs ({depth_successful} successful)',
-                                            totalPages=total_processed, 
-                                            processedPages=len(results_all))
-                    i += 1
-
-            current_urls = next_level_urls
+            # Check for cancellation before proceeding
+            self._check_cancellation()
             
-            # Report completion of this depth
-            await report_progress(depth_end, 
-                                f'Depth {depth + 1} completed: {depth_successful} pages crawled, {len(next_level_urls)} URLs found for next depth')
+            # Analyzing stage
+            await update_mapped_progress('analyzing', 50, f'Analyzing URL type for {url}')
+            
+            # Detect URL type and perform crawl
+            crawl_results, crawl_type = await self._crawl_by_url_type(url, request)
+            
+            # Check for cancellation after crawling
+            self._check_cancellation()
+            
+            # Send heartbeat after potentially long crawl operation
+            await send_heartbeat_if_needed()
+            
+            if not crawl_results:
+                raise ValueError("No content was crawled from the provided URL")
+            
+            # Processing stage
+            await update_mapped_progress('processing', 50, 'Processing crawled content')
+            
+            # Check for cancellation before document processing
+            self._check_cancellation()
+            
+            # Process and store documents using document storage operations
+            async def doc_storage_callback(message: str, percentage: int, batch_info: Optional[dict] = None):
+                if self.progress_id:
+                    from ...fastapi.socketio_handlers import update_crawl_progress
+                    # Map percentage to document storage range (20-85%)
+                    mapped_percentage = 20 + int((percentage / 100) * (85 - 20))
+                    safe_logfire_info(f"Document storage progress mapping: {percentage}% -> {mapped_percentage}%")
+                    
+                    # Update progress state while preserving existing fields
+                    self.progress_state.update({
+                        'status': 'document_storage',
+                        'percentage': mapped_percentage,
+                        'log': message
+                    })
+                    
+                    # Add batch_info fields if provided
+                    if batch_info:
+                        self.progress_state.update(batch_info)
+                    
+                    await update_crawl_progress(self.progress_id, self.progress_state)
+            
+            storage_results = await self.doc_storage_ops.process_and_store_documents(
+                crawl_results,
+                request,
+                crawl_type,
+                original_source_id,
+                doc_storage_callback,
+                self._check_cancellation
+            )
+            
+            # Check for cancellation after document storage
+            self._check_cancellation()
+            
+            # Send heartbeat after document storage
+            await send_heartbeat_if_needed()
+            
+            # Extract code examples if requested
+            code_examples_count = 0
+            if request.get('extract_code_examples', True):
+                await update_mapped_progress('code_extraction', 0, 'Starting code extraction...')
+                
+                # Create progress callback for code extraction
+                async def code_progress_callback(data: dict):
+                    if self.progress_id:
+                        from ...fastapi.socketio_handlers import update_crawl_progress
+                        # Update progress state while preserving existing fields
+                        self.progress_state.update(data)
+                        await update_crawl_progress(self.progress_id, self.progress_state)
+                
+                code_examples_count = await self.doc_storage_ops.extract_and_store_code_examples(
+                    crawl_results,
+                    storage_results['url_to_full_document'],
+                    code_progress_callback,
+                    85,
+                    95
+                )
+                
+                # Send heartbeat after code extraction
+                await send_heartbeat_if_needed()
+            
+            # Finalization
+            await update_mapped_progress(
+                'finalization', 50, 'Finalizing crawl results...',
+                chunks_stored=storage_results['chunk_count'],
+                code_examples_found=code_examples_count
+            )
+            
+            # Complete - send both the progress update and completion event
+            await update_mapped_progress(
+                'completed', 100,
+                f'Crawl completed: {storage_results["chunk_count"]} chunks, {code_examples_count} code examples',
+                chunks_stored=storage_results['chunk_count'],
+                code_examples_found=code_examples_count,
+                processed_pages=len(crawl_results),
+                total_pages=len(crawl_results)
+            )
+            
+            # Also send the completion event that frontend expects
+            from ...fastapi.socketio_handlers import complete_crawl_progress
+            await complete_crawl_progress(task_id, {
+                'chunks_stored': storage_results['chunk_count'],
+                'code_examples_found': code_examples_count,
+                'processed_pages': len(crawl_results),
+                'total_pages': len(crawl_results),
+                'sourceId': storage_results.get('source_id', ''),
+                'log': 'Crawl completed successfully!'
+            })
+            
+            # Unregister after successful completion
+            if self.progress_id:
+                unregister_orchestration(self.progress_id)
+                safe_logfire_info(f"Unregistered orchestration service after completion | progress_id={self.progress_id}")
+            
+        except asyncio.CancelledError:
+            safe_logfire_info(f"Crawl operation cancelled | progress_id={self.progress_id}")
+            await self._handle_progress_update(task_id, {
+                'status': 'cancelled',
+                'percentage': -1,
+                'log': 'Crawl operation was cancelled by user'
+            })
+            # Unregister on cancellation
+            if self.progress_id:
+                unregister_orchestration(self.progress_id)
+                safe_logfire_info(f"Unregistered orchestration service on cancellation | progress_id={self.progress_id}")
+        except Exception as e:
+            safe_logfire_error(f"Async crawl orchestration failed | error={str(e)}")
+            await self._handle_progress_update(task_id, {
+                'status': 'error',
+                'percentage': -1,
+                'log': f'Crawl failed: {str(e)}'
+            })
+            # Unregister on error
+            if self.progress_id:
+                unregister_orchestration(self.progress_id)
+                safe_logfire_info(f"Unregistered orchestration service on error | progress_id={self.progress_id}")
+    
+    async def _crawl_by_url_type(self, url: str, request: Dict[str, Any]) -> tuple:
+        """
+        Detect URL type and perform appropriate crawling.
+        
+        Returns:
+            Tuple of (crawl_results, crawl_type)
+        """
+        from ...fastapi.socketio_handlers import update_crawl_progress
+        
+        crawl_results = []
+        crawl_type = None
+        
+        if self.url_handler.is_txt(url):
+            # Handle text files
+            if self.progress_id:
+                self.progress_state.update({
+                    'status': 'crawling',
+                    'percentage': 10,
+                    'log': 'Detected text file, fetching content...'
+                })
+                await update_crawl_progress(self.progress_id, self.progress_state)
+            crawl_results = await self.crawl_markdown_file(
+                url,
+                progress_callback=await self._create_crawl_progress_callback('crawling'),
+                start_progress=10,
+                end_progress=20
+            )
+            crawl_type = "text_file"
+            
+        elif self.url_handler.is_sitemap(url):
+            # Handle sitemaps
+            if self.progress_id:
+                self.progress_state.update({
+                    'status': 'crawling',
+                    'percentage': 10,
+                    'log': 'Detected sitemap, parsing URLs...'
+                })
+                await update_crawl_progress(self.progress_id, self.progress_state)
+            sitemap_urls = self.parse_sitemap(url)
+            
+            if sitemap_urls:
+                # Emit progress before starting batch crawl
+                if self.progress_id:
+                    self.progress_state.update({
+                        'status': 'crawling',
+                        'percentage': 15,
+                        'log': f'Starting batch crawl of {len(sitemap_urls)} URLs...'
+                    })
+                    await update_crawl_progress(self.progress_id, self.progress_state)
+                
+                crawl_results = await self.crawl_batch_with_progress(
+                    sitemap_urls,
+                    progress_callback=await self._create_crawl_progress_callback('crawling'),
+                    start_progress=15,
+                    end_progress=20
+                )
+                crawl_type = "sitemap"
+                
+        else:
+            # Handle regular webpages with recursive crawling
+            if self.progress_id:
+                self.progress_state.update({
+                    'status': 'crawling',
+                    'percentage': 10,
+                    'log': f'Starting recursive crawl with max depth {request.get("max_depth", 1)}...'
+                })
+                await update_crawl_progress(self.progress_id, self.progress_state)
+            
+            max_depth = request.get('max_depth', 1)
+            # Limit concurrent crawls for better performance
+            max_concurrent = 20 if self.site_config.is_documentation_site(url) else 10
+            
+            crawl_results = await self.crawl_recursive_with_progress(
+                [url],
+                max_depth=max_depth,
+                max_concurrent=max_concurrent,
+                progress_callback=await self._create_crawl_progress_callback('crawling'),
+                start_progress=10,
+                end_progress=20
+            )
+            crawl_type = "webpage"
+        
+        return crawl_results, crawl_type
 
-        await report_progress(end_progress, f'Recursive crawling completed: {len(results_all)} total pages crawled across {max_depth} depth levels')
-        return results_all
+
+# Alias for backward compatibility
+CrawlOrchestrationService = CrawlingService
