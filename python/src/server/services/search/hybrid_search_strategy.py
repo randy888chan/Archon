@@ -166,7 +166,7 @@ class HybridSearchStrategy:
                     query_embedding=query_embedding,
                     match_count=match_count * 2,  # Get more for filtering
                     filter_metadata=filter_metadata,
-                    table_rpc="match_crawled_pages",
+                    table_rpc="match_archon_crawled_pages",
                 )
 
                 # 2. Get keyword search results
@@ -235,7 +235,7 @@ class HybridSearchStrategy:
                     query_embedding=query_embedding,
                     match_count=match_count * 2,
                     filter_metadata=combined_filter,
-                    table_rpc="match_code_examples",
+                    table_rpc="match_archon_code_examples",
                 )
 
                 # 2. Get keyword search results
