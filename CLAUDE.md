@@ -14,31 +14,86 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Error Handling
 
-**Core Principle**: In alpha, we want detailed errors that help us fix issues fast, not graceful failures that hide problems.
+**Core Principle**: In alpha, we need to intelligently decide when to fail hard and fast to quickly address issues, and when to allow processes to complete in critical services despite failures. Read below carefully and make intelligent decisions on a case-by-case basis.
 
 #### When to Fail Fast and Loud (Let it Crash!)
+
 These errors should stop execution and bubble up immediately:
+
 - **Service startup failures** - If credentials, database, or any service can't initialize, the system should crash with a clear error
 - **Missing configuration** - Missing environment variables or invalid settings should stop the system
 - **Database connection failures** - Don't hide connection issues, expose them
 - **Authentication/authorization failures** - Security errors must be visible and halt the operation
 - **Data corruption or validation errors** - Never silently accept bad data, Pydantic should raise
 - **Critical dependencies unavailable** - If a required service is down, fail immediately
+- **Invalid data that would corrupt state** - Never store zero embeddings, null foreign keys, or malformed JSON
 
 #### When to Complete but Log Detailed Errors
-These operations should continue but log every failure clearly:
+
+These operations should continue but track and report failures clearly:
+
 - **Batch processing** - When crawling websites or processing documents, complete what you can and report detailed failures for each item
 - **Background tasks** - Embedding generation, async jobs should finish the queue but log failures
 - **WebSocket events** - Don't crash on a single event failure, log it and continue serving other clients
 - **Optional features** - If projects/tasks are disabled, log and skip rather than crash
 - **External API calls** - Retry with exponential backoff, then fail with a clear message about what service failed and why
 
+#### Critical Nuance: Never Accept Corrupted Data
+
+When a process should continue despite failures, it must **skip the failed item entirely** rather than storing corrupted data:
+
+**❌ WRONG - Silent Corruption:**
+
+```python
+try:
+    embedding = create_embedding(text)
+except Exception as e:
+    embedding = [0.0] * 1536  # NEVER DO THIS - corrupts database
+    store_document(doc, embedding)
+```
+
+**✅ CORRECT - Skip Failed Items:**
+
+```python
+try:
+    embedding = create_embedding(text)
+    store_document(doc, embedding)  # Only store on success
+except Exception as e:
+    failed_items.append({'doc': doc, 'error': str(e)})
+    logger.error(f"Skipping document {doc.id}: {e}")
+    # Continue with next document, don't store anything
+```
+
+**✅ CORRECT - Batch Processing with Failure Tracking:**
+
+```python
+def process_batch(items):
+    results = {'succeeded': [], 'failed': []}
+
+    for item in items:
+        try:
+            result = process_item(item)
+            results['succeeded'].append(result)
+        except Exception as e:
+            results['failed'].append({
+                'item': item,
+                'error': str(e),
+                'traceback': traceback.format_exc()
+            })
+            logger.error(f"Failed to process {item.id}: {e}")
+
+    # Always return both successes and failures
+    return results
+```
+
 #### Error Message Guidelines
+
 - Include context about what was being attempted when the error occurred
 - Preserve full stack traces with `exc_info=True` in Python logging
 - Use specific exception types, not generic Exception catching
 - Include relevant IDs, URLs, or data that helps debug the issue
 - Never return None/null to indicate failure - raise an exception with details
+- For batch operations, always report both success count and detailed failure list
 
 ### Code Quality
 
@@ -156,7 +211,7 @@ LOG_LEVEL=INFO                         # DEBUG, INFO, WARNING, ERROR
 ### Backend Structure
 
 - `src/server/` - Main FastAPI application
-- `src/server/fastapi/` - API route handlers
+- `src/server/api_routes/` - API route handlers
 - `src/server/services/` - Business logic services
 - `src/mcp/` - MCP server implementation
 - `src/agents/` - PydanticAI agent implementations
@@ -175,7 +230,7 @@ Key tables in Supabase:
 
 ### Add a new API endpoint
 
-1. Create route handler in `python/src/server/fastapi/`
+1. Create route handler in `python/src/server/api_routes/`
 2. Add service logic in `python/src/server/services/`
 3. Include router in `python/src/server/main.py`
 4. Update frontend service in `archon-ui-main/src/services/`
@@ -193,6 +248,16 @@ Key tables in Supabase:
 2. View MCP logs: `docker-compose logs archon-mcp`
 3. Test tool execution via UI MCP page
 4. Verify Supabase connection and credentials
+
+## Code Quality Standards
+
+We enforce code quality through automated linting and type checking:
+
+- **Python 3.12** with 120 character line length
+- **Ruff** for linting - checks for errors, warnings, unused imports, and code style
+- **Mypy** for type checking - ensures type safety across the codebase
+- **Auto-formatting** on save in IDEs to maintain consistent style
+- Run `uv run ruff check` and `uv run mypy src/` locally before committing
 
 ## MCP Tools Available
 

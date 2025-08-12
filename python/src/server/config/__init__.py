@@ -6,21 +6,21 @@ for the Archon microservices architecture.
 """
 
 from .service_discovery import (
-    ServiceDiscovery,
     Environment,
+    ServiceDiscovery,
     discovery,
+    get_agents_url,
     get_api_url,
     get_mcp_url,
-    get_agents_url,
-    is_service_healthy
+    is_service_healthy,
 )
 
 __all__ = [
     "ServiceDiscovery",
-    "Environment", 
+    "Environment",
     "discovery",
     "get_api_url",
     "get_mcp_url",
     "get_agents_url",
-    "is_service_healthy"
+    "is_service_healthy",
 ]

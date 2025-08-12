@@ -210,7 +210,7 @@ After forking the repository, you'll need to:
 **Key locations:**
 
 - **Service Layer**: `python/src/server/services/` - Core business logic organized by domain
-- **API Endpoints**: `python/src/server/fastapi/` - REST API route handlers
+- **API Endpoints**: `python/src/server/api_routes/` - REST API route handlers
 - **MCP Tools**: `python/src/mcp/modules/` - MCP protocol implementations
 - **Agents**: `python/src/agents/` - PydanticAI agent implementations
 
@@ -284,7 +284,7 @@ After forking the repository, you'll need to:
    python/src/server/services/your_domain/your_service.py
 
    # Add API endpoints
-   python/src/server/fastapi/your_api.py
+   python/src/server/api_routes/your_api.py
 
    # Optional: Add MCP tools
    python/src/mcp/modules/your_module.py
