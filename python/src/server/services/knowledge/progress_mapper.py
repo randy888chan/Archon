@@ -8,7 +8,7 @@ This ensures smooth progress reporting without jumping backwards.
 
 class ProgressMapper:
     """Maps sub-task progress to overall progress ranges"""
-    
+
     # Define progress ranges for each stage
     STAGE_RANGES = {
         'starting': (0, 0),
@@ -23,12 +23,12 @@ class ProgressMapper:
         'complete': (100, 100),  # Alias
         'error': (-1, -1)  # Special case for errors
     }
-    
+
     def __init__(self):
         """Initialize the progress mapper"""
         self.last_overall_progress = 0
         self.current_stage = 'starting'
-    
+
     def map_progress(self, stage: str, stage_progress: float) -> int:
         """
         Map stage-specific progress to overall progress.
@@ -43,40 +43,40 @@ class ProgressMapper:
         # Handle error state
         if stage == 'error':
             return -1
-        
+
         # Get stage range
         if stage not in self.STAGE_RANGES:
             # Unknown stage - use current progress
             return self.last_overall_progress
-        
+
         start, end = self.STAGE_RANGES[stage]
-        
+
         # Handle completion
         if stage in ['completed', 'complete']:
             self.last_overall_progress = 100
             return 100
-        
+
         # Calculate mapped progress
         stage_progress = max(0, min(100, stage_progress))  # Clamp to 0-100
         stage_range = end - start
         mapped_progress = start + (stage_progress / 100.0) * stage_range
-        
+
         # Ensure progress never goes backwards
         mapped_progress = max(self.last_overall_progress, mapped_progress)
-        
+
         # Round to integer
         overall_progress = int(round(mapped_progress))
-        
+
         # Update state
         self.last_overall_progress = overall_progress
         self.current_stage = stage
-        
+
         return overall_progress
-    
+
     def get_stage_range(self, stage: str) -> tuple:
         """Get the progress range for a stage"""
         return self.STAGE_RANGES.get(stage, (0, 100))
-    
+
     def calculate_stage_progress(self, current_value: int, max_value: int) -> float:
         """
         Calculate percentage progress within a stage.
@@ -90,9 +90,9 @@ class ProgressMapper:
         """
         if max_value <= 0:
             return 0.0
-        
+
         return (current_value / max_value) * 100.0
-    
+
     def map_batch_progress(self, stage: str, current_batch: int, total_batches: int) -> int:
         """
         Convenience method for mapping batch processing progress.
@@ -107,12 +107,12 @@ class ProgressMapper:
         """
         if total_batches <= 0:
             return self.last_overall_progress
-        
+
         # Calculate stage progress (0-based for calculation)
         stage_progress = ((current_batch - 1) / total_batches) * 100.0
-        
+
         return self.map_progress(stage, stage_progress)
-    
+
     def map_with_substage(self, stage: str, substage: str, stage_progress: float) -> int:
         """
         Map progress with substage information for finer control.
@@ -128,16 +128,16 @@ class ProgressMapper:
         # For now, just use the main stage
         # Could be extended to support substage ranges
         return self.map_progress(stage, stage_progress)
-    
+
     def reset(self):
         """Reset the mapper to initial state"""
         self.last_overall_progress = 0
         self.current_stage = 'starting'
-    
+
     def get_current_stage(self) -> str:
         """Get the current stage name"""
         return self.current_stage
-    
+
     def get_current_progress(self) -> int:
         """Get the current overall progress percentage"""
         return self.last_overall_progress

@@ -13,22 +13,22 @@ Multiple strategies can be enabled simultaneously and work together.
 """
 
 import os
-from typing import List, Dict, Any, Optional, Tuple
+from typing import Any
 
 try:
     from sentence_transformers import CrossEncoder
 except ImportError:
     CrossEncoder = None
 
+from ...config.logfire_config import get_logger, safe_span
 from ...utils import get_supabase_client
 from ..embeddings.embedding_service import create_embedding
-from ...config.logfire_config import safe_span, get_logger
+from .agentic_rag_strategy import AgenticRAGStrategy
 
 # Import all strategies
 from .base_search_strategy import BaseSearchStrategy
 from .hybrid_search_strategy import HybridSearchStrategy
 from .reranking_strategy import RerankingStrategy
-from .agentic_rag_strategy import AgenticRAGStrategy
 
 logger = get_logger(__name__)
 
@@ -44,14 +44,14 @@ class RAGService:
     def __init__(self, supabase_client=None):
         """Initialize RAG service as a coordinator for search strategies"""
         self.supabase_client = supabase_client or get_supabase_client()
-        
+
         # Initialize base strategy (always needed)
         self.base_strategy = BaseSearchStrategy(self.supabase_client)
-        
+
         # Initialize optional strategies
         self.hybrid_strategy = HybridSearchStrategy(self.supabase_client, self.base_strategy)
         self.agentic_strategy = AgenticRAGStrategy(self.supabase_client, self.base_strategy)
-        
+
         # Initialize reranking strategy based on settings
         self.reranking_strategy = None
         use_reranking = self.get_bool_setting("USE_RERANKING", False)
@@ -87,15 +87,15 @@ class RAGService:
         """Get a boolean setting from credential service."""
         value = self.get_setting(key, "false" if not default else "true")
         return value.lower() in ("true", "1", "yes", "on")
-    
+
     async def search_documents(
         self,
         query: str,
         match_count: int = 5,
-        filter_metadata: Optional[dict] = None,
+        filter_metadata: dict | None = None,
         use_hybrid_search: bool = False,
-        cached_api_key: Optional[str] = None
-    ) -> List[Dict[str, Any]]:
+        cached_api_key: str | None = None
+    ) -> list[dict[str, Any]]:
         """
         Document search with hybrid search capability.
         
@@ -109,18 +109,18 @@ class RAGService:
         Returns:
             List of matching documents
         """
-        with safe_span("rag_search_documents", 
+        with safe_span("rag_search_documents",
                        query_length=len(query),
                        match_count=match_count,
                        hybrid_enabled=use_hybrid_search) as span:
             try:
                 # Create embedding for the query
                 query_embedding = await create_embedding(query)
-                
+
                 if not query_embedding:
                     logger.error("Failed to create embedding for query")
                     return []
-                
+
                 if use_hybrid_search:
                     # Use hybrid strategy
                     results = await self.hybrid_strategy.search_documents_hybrid(
@@ -138,10 +138,10 @@ class RAGService:
                         filter_metadata=filter_metadata
                     )
                     span.set_attribute("search_mode", "vector")
-                
+
                 span.set_attribute("results_found", len(results))
                 return results
-                
+
             except Exception as e:
                 logger.error(f"Document search failed: {e}")
                 span.set_attribute("error", str(e))
@@ -151,11 +151,11 @@ class RAGService:
 
     async def search_code_examples(
         self,
-        query: str, 
-        match_count: int = 10, 
-        filter_metadata: Optional[Dict[str, Any]] = None,
-        source_id: Optional[str] = None
-    ) -> List[Dict[str, Any]]:
+        query: str,
+        match_count: int = 10,
+        filter_metadata: dict[str, Any] | None = None,
+        source_id: str | None = None
+    ) -> list[dict[str, Any]]:
         """
         Search for code examples - delegates to agentic strategy.
         
@@ -176,7 +176,7 @@ class RAGService:
             use_enhancement=True
         )
 
-    async def perform_rag_query(self, query: str, source: str = None, match_count: int = 5) -> Tuple[bool, Dict[str, Any]]:
+    async def perform_rag_query(self, query: str, source: str = None, match_count: int = 5) -> tuple[bool, dict[str, Any]]:
         """
         Perform a comprehensive RAG query that combines all enabled strategies.
         
@@ -199,14 +199,14 @@ class RAGService:
                        match_count=match_count) as span:
             try:
                 logger.info(f"RAG query started: {query[:100]}{'...' if len(query) > 100 else ''}")
-                
+
                 # Build filter metadata
                 filter_metadata = {"source": source} if source else None
-                
+
                 # Check which strategies are enabled
                 use_hybrid_search = self.get_bool_setting("USE_HYBRID_SEARCH", False)
                 use_reranking = self.get_bool_setting("USE_RERANKING", False)
-                
+
                 # Step 1 & 2: Get results (with hybrid search if enabled)
                 results = await self.search_documents(
                     query=query,
@@ -214,10 +214,10 @@ class RAGService:
                     filter_metadata=filter_metadata,
                     use_hybrid_search=use_hybrid_search
                 )
-                
+
                 span.set_attribute("raw_results_count", len(results))
                 span.set_attribute("hybrid_search_enabled", use_hybrid_search)
-                
+
                 # Format results for processing
                 formatted_results = []
                 for i, result in enumerate(results):
@@ -232,7 +232,7 @@ class RAGService:
                     except Exception as format_error:
                         logger.warning(f"Failed to format result {i}: {format_error}")
                         continue
-                
+
                 # Step 3: Apply reranking if we have a strategy or if enabled
                 reranking_applied = False
                 if self.reranking_strategy and formatted_results:
@@ -243,7 +243,7 @@ class RAGService:
                     except Exception as e:
                         logger.warning(f"Reranking failed: {e}")
                         reranking_applied = False
-                
+
                 # Build response
                 response_data = {
                     "results": formatted_results,
@@ -255,19 +255,19 @@ class RAGService:
                     "search_mode": "hybrid" if use_hybrid_search else "vector",
                     "reranking_applied": reranking_applied
                 }
-                
+
                 span.set_attribute("final_results_count", len(formatted_results))
                 span.set_attribute("reranking_applied", reranking_applied)
                 span.set_attribute("success", True)
-                
+
                 logger.info(f"RAG query completed - {len(formatted_results)} results found")
                 return True, response_data
-                
+
             except Exception as e:
                 logger.error(f"RAG query failed: {e}")
                 span.set_attribute("error", str(e))
                 span.set_attribute("success", False)
-                
+
                 return False, {
                     "error": str(e),
                     "error_type": type(e).__name__,
@@ -276,7 +276,7 @@ class RAGService:
                     "execution_path": "rag_service_pipeline"
                 }
 
-    async def search_code_examples_service(self, query: str, source_id: Optional[str] = None, match_count: int = 5) -> Tuple[bool, Dict[str, Any]]:
+    async def search_code_examples_service(self, query: str, source_id: str | None = None, match_count: int = 5) -> tuple[bool, dict[str, Any]]:
         """
         Search for code examples using agentic strategy with hybrid search and reranking.
         
@@ -294,7 +294,7 @@ class RAGService:
         Returns:
             Tuple of (success, result_dict)
         """
-        with safe_span("code_examples_pipeline", 
+        with safe_span("code_examples_pipeline",
                        query_length=len(query),
                        source_id=source_id,
                        match_count=match_count) as span:
@@ -305,14 +305,14 @@ class RAGService:
                         "error": "Code example extraction is disabled. Enable USE_AGENTIC_RAG setting to use this feature.",
                         "query": query
                     }
-                
+
                 # Check which strategies are enabled
                 use_hybrid_search = self.get_bool_setting("USE_HYBRID_SEARCH", False)
                 use_reranking = self.get_bool_setting("USE_RERANKING", False)
-                
+
                 # Prepare filter
                 filter_metadata = {"source": source_id} if source_id and source_id.strip() else None
-                
+
                 if use_hybrid_search:
                     # Use hybrid search for code examples
                     results = await self.hybrid_strategy.search_code_examples_hybrid(
@@ -329,14 +329,14 @@ class RAGService:
                         filter_metadata=filter_metadata,
                         source_id=source_id
                     )
-                
+
                 # Apply reranking if we have a strategy
                 if self.reranking_strategy and results:
                     try:
                         results = await self.reranking_strategy.rerank_results(query, results, content_key="content")
                     except Exception as e:
                         logger.warning(f"Code reranking failed: {e}")
-                
+
                 # Format results
                 formatted_results = []
                 for result in results:
@@ -352,7 +352,7 @@ class RAGService:
                     if "rerank_score" in result:
                         formatted_result["rerank_score"] = result["rerank_score"]
                     formatted_results.append(formatted_result)
-                
+
                 response_data = {
                     "query": query,
                     "source_filter": source_id,
@@ -361,13 +361,13 @@ class RAGService:
                     "results": formatted_results,
                     "count": len(formatted_results)
                 }
-                
+
                 span.set_attribute("results_found", len(formatted_results))
                 span.set_attribute("hybrid_used", use_hybrid_search)
                 span.set_attribute("reranking_used", use_reranking)
-                
+
                 return True, response_data
-                
+
             except Exception as e:
                 logger.error(f"Code example search failed: {e}")
                 span.set_attribute("error", str(e))

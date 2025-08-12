@@ -4,17 +4,15 @@ Comprehensive Tests for Async LLM Provider Service
 Tests all aspects of the async LLM provider service after sync function removal.
 Covers different providers (OpenAI, Ollama, Google) and error scenarios.
 """
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-import asyncio
-import openai
-from unittest.mock import AsyncMock, MagicMock, patch, call
-from typing import Optional
 
 from src.server.services.llm_provider_service import (
-    get_llm_client,
-    get_embedding_model,
     _get_cached_settings,
-    _set_cached_settings
+    _set_cached_settings,
+    get_embedding_model,
+    get_llm_client,
 )
 
 
@@ -88,16 +86,16 @@ class TestAsyncLLMProviderService:
     async def test_get_llm_client_openai_success(self, mock_credential_service, openai_provider_config):
         """Test successful OpenAI client creation"""
         mock_credential_service.get_active_provider.return_value = openai_provider_config
-        
+
         with patch('src.server.services.llm_provider_service.credential_service', mock_credential_service):
             with patch('src.server.services.llm_provider_service.openai.AsyncOpenAI') as mock_openai:
                 mock_client = MagicMock()
                 mock_openai.return_value = mock_client
-                
+
                 async with get_llm_client() as client:
                     assert client == mock_client
                     mock_openai.assert_called_once_with(api_key="test-openai-key")
-                
+
                 # Verify provider config was fetched
                 mock_credential_service.get_active_provider.assert_called_once_with("llm")
 
@@ -105,12 +103,12 @@ class TestAsyncLLMProviderService:
     async def test_get_llm_client_ollama_success(self, mock_credential_service, ollama_provider_config):
         """Test successful Ollama client creation"""
         mock_credential_service.get_active_provider.return_value = ollama_provider_config
-        
+
         with patch('src.server.services.llm_provider_service.credential_service', mock_credential_service):
             with patch('src.server.services.llm_provider_service.openai.AsyncOpenAI') as mock_openai:
                 mock_client = MagicMock()
                 mock_openai.return_value = mock_client
-                
+
                 async with get_llm_client() as client:
                     assert client == mock_client
                     mock_openai.assert_called_once_with(
@@ -122,12 +120,12 @@ class TestAsyncLLMProviderService:
     async def test_get_llm_client_google_success(self, mock_credential_service, google_provider_config):
         """Test successful Google client creation"""
         mock_credential_service.get_active_provider.return_value = google_provider_config
-        
+
         with patch('src.server.services.llm_provider_service.credential_service', mock_credential_service):
             with patch('src.server.services.llm_provider_service.openai.AsyncOpenAI') as mock_openai:
                 mock_client = MagicMock()
                 mock_openai.return_value = mock_client
-                
+
                 async with get_llm_client() as client:
                     assert client == mock_client
                     mock_openai.assert_called_once_with(
@@ -141,16 +139,16 @@ class TestAsyncLLMProviderService:
         mock_credential_service._get_provider_api_key.return_value = "override-key"
         mock_credential_service.get_credentials_by_category.return_value = {"LLM_BASE_URL": ""}
         mock_credential_service._get_provider_base_url.return_value = None
-        
+
         with patch('src.server.services.llm_provider_service.credential_service', mock_credential_service):
             with patch('src.server.services.llm_provider_service.openai.AsyncOpenAI') as mock_openai:
                 mock_client = MagicMock()
                 mock_openai.return_value = mock_client
-                
+
                 async with get_llm_client(provider="openai") as client:
                     assert client == mock_client
                     mock_openai.assert_called_once_with(api_key="override-key")
-                    
+
                 # Verify explicit provider API key was requested
                 mock_credential_service._get_provider_api_key.assert_called_once_with("openai")
 
@@ -165,16 +163,16 @@ class TestAsyncLLMProviderService:
             "embedding_model": "text-embedding-3-large"
         }
         mock_credential_service.get_active_provider.return_value = embedding_config
-        
+
         with patch('src.server.services.llm_provider_service.credential_service', mock_credential_service):
             with patch('src.server.services.llm_provider_service.openai.AsyncOpenAI') as mock_openai:
                 mock_client = MagicMock()
                 mock_openai.return_value = mock_client
-                
+
                 async with get_llm_client(use_embedding_provider=True) as client:
                     assert client == mock_client
                     mock_openai.assert_called_once_with(api_key="embedding-key")
-                
+
                 # Verify embedding provider was requested
                 mock_credential_service.get_active_provider.assert_called_once_with("embedding")
 
@@ -189,7 +187,7 @@ class TestAsyncLLMProviderService:
             "embedding_model": "text-embedding-3-small"
         }
         mock_credential_service.get_active_provider.return_value = config_without_key
-        
+
         with patch('src.server.services.llm_provider_service.credential_service', mock_credential_service):
             with pytest.raises(ValueError, match="OpenAI API key not found"):
                 async with get_llm_client():
@@ -206,7 +204,7 @@ class TestAsyncLLMProviderService:
             "embedding_model": "text-embedding-004"
         }
         mock_credential_service.get_active_provider.return_value = config_without_key
-        
+
         with patch('src.server.services.llm_provider_service.credential_service', mock_credential_service):
             with pytest.raises(ValueError, match="Google API key not found"):
                 async with get_llm_client():
@@ -223,7 +221,7 @@ class TestAsyncLLMProviderService:
             "embedding_model": ""
         }
         mock_credential_service.get_active_provider.return_value = unsupported_config
-        
+
         with patch('src.server.services.llm_provider_service.credential_service', mock_credential_service):
             with pytest.raises(ValueError, match="Unsupported LLM provider: unsupported"):
                 async with get_llm_client():
@@ -235,7 +233,7 @@ class TestAsyncLLMProviderService:
         mock_credential_service._get_provider_api_key.return_value = "some-key"
         mock_credential_service.get_credentials_by_category.return_value = {}
         mock_credential_service._get_provider_base_url.return_value = None
-        
+
         with patch('src.server.services.llm_provider_service.credential_service', mock_credential_service):
             with pytest.raises(ValueError, match="Unsupported LLM provider: custom-unsupported"):
                 async with get_llm_client(provider="custom-unsupported"):
@@ -245,18 +243,18 @@ class TestAsyncLLMProviderService:
     async def test_get_embedding_model_openai_success(self, mock_credential_service, openai_provider_config):
         """Test getting embedding model for OpenAI provider"""
         mock_credential_service.get_active_provider.return_value = openai_provider_config
-        
+
         with patch('src.server.services.llm_provider_service.credential_service', mock_credential_service):
             model = await get_embedding_model()
             assert model == "text-embedding-3-small"
-            
+
             mock_credential_service.get_active_provider.assert_called_once_with("embedding")
 
     @pytest.mark.asyncio
     async def test_get_embedding_model_ollama_success(self, mock_credential_service, ollama_provider_config):
         """Test getting embedding model for Ollama provider"""
         mock_credential_service.get_active_provider.return_value = ollama_provider_config
-        
+
         with patch('src.server.services.llm_provider_service.credential_service', mock_credential_service):
             model = await get_embedding_model()
             assert model == "nomic-embed-text"
@@ -265,7 +263,7 @@ class TestAsyncLLMProviderService:
     async def test_get_embedding_model_google_success(self, mock_credential_service, google_provider_config):
         """Test getting embedding model for Google provider"""
         mock_credential_service.get_active_provider.return_value = google_provider_config
-        
+
         with patch('src.server.services.llm_provider_service.credential_service', mock_credential_service):
             model = await get_embedding_model()
             assert model == "text-embedding-004"
@@ -275,11 +273,11 @@ class TestAsyncLLMProviderService:
         """Test getting embedding model with provider override"""
         rag_settings = {"EMBEDDING_MODEL": "custom-embedding-model"}
         mock_credential_service.get_credentials_by_category.return_value = rag_settings
-        
+
         with patch('src.server.services.llm_provider_service.credential_service', mock_credential_service):
             model = await get_embedding_model(provider="custom-provider")
             assert model == "custom-embedding-model"
-            
+
             mock_credential_service.get_credentials_by_category.assert_called_once_with("rag_strategy")
 
     @pytest.mark.asyncio
@@ -293,7 +291,7 @@ class TestAsyncLLMProviderService:
             "embedding_model": "text-embedding-custom-large"
         }
         mock_credential_service.get_active_provider.return_value = config_with_custom
-        
+
         with patch('src.server.services.llm_provider_service.credential_service', mock_credential_service):
             model = await get_embedding_model()
             assert model == "text-embedding-custom-large"
@@ -302,7 +300,7 @@ class TestAsyncLLMProviderService:
     async def test_get_embedding_model_error_fallback(self, mock_credential_service):
         """Test fallback when error occurs getting embedding model"""
         mock_credential_service.get_active_provider.side_effect = Exception("Database error")
-        
+
         with patch('src.server.services.llm_provider_service.credential_service', mock_credential_service):
             model = await get_embedding_model()
             # Should fallback to OpenAI default
@@ -313,10 +311,10 @@ class TestAsyncLLMProviderService:
         # Test setting and getting cache
         test_value = {"test": "data"}
         _set_cached_settings("test_key", test_value)
-        
+
         cached_result = _get_cached_settings("test_key")
         assert cached_result == test_value
-        
+
         # Test cache expiry (would require time manipulation in real test)
         # For now just test that non-existent key returns None
         assert _get_cached_settings("non_existent") is None
@@ -325,32 +323,32 @@ class TestAsyncLLMProviderService:
     async def test_cache_usage_in_get_llm_client(self, mock_credential_service, openai_provider_config):
         """Test that cache is used to avoid repeated credential service calls"""
         mock_credential_service.get_active_provider.return_value = openai_provider_config
-        
+
         with patch('src.server.services.llm_provider_service.credential_service', mock_credential_service):
             with patch('src.server.services.llm_provider_service.openai.AsyncOpenAI') as mock_openai:
                 mock_client = MagicMock()
                 mock_openai.return_value = mock_client
-                
+
                 # First call should hit the credential service
                 async with get_llm_client():
                     pass
-                
+
                 # Second call should use cache
                 async with get_llm_client():
                     pass
-                
+
                 # Should only call get_active_provider once due to caching
                 assert mock_credential_service.get_active_provider.call_count == 1
 
     def test_deprecated_functions_removed(self):
         """Test that deprecated sync functions are no longer available"""
         import src.server.services.llm_provider_service as llm_module
-        
+
         # These functions should no longer exist
         assert not hasattr(llm_module, 'get_llm_client_sync')
         assert not hasattr(llm_module, 'get_embedding_model_sync')
         assert not hasattr(llm_module, '_get_active_provider_sync')
-        
+
         # The async versions should be the primary functions
         assert hasattr(llm_module, 'get_llm_client')
         assert hasattr(llm_module, 'get_embedding_model')
@@ -359,17 +357,17 @@ class TestAsyncLLMProviderService:
     async def test_context_manager_cleanup(self, mock_credential_service, openai_provider_config):
         """Test that async context manager properly handles cleanup"""
         mock_credential_service.get_active_provider.return_value = openai_provider_config
-        
+
         with patch('src.server.services.llm_provider_service.credential_service', mock_credential_service):
             with patch('src.server.services.llm_provider_service.openai.AsyncOpenAI') as mock_openai:
                 mock_client = MagicMock()
                 mock_openai.return_value = mock_client
-                
+
                 client_ref = None
                 async with get_llm_client() as client:
                     client_ref = client
                     assert client == mock_client
-                
+
                 # After context manager exits, should still have reference to client
                 assert client_ref == mock_client
 
@@ -381,21 +379,21 @@ class TestAsyncLLMProviderService:
             {"provider": "ollama", "api_key": "ollama", "base_url": "http://localhost:11434/v1"},
             {"provider": "google", "api_key": "google-key", "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/"}
         ]
-        
+
         with patch('src.server.services.llm_provider_service.credential_service', mock_credential_service):
             with patch('src.server.services.llm_provider_service.openai.AsyncOpenAI') as mock_openai:
                 mock_client = MagicMock()
                 mock_openai.return_value = mock_client
-                
+
                 for config in configs:
                     # Clear cache between tests to force fresh credential service calls
                     import src.server.services.llm_provider_service as llm_module
                     llm_module._settings_cache.clear()
-                    
+
                     mock_credential_service.get_active_provider.return_value = config
-                    
+
                     async with get_llm_client() as client:
                         assert client == mock_client
-                
+
                 # Should have been called once for each provider
                 assert mock_credential_service.get_active_provider.call_count == 3

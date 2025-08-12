@@ -9,8 +9,9 @@ Provides common functionality for all document storage operations including:
 """
 
 import re
-from typing import List, Dict, Any, Optional, Callable
 from abc import ABC, abstractmethod
+from collections.abc import Callable
+from typing import Any
 from urllib.parse import urlparse
 
 from ...config.logfire_config import get_logger, safe_span
@@ -20,7 +21,7 @@ logger = get_logger(__name__)
 
 class BaseStorageService(ABC):
     """Base class for all storage services with common functionality."""
-    
+
     def __init__(self, supabase_client=None):
         """Initialize with optional supabase client and threading service."""
         # Lazy import to avoid circular dependency
@@ -28,12 +29,12 @@ class BaseStorageService(ABC):
             from ...utils import get_supabase_client
             supabase_client = get_supabase_client()
         self.supabase_client = supabase_client
-        
+
         # Lazy import threading service
         from ...utils import get_utils_threading_service
         self.threading_service = get_utils_threading_service()
-    
-    def smart_chunk_text(self, text: str, chunk_size: int = 5000) -> List[str]:
+
+    def smart_chunk_text(self, text: str, chunk_size: int = 5000) -> list[str]:
         """
         Split text into chunks intelligently, preserving context.
         
@@ -53,58 +54,58 @@ class BaseStorageService(ABC):
         if not text or not isinstance(text, str):
             logger.warning("Invalid text provided for chunking")
             return []
-        
+
         chunks = []
         start = 0
         text_length = len(text)
-        
+
         while start < text_length:
             # Determine the end of this chunk
             end = start + chunk_size
-            
+
             # If we're at the end of the text, take what's left
             if end >= text_length:
                 chunk = text[start:].strip()
                 if chunk:
                     chunks.append(chunk)
                 break
-            
+
             # Try to find a good break point
             chunk = text[start:end]
-            
+
             # First, try to break at a code block boundary
             code_block_pos = chunk.rfind('```')
             if code_block_pos != -1 and code_block_pos > chunk_size * 0.3:
                 end = start + code_block_pos
-            
+
             # If no code block, try paragraph break
             elif '\n\n' in chunk:
                 last_break = chunk.rfind('\n\n')
                 if last_break > chunk_size * 0.3:
                     end = start + last_break
-            
+
             # If no paragraph break, try sentence break
             elif '. ' in chunk:
                 last_period = chunk.rfind('. ')
                 if last_period > chunk_size * 0.3:
                     end = start + last_period + 1
-            
+
             # Extract chunk and clean it up
             chunk = text[start:end].strip()
             if chunk:
                 chunks.append(chunk)
-            
+
             # Move start position for next chunk
             start = end
-        
+
         return chunks
-    
+
     async def smart_chunk_text_async(
-        self, 
-        text: str, 
+        self,
+        text: str,
         chunk_size: int = 5000,
-        progress_callback: Optional[Callable] = None
-    ) -> List[str]:
+        progress_callback: Callable | None = None
+    ) -> list[str]:
         """
         Async version of smart_chunk_text with optional progress reporting.
         
@@ -116,7 +117,7 @@ class BaseStorageService(ABC):
         Returns:
             List of text chunks
         """
-        with safe_span("smart_chunk_text_async", 
+        with safe_span("smart_chunk_text_async",
                       text_length=len(text),
                       chunk_size=chunk_size) as span:
             try:
@@ -127,24 +128,24 @@ class BaseStorageService(ABC):
                     )
                 else:
                     chunks = self.smart_chunk_text(text, chunk_size)
-                
+
                 if progress_callback:
                     await progress_callback("Text chunking completed", 100)
-                
+
                 span.set_attribute("chunks_created", len(chunks))
                 span.set_attribute("success", True)
-                
+
                 logger.info(f"Successfully chunked text: original_length={len(text)}, chunks_created={len(chunks)}")
-                
+
                 return chunks
-                
+
             except Exception as e:
                 span.set_attribute("success", False)
                 span.set_attribute("error", str(e))
                 logger.error(f"Error chunking text: {e}")
                 raise
-    
-    def extract_metadata(self, chunk: str, base_metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+
+    def extract_metadata(self, chunk: str, base_metadata: dict[str, Any] | None = None) -> dict[str, Any]:
         """
         Extract metadata from a text chunk.
         
@@ -158,7 +159,7 @@ class BaseStorageService(ABC):
         # Extract headers
         headers = re.findall(r'^(#+)\s+(.+)$', chunk, re.MULTILINE)
         header_str = '; '.join([f'{h[0]} {h[1]}' for h in headers]) if headers else ''
-        
+
         # Extract basic stats
         metadata = {
             "headers": header_str,
@@ -168,13 +169,13 @@ class BaseStorageService(ABC):
             "has_code": '```' in chunk,
             "has_links": 'http' in chunk or 'www.' in chunk
         }
-        
+
         # Merge with base metadata if provided
         if base_metadata:
             metadata.update(base_metadata)
-        
+
         return metadata
-    
+
     def extract_source_id(self, url: str) -> str:
         """
         Extract source ID from URL.
@@ -191,15 +192,15 @@ class BaseStorageService(ABC):
         except Exception as e:
             logger.warning(f"Error parsing URL {url}: {e}")
             return url
-    
+
     async def batch_process_with_progress(
         self,
-        items: List[Any],
+        items: list[Any],
         process_func: Callable,
         batch_size: int = 20,
-        progress_callback: Optional[Callable] = None,
+        progress_callback: Callable | None = None,
         description: str = "Processing"
-    ) -> List[Any]:
+    ) -> list[Any]:
         """
         Process items in batches with progress reporting.
         
@@ -215,15 +216,15 @@ class BaseStorageService(ABC):
         """
         results = []
         total_items = len(items)
-        
+
         for i in range(0, total_items, batch_size):
             batch_end = min(i + batch_size, total_items)
             batch = items[i:batch_end]
-            
+
             # Process batch
             batch_results = await process_func(batch)
             results.extend(batch_results)
-            
+
             # Report progress
             if progress_callback:
                 progress_pct = int((batch_end / total_items) * 100)
@@ -231,11 +232,11 @@ class BaseStorageService(ABC):
                     f"{description}: {batch_end}/{total_items} items",
                     progress_pct
                 )
-        
+
         return results
-    
+
     @abstractmethod
-    async def store_documents(self, documents: List[Dict[str, Any]], **kwargs) -> Dict[str, Any]:
+    async def store_documents(self, documents: list[dict[str, Any]], **kwargs) -> dict[str, Any]:
         """
         Store documents in the database. Must be implemented by subclasses.
         
@@ -247,9 +248,9 @@ class BaseStorageService(ABC):
             Storage result with success status and metadata
         """
         pass
-    
+
     @abstractmethod
-    async def process_document(self, document: Dict[str, Any], **kwargs) -> Dict[str, Any]:
+    async def process_document(self, document: dict[str, Any], **kwargs) -> dict[str, Any]:
         """
         Process a single document. Must be implemented by subclasses.
         

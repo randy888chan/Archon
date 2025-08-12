@@ -6,8 +6,9 @@ No other modules should import from this file.
 """
 
 import asyncio
-from ..socketio_app import get_socketio_instance
+
 from ..config.logfire_config import get_logger
+from ..socketio_app import get_socketio_instance
 
 logger = get_logger(__name__)
 
@@ -25,7 +26,7 @@ async def broadcast_task_update(project_id: str, event_type: str, task_data: dic
         logger.info(f"Broadcasting {event_type} to project room {project_id} with {len(room_members)} members")
     except:
         logger.info(f"Broadcasting {event_type} to project room {project_id}")
-    
+
     await sio.emit(event_type, task_data, room=project_id)
     logger.info(f"✅ Broadcasted {event_type} for task {task_data.get('id', 'unknown')} to project {project_id}")
 
@@ -44,4 +45,4 @@ async def broadcast_crawl_progress(progress_id: str, data: dict):
     data['progressId'] = progress_id
     await sio.emit('crawl_progress', data, room=progress_id)
     await asyncio.sleep(0)  # Yield control to event loop
-    logger.info(f"✅ [SOCKETIO] Broadcasted crawl progress for {progress_id}") 
+    logger.info(f"✅ [SOCKETIO] Broadcasted crawl progress for {progress_id}")

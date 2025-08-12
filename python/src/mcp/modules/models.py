@@ -7,10 +7,11 @@ This module defines Pydantic models for:
 - Project and task data models
 """
 
-from pydantic import BaseModel, Field, validator
-from typing import List, Dict, Any, Optional, Union
 from datetime import datetime
 from enum import Enum
+from typing import Any
+
+from pydantic import BaseModel, Field, validator
 
 
 class DocumentType(str, Enum):
@@ -36,9 +37,9 @@ class UserStory(BaseModel):
     id: str = Field(..., description="Unique identifier for the user story")
     title: str = Field(..., description="Brief title of the user story")
     description: str = Field(..., description="As a [user], I want [goal] so that [benefit]")
-    acceptance_criteria: List[str] = Field(default_factory=list, description="List of acceptance criteria")
+    acceptance_criteria: list[str] = Field(default_factory=list, description="List of acceptance criteria")
     priority: Priority = Field(default=Priority.MEDIUM, description="Priority level")
-    estimated_effort: Optional[str] = Field(None, description="Effort estimate (e.g., 'Small', 'Medium', 'Large')")
+    estimated_effort: str | None = Field(None, description="Effort estimate (e.g., 'Small', 'Medium', 'Large')")
     status: str = Field(default="draft", description="Status of the user story")
 
 
@@ -48,7 +49,7 @@ class Goal(BaseModel):
     title: str = Field(..., description="Brief title of the goal")
     description: str = Field(..., description="Detailed description of the goal")
     priority: Priority = Field(default=Priority.MEDIUM, description="Priority level")
-    success_metrics: List[str] = Field(default_factory=list, description="How success will be measured")
+    success_metrics: list[str] = Field(default_factory=list, description="How success will be measured")
 
 
 class TechnicalRequirement(BaseModel):
@@ -68,30 +69,30 @@ class ProjectRequirementsDocument(BaseModel):
     description: str = Field(default="", description="Brief project description")
     version: str = Field(default="1.0", description="Document version")
     last_updated: datetime = Field(default_factory=datetime.now, description="Last update timestamp")
-    
+
     # Project Details
-    goals: List[Goal] = Field(default_factory=list, description="List of project goals")
-    user_stories: List[UserStory] = Field(default_factory=list, description="List of user stories")
-    
+    goals: list[Goal] = Field(default_factory=list, description="List of project goals")
+    user_stories: list[UserStory] = Field(default_factory=list, description="List of user stories")
+
     # Scope and Context
     scope: str = Field(default="", description="Project scope definition")
-    out_of_scope: List[str] = Field(default_factory=list, description="What is explicitly out of scope")
-    assumptions: List[str] = Field(default_factory=list, description="Project assumptions")
-    constraints: List[str] = Field(default_factory=list, description="Project constraints")
-    
+    out_of_scope: list[str] = Field(default_factory=list, description="What is explicitly out of scope")
+    assumptions: list[str] = Field(default_factory=list, description="Project assumptions")
+    constraints: list[str] = Field(default_factory=list, description="Project constraints")
+
     # Technical Requirements
-    technical_requirements: List[TechnicalRequirement] = Field(
-        default_factory=list, 
+    technical_requirements: list[TechnicalRequirement] = Field(
+        default_factory=list,
         description="Technical requirements and constraints"
     )
-    
+
     # Stakeholders and Timeline
-    stakeholders: List[str] = Field(default_factory=list, description="Key stakeholders")
-    timeline: Dict[str, Any] = Field(default_factory=dict, description="Project timeline and milestones")
-    
+    stakeholders: list[str] = Field(default_factory=list, description="Key stakeholders")
+    timeline: dict[str, Any] = Field(default_factory=dict, description="Project timeline and milestones")
+
     # Success Criteria
-    success_criteria: List[str] = Field(default_factory=list, description="Overall project success criteria")
-    
+    success_criteria: list[str] = Field(default_factory=list, description="Overall project success criteria")
+
     @validator('last_updated', pre=True, always=True)
     def set_last_updated(cls, v):
         return v or datetime.now()
@@ -103,27 +104,27 @@ class GeneralDocument(BaseModel):
     This provides a flexible schema for various document types.
     """
     # Document Metadata
-    id: Optional[str] = Field(None, description="Document UUID (auto-generated)")
+    id: str | None = Field(None, description="Document UUID (auto-generated)")
     project_id: str = Field(..., description="Associated project UUID")
     document_type: DocumentType = Field(..., description="Type of document")
     title: str = Field(..., description="Document title")
-    
+
     # Content
-    content: Union[ProjectRequirementsDocument, Dict[str, Any]] = Field(
-        ..., 
+    content: ProjectRequirementsDocument | dict[str, Any] = Field(
+        ...,
         description="Document content (typed for PRD, flexible for others)"
     )
-    
+
     # Metadata
     version: str = Field(default="1.0", description="Document version")
     status: str = Field(default="draft", description="Document status (draft, review, approved)")
-    tags: List[str] = Field(default_factory=list, description="Document tags for categorization")
-    author: Optional[str] = Field(None, description="Document author")
-    
+    tags: list[str] = Field(default_factory=list, description="Document tags for categorization")
+    author: str | None = Field(None, description="Document author")
+
     # Timestamps
-    created_at: Optional[datetime] = Field(None, description="Creation timestamp")
-    updated_at: Optional[datetime] = Field(None, description="Last update timestamp")
-    
+    created_at: datetime | None = Field(None, description="Creation timestamp")
+    updated_at: datetime | None = Field(None, description="Last update timestamp")
+
     @validator('created_at', 'updated_at', pre=True, always=True)
     def set_timestamps(cls, v):
         return v or datetime.now()
@@ -134,19 +135,19 @@ class CreateDocumentRequest(BaseModel):
     project_id: str = Field(..., description="Associated project UUID")
     document_type: DocumentType = Field(..., description="Type of document")
     title: str = Field(..., description="Document title")
-    content: Dict[str, Any] = Field(default_factory=dict, description="Document content")
-    tags: List[str] = Field(default_factory=list, description="Document tags")
-    author: Optional[str] = Field(None, description="Document author")
+    content: dict[str, Any] = Field(default_factory=dict, description="Document content")
+    tags: list[str] = Field(default_factory=list, description="Document tags")
+    author: str | None = Field(None, description="Document author")
 
 
 class UpdateDocumentRequest(BaseModel):
     """Request model for updating an existing document"""
-    title: Optional[str] = Field(None, description="Updated document title")
-    content: Optional[Dict[str, Any]] = Field(None, description="Updated document content")
-    status: Optional[str] = Field(None, description="Updated document status")
-    tags: Optional[List[str]] = Field(None, description="Updated document tags")
-    author: Optional[str] = Field(None, description="Updated document author")
-    version: Optional[str] = Field(None, description="Updated document version")
+    title: str | None = Field(None, description="Updated document title")
+    content: dict[str, Any] | None = Field(None, description="Updated document content")
+    status: str | None = Field(None, description="Updated document status")
+    tags: list[str] | None = Field(None, description="Updated document tags")
+    author: str | None = Field(None, description="Updated document author")
+    version: str | None = Field(None, description="Updated document version")
 
 
 # Helper functions for creating default documents
@@ -192,16 +193,16 @@ def create_default_prd(project_title: str) -> ProjectRequirementsDocument:
 def create_default_document(project_id: str, document_type: DocumentType, title: str) -> GeneralDocument:
     """Create a default document based on type"""
     content = {}
-    
+
     if document_type == DocumentType.PRD:
         # Extract project title from the title (assuming format like "Project Name - Requirements")
         project_title = title.replace(" - Requirements", "").strip()
         content = create_default_prd(project_title).dict()
-    
+
     return GeneralDocument(
         project_id=project_id,
         document_type=document_type,
         title=title,
         content=content,
         tags=["default", document_type.value]
-    ) 
+    )

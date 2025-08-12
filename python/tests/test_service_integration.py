@@ -1,6 +1,4 @@
 """Service integration tests - Test core service interactions."""
-import pytest
-from unittest.mock import patch, MagicMock, AsyncMock
 
 
 def test_project_with_tasks_flow(client):
@@ -8,7 +6,7 @@ def test_project_with_tasks_flow(client):
     # Create project
     project_response = client.post("/api/projects", json={"title": "Test Project"})
     assert project_response.status_code in [200, 201, 422]
-    
+
     # List projects to verify
     list_response = client.get("/api/projects")
     assert list_response.status_code in [200, 500]  # 500 is OK in test environment
@@ -48,7 +46,7 @@ def test_search_and_retrieve_flow(client):
     # Search
     search_response = client.post("/api/knowledge/search", json={"query": "test"})
     assert search_response.status_code in [200, 400, 404, 422, 500]
-    
+
     # Get specific item (might not exist)
     item_response = client.get("/api/knowledge/items/test-id")
     assert item_response.status_code in [200, 404, 500]
@@ -82,7 +80,7 @@ def test_database_operations(client):
     # Test with query params
     response = client.get("/api/projects?limit=10&offset=0")
     assert response.status_code in [200, 500]  # 500 is OK in test environment
-    
+
     # Test filtering
     response = client.get("/api/tasks?status=todo")
     assert response.status_code in [200, 400, 422, 500]
@@ -91,15 +89,15 @@ def test_database_operations(client):
 def test_concurrent_operations(client):
     """Test API handles concurrent requests."""
     import concurrent.futures
-    
+
     def make_request():
         return client.get("/api/projects")
-    
+
     # Make 3 concurrent requests
     with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
         futures = [executor.submit(make_request) for _ in range(3)]
         results = [f.result() for f in futures]
-    
+
     # All should succeed or fail with 500 in test environment
     for result in results:
         assert result.status_code in [200, 500]  # 500 is OK in test environment

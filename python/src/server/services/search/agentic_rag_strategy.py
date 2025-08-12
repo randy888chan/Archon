@@ -12,12 +12,12 @@ Key features:
 - Programming language and framework-aware search
 """
 
-import os
-from typing import List, Dict, Any, Optional, Tuple
+from typing import Any
 
 from supabase import Client
+
+from ...config.logfire_config import get_logger, safe_span
 from ..embeddings.embedding_service import create_embedding
-from ...config.logfire_config import safe_span, get_logger
 
 logger = get_logger(__name__)
 
@@ -35,7 +35,7 @@ class AgenticRAGStrategy:
         """
         self.supabase_client = supabase_client
         self.base_strategy = base_strategy
-    
+
     def is_enabled(self) -> bool:
         """Check if agentic RAG is enabled via configuration."""
         try:
@@ -55,9 +55,9 @@ class AgenticRAGStrategy:
                             return False
                     else:
                         value = str(cached_value)
-                    
+
                     return value.lower() in ("true", "1", "yes", "on")
-            
+
             # Default to false if not found in settings
             return False
         except Exception:
@@ -69,9 +69,9 @@ class AgenticRAGStrategy:
         self,
         query: str,
         match_count: int = 10,
-        filter_metadata: Optional[Dict[str, Any]] = None,
-        source_id: Optional[str] = None
-    ) -> List[Dict[str, Any]]:
+        filter_metadata: dict[str, Any] | None = None,
+        source_id: str | None = None
+    ) -> list[dict[str, Any]]:
         """
         Search for code examples using vector similarity.
         
@@ -90,7 +90,7 @@ class AgenticRAGStrategy:
             try:
                 # Create embedding for the query (no enhancement)
                 query_embedding = await create_embedding(query)
-                
+
                 if not query_embedding:
                     logger.error("Failed to create embedding for code example query")
                     return []
@@ -107,13 +107,13 @@ class AgenticRAGStrategy:
                     filter_metadata=combined_filter,
                     table_rpc='match_code_examples'
                 )
-                
+
                 span.set_attribute("results_found", len(results))
-                
+
                 logger.debug(f"Agentic code search found {len(results)} results for query: {query[:50]}...")
-                
+
                 return results
-                
+
             except Exception as e:
                 logger.error(f"Error in agentic code example search: {e}")
                 span.set_attribute("error", str(e))
@@ -122,10 +122,10 @@ class AgenticRAGStrategy:
     async def perform_agentic_search(
         self,
         query: str,
-        source_id: Optional[str] = None,
+        source_id: str | None = None,
         match_count: int = 5,
         include_context: bool = True
-    ) -> Tuple[bool, Dict[str, Any]]:
+    ) -> tuple[bool, dict[str, Any]]:
         """
         Perform a comprehensive agentic RAG search for code examples with enhanced formatting.
         
@@ -175,12 +175,12 @@ class AgenticRAGStrategy:
                         "source_id": result.get("source_id"),
                         "similarity": result.get("similarity", 0.0)
                     }
-                    
+
                     # Add additional context if requested
                     if include_context:
                         formatted_result["chunk_number"] = result.get("chunk_number")
                         formatted_result["context"] = self._extract_code_context(result)
-                    
+
                     formatted_results.append(formatted_result)
 
                 response_data = {
@@ -197,14 +197,14 @@ class AgenticRAGStrategy:
                 span.set_attribute("success", True)
 
                 logger.info(f"Agentic RAG search completed - {len(formatted_results)} code examples found")
-                
+
                 return True, response_data
-                
+
             except Exception as e:
                 logger.error(f"Agentic RAG search failed: {e}")
                 span.set_attribute("error", str(e))
                 span.set_attribute("success", False)
-                
+
                 return False, {
                     "error": str(e),
                     "error_type": type(e).__name__,
@@ -213,7 +213,7 @@ class AgenticRAGStrategy:
                     "search_mode": "agentic_rag"
                 }
 
-    def _extract_code_context(self, result: Dict[str, Any]) -> Dict[str, Any]:
+    def _extract_code_context(self, result: dict[str, Any]) -> dict[str, Any]:
         """
         Extract additional context information from a code example result.
         
@@ -224,34 +224,34 @@ class AgenticRAGStrategy:
             Dictionary with contextual information
         """
         context = {}
-        
+
         metadata = result.get("metadata", {})
         if isinstance(metadata, dict):
             # Extract programming language if available
             if "language" in metadata:
                 context["language"] = metadata["language"]
-            
+
             # Extract framework/library information
             if "framework" in metadata:
                 context["framework"] = metadata["framework"]
-            
+
             # Extract file information
             if "file_path" in metadata:
                 context["file_path"] = metadata["file_path"]
-                
+
             # Extract line numbers if available
             if "line_start" in metadata and "line_end" in metadata:
                 context["line_range"] = f"{metadata['line_start']}-{metadata['line_end']}"
-                
+
         # Add content statistics
         content = result.get("content", "")
         if content:
             context["content_length"] = len(content)
             context["line_count"] = content.count('\\n') + 1
-            
+
         return context
 
-    def analyze_code_query(self, query: str) -> Dict[str, Any]:
+    def analyze_code_query(self, query: str) -> dict[str, Any]:
         """
         Analyze a query to determine if it's code-related and extract relevant information.
         
@@ -262,7 +262,7 @@ class AgenticRAGStrategy:
             Analysis results with query classification and extracted info
         """
         query_lower = query.lower()
-        
+
         # Programming language detection
         languages = [
             'python', 'javascript', 'java', 'c++', 'cpp', 'c#', 'csharp',
@@ -270,34 +270,34 @@ class AgenticRAGStrategy:
             'php', 'typescript', 'html', 'css', 'sql', 'bash', 'shell',
             'r', 'matlab', 'julia', 'perl', 'lua', 'dart', 'elixir'
         ]
-        
+
         detected_languages = [lang for lang in languages if lang in query_lower]
-        
+
         # Framework/library detection
         frameworks = [
             'react', 'angular', 'vue', 'django', 'flask', 'fastapi',
             'express', 'spring', 'rails', 'laravel', 'tensorflow',
             'pytorch', 'pandas', 'numpy', 'matplotlib', 'opencv'
         ]
-        
+
         detected_frameworks = [fw for fw in frameworks if fw in query_lower]
-        
+
         # Code-related keywords
         code_keywords = [
             'function', 'class', 'method', 'algorithm', 'implementation',
             'example', 'tutorial', 'pattern', 'template', 'snippet',
             'code', 'programming', 'development', 'api', 'library'
         ]
-        
+
         code_indicators = [kw for kw in code_keywords if kw in query_lower]
-        
+
         # Determine if query is code-related
         is_code_query = (
             len(detected_languages) > 0 or
             len(detected_frameworks) > 0 or
             len(code_indicators) > 0
         )
-        
+
         return {
             "is_code_query": is_code_query,
             "confidence": min(1.0, (len(detected_languages) + len(detected_frameworks) + len(code_indicators)) * 0.3),
@@ -318,9 +318,9 @@ async def search_code_examples_agentic(
     client: Client,
     query: str,
     match_count: int = 10,
-    filter_metadata: Optional[Dict[str, Any]] = None,
-    source_id: Optional[str] = None
-) -> List[Dict[str, Any]]:
+    filter_metadata: dict[str, Any] | None = None,
+    source_id: str | None = None
+) -> list[dict[str, Any]]:
     """
     Standalone function for agentic code example search.
     
@@ -338,7 +338,7 @@ async def search_code_examples_agentic(
     return await strategy.search_code_examples_async(query, match_count, filter_metadata, source_id)
 
 
-def analyze_query_for_code_search(query: str) -> Dict[str, Any]:
+def analyze_query_for_code_search(query: str) -> dict[str, Any]:
     """
     Standalone function to analyze if a query is code-related.
     

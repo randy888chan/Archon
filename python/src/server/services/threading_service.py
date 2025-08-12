@@ -8,19 +8,22 @@ Based on proven patterns from crawl4ai_mcp.py architecture.
 """
 
 import asyncio
-import time
-import psutil
-import threading
-from concurrent.futures import ThreadPoolExecutor
-from collections import deque
-from dataclasses import dataclass, field
-from typing import Dict, Any, List, Optional, Callable
-from contextlib import asynccontextmanager
 import gc
+import threading
+import time
+from collections import deque
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import asynccontextmanager
+from dataclasses import dataclass, field
+
 # Removed direct logging import - using unified config
 from enum import Enum
+from typing import Any
 
+import psutil
 from fastapi import WebSocket
+
 from ..config.logfire_config import get_logger
 
 # Get logger for this module
@@ -64,75 +67,75 @@ class ThreadingConfig:
 
 class RateLimiter:
     """Thread-safe rate limiter with token bucket algorithm"""
-    
+
     def __init__(self, config: RateLimitConfig):
         self.config = config
         self.request_times = deque()
         self.token_usage = deque()
         self.semaphore = asyncio.Semaphore(config.max_concurrent)
         self._lock = asyncio.Lock()
-        
+
     async def acquire(self, estimated_tokens: int = 8000) -> bool:
         """Acquire permission to make API call with token awareness"""
         async with self._lock:
             now = time.time()
-            
+
             # Clean old entries
             self._clean_old_entries(now)
-            
+
             # Check if we can make the request
             if not self._can_make_request(estimated_tokens):
                 wait_time = self._calculate_wait_time(estimated_tokens)
                 if wait_time > 0:
-                    logfire_logger.info(f"Rate limiting: waiting {wait_time:.1f}s", 
-                                      tokens=estimated_tokens, 
+                    logfire_logger.info(f"Rate limiting: waiting {wait_time:.1f}s",
+                                      tokens=estimated_tokens,
                                       current_usage=self._get_current_usage())
                     await asyncio.sleep(wait_time)
                     return await self.acquire(estimated_tokens)
                 return False
-            
+
             # Record the request
             self.request_times.append(now)
             self.token_usage.append((now, estimated_tokens))
             return True
-    
+
     def _can_make_request(self, estimated_tokens: int) -> bool:
         """Check if request can be made within limits"""
         # Check request rate limit
         if len(self.request_times) >= self.config.requests_per_minute:
             return False
-        
+
         # Check token usage limit
         current_tokens = sum(tokens for _, tokens in self.token_usage)
         if current_tokens + estimated_tokens > self.config.tokens_per_minute:
             return False
-        
+
         return True
-    
+
     def _clean_old_entries(self, current_time: float):
         """Remove entries older than 1 minute"""
         cutoff_time = current_time - 60
-        
+
         while self.request_times and self.request_times[0] < cutoff_time:
             self.request_times.popleft()
-        
+
         while self.token_usage and self.token_usage[0][0] < cutoff_time:
             self.token_usage.popleft()
-    
+
     def _calculate_wait_time(self, estimated_tokens: int) -> float:
         """Calculate how long to wait before retrying"""
         if not self.request_times:
             return 0
-        
+
         oldest_request = self.request_times[0]
         time_since_oldest = time.time() - oldest_request
-        
+
         if time_since_oldest < 60:
             return 60 - time_since_oldest + 0.1
-        
+
         return 0
-    
-    def _get_current_usage(self) -> Dict[str, int]:
+
+    def _get_current_usage(self) -> dict[str, int]:
         """Get current usage statistics"""
         current_tokens = sum(tokens for _, tokens in self.token_usage)
         return {
@@ -144,30 +147,30 @@ class RateLimiter:
 
 class MemoryAdaptiveDispatcher:
     """Dynamically adjust concurrency based on memory usage"""
-    
+
     def __init__(self, config: ThreadingConfig):
         self.config = config
         self.current_workers = config.base_workers
         self.last_metrics = None
-        
+
     def get_system_metrics(self) -> SystemMetrics:
         """Get current system performance metrics"""
         memory = psutil.virtual_memory()
         cpu_percent = psutil.cpu_percent(interval=1)
         active_threads = threading.active_count()
-        
+
         return SystemMetrics(
             memory_percent=memory.percent,
             cpu_percent=cpu_percent,
             available_memory_gb=memory.available / (1024**3),
             active_threads=active_threads
         )
-    
+
     def calculate_optimal_workers(self, mode: ProcessingMode = ProcessingMode.CPU_INTENSIVE) -> int:
         """Calculate optimal worker count based on system load and processing mode"""
         metrics = self.get_system_metrics()
         self.last_metrics = metrics
-        
+
         # Base worker count depends on processing mode
         if mode == ProcessingMode.CPU_INTENSIVE:
             base = min(self.config.base_workers, psutil.cpu_count())
@@ -177,7 +180,7 @@ class MemoryAdaptiveDispatcher:
             base = self.config.base_workers
         else:  # WEBSOCKET_SAFE
             base = max(1, self.config.base_workers // 2)
-        
+
         # Adjust based on system load
         if metrics.memory_percent > self.config.memory_threshold * 100:
             # Reduce workers when memory is high
@@ -197,43 +200,43 @@ class MemoryAdaptiveDispatcher:
         else:
             # Use base worker count
             workers = base
-        
+
         self.current_workers = workers
         return workers
-    
+
     async def process_with_adaptive_concurrency(
         self,
-        items: List[Any],
+        items: list[Any],
         process_func: Callable,
         mode: ProcessingMode = ProcessingMode.CPU_INTENSIVE,
-        websocket: Optional[WebSocket] = None,
-        progress_callback: Optional[Callable] = None,
+        websocket: WebSocket | None = None,
+        progress_callback: Callable | None = None,
         enable_worker_tracking: bool = False
-    ) -> List[Any]:
+    ) -> list[Any]:
         """Process items with adaptive concurrency control"""
-        
+
         if not items:
             return []
-        
+
         optimal_workers = self.calculate_optimal_workers(mode)
         semaphore = asyncio.Semaphore(optimal_workers)
-        
+
         logfire_logger.info("Starting adaptive processing",
                           items_count=len(items),
                           workers=optimal_workers,
                           mode=mode,
                           memory_percent=self.last_metrics.memory_percent,
                           cpu_percent=self.last_metrics.cpu_percent)
-        
+
         # Track active workers
         active_workers = {}
         worker_counter = 0
         completed_count = 0
         lock = asyncio.Lock()
-        
+
         async def process_single(item: Any, index: int) -> Any:
             nonlocal worker_counter, completed_count
-            
+
             # Assign worker ID
             worker_id = None
             async with lock:
@@ -242,7 +245,7 @@ class MemoryAdaptiveDispatcher:
                         worker_id = i
                         active_workers[worker_id] = index
                         break
-            
+
             async with semaphore:
                 try:
                     # Report worker started
@@ -254,7 +257,7 @@ class MemoryAdaptiveDispatcher:
                             'total_items': len(items),
                             'message': f"Worker {worker_id} processing item {index + 1}"
                         })
-                    
+
                     # For CPU-intensive work, run in thread pool
                     if mode == ProcessingMode.CPU_INTENSIVE:
                         loop = asyncio.get_event_loop()
@@ -265,13 +268,13 @@ class MemoryAdaptiveDispatcher:
                             result = await process_func(item)
                         else:
                             result = process_func(item)
-                    
+
                     # Update completed count
                     async with lock:
                         completed_count += 1
                         if worker_id in active_workers:
                             del active_workers[worker_id]
-                    
+
                     # Progress reporting with worker info
                     if progress_callback:
                         await progress_callback({
@@ -282,75 +285,75 @@ class MemoryAdaptiveDispatcher:
                             'total_items': len(items),
                             'message': f"Worker {worker_id} completed item {index + 1}"
                         })
-                    
+
                     # WebSocket health check
                     if websocket and mode == ProcessingMode.WEBSOCKET_SAFE:
                         if index % 10 == 0:  # Every 10 items
                             await asyncio.sleep(self.config.yield_interval)
-                    
+
                     return result
-                    
+
                 except Exception as e:
                     # Clean up worker on error
                     async with lock:
                         if worker_id and worker_id in active_workers:
                             del active_workers[worker_id]
-                    
+
                     logfire_logger.error(f"Processing failed for item {index}",
                                        error=str(e),
                                        item_index=index)
                     return None
-        
+
         # Create tasks for all items
         tasks = [
-            process_single(item, idx) 
+            process_single(item, idx)
             for idx, item in enumerate(items)
         ]
-        
+
         # Execute with controlled concurrency
         results = await asyncio.gather(*tasks, return_exceptions=True)
-        
+
         # Filter out failed results and exceptions
         successful_results = [
-            r for r in results 
+            r for r in results
             if r is not None and not isinstance(r, Exception)
         ]
-        
+
         success_rate = len(successful_results) / len(items) * 100
         logfire_logger.info("Adaptive processing completed",
                           total_items=len(items),
                           successful=len(successful_results),
                           success_rate=f"{success_rate:.1f}%",
                           workers_used=optimal_workers)
-        
+
         return successful_results
 
 class WebSocketSafeProcessor:
     """WebSocket-safe processing with progress updates"""
-    
+
     def __init__(self, config: ThreadingConfig):
         self.config = config
-        self.active_connections: List[WebSocket] = []
-        
+        self.active_connections: list[WebSocket] = []
+
     async def connect(self, websocket: WebSocket):
         """Connect WebSocket client"""
         await websocket.accept()
         self.active_connections.append(websocket)
-        logfire_logger.info("WebSocket client connected", 
+        logfire_logger.info("WebSocket client connected",
                           total_connections=len(self.active_connections))
-        
+
     def disconnect(self, websocket: WebSocket):
         """Disconnect WebSocket client"""
         if websocket in self.active_connections:
             self.active_connections.remove(websocket)
             logfire_logger.info("WebSocket client disconnected",
                               remaining_connections=len(self.active_connections))
-    
-    async def broadcast_progress(self, message: Dict[str, Any]):
+
+    async def broadcast_progress(self, message: dict[str, Any]):
         """Broadcast progress to all connected clients"""
         if not self.active_connections:
             return
-        
+
         # Send to all clients concurrently
         tasks = []
         for connection in self.active_connections.copy():
@@ -359,30 +362,30 @@ class WebSocketSafeProcessor:
                 tasks.append(task)
             except Exception:
                 self.disconnect(connection)
-        
+
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
-    
+
     async def process_with_progress(
         self,
-        items: List[Any],
+        items: list[Any],
         process_func: Callable,
         operation_name: str = "processing",
-        batch_size: Optional[int] = None
-    ) -> List[Any]:
+        batch_size: int | None = None
+    ) -> list[Any]:
         """Process items with WebSocket progress updates"""
-        
+
         if not items:
             return []
-        
+
         batch_size = batch_size or self.config.batch_size
         total_items = len(items)
         results = []
-        
+
         for batch_start in range(0, total_items, batch_size):
             batch_end = min(batch_start + batch_size, total_items)
             batch = items[batch_start:batch_end]
-            
+
             # Process batch
             for i, item in enumerate(batch):
                 if asyncio.iscoroutinefunction(process_func):
@@ -391,13 +394,13 @@ class WebSocketSafeProcessor:
                     # Run in thread pool for CPU-intensive work
                     loop = asyncio.get_event_loop()
                     result = await loop.run_in_executor(None, process_func, item)
-                
+
                 results.append(result)
-                
+
                 # Calculate progress
                 items_processed = batch_start + i + 1
                 progress = (items_processed / total_items) * 100
-                
+
                 # Broadcast progress
                 await self.broadcast_progress({
                     "type": "progress",
@@ -408,10 +411,10 @@ class WebSocketSafeProcessor:
                     "batch": f"Batch {batch_start//batch_size + 1}",
                     "current_item": str(getattr(item, 'id', i))
                 })
-                
+
                 # Yield control for WebSocket health
                 await asyncio.sleep(self.config.yield_interval)
-        
+
         # Final completion message
         await self.broadcast_progress({
             "type": "complete",
@@ -419,22 +422,22 @@ class WebSocketSafeProcessor:
             "total_processed": len(results),
             "success_rate": f"{len(results)/total_items*100:.1f}%"
         })
-        
+
         return results
 
 class ThreadingService:
     """Main threading service that coordinates all threading operations"""
-    
+
     def __init__(
         self,
-        threading_config: Optional[ThreadingConfig] = None,
-        rate_limit_config: Optional[RateLimitConfig] = None
+        threading_config: ThreadingConfig | None = None,
+        rate_limit_config: RateLimitConfig | None = None
     ):
         self.config = threading_config or ThreadingConfig()
         self.rate_limiter = RateLimiter(rate_limit_config or RateLimitConfig())
         self.memory_dispatcher = MemoryAdaptiveDispatcher(self.config)
         self.websocket_processor = WebSocketSafeProcessor(self.config)
-        
+
         # Thread pools for different workload types
         self.cpu_executor = ThreadPoolExecutor(
             max_workers=self.config.max_workers,
@@ -444,40 +447,40 @@ class ThreadingService:
             max_workers=self.config.max_workers * 2,
             thread_name_prefix="archon-io"
         )
-        
+
         self._running = False
         self._health_check_task = None
-    
+
     async def start(self):
         """Start the threading service"""
         if self._running:
             return
-        
+
         self._running = True
         self._health_check_task = asyncio.create_task(self._health_check_loop())
         logfire_logger.info("Threading service started",
                           config=self.config.__dict__)
-    
+
     async def stop(self):
         """Stop the threading service"""
         if not self._running:
             return
-        
+
         self._running = False
-        
+
         if self._health_check_task:
             self._health_check_task.cancel()
             try:
                 await self._health_check_task
             except asyncio.CancelledError:
                 pass
-        
+
         # Shutdown thread pools
         self.cpu_executor.shutdown(wait=True)
         self.io_executor.shutdown(wait=True)
-        
+
         logfire_logger.info("Threading service stopped")
-    
+
     @asynccontextmanager
     async def rate_limited_operation(self, estimated_tokens: int = 8000):
         """Context manager for rate-limited operations"""
@@ -485,7 +488,7 @@ class ThreadingService:
             can_proceed = await self.rate_limiter.acquire(estimated_tokens)
             if not can_proceed:
                 raise Exception("Rate limit exceeded")
-            
+
             start_time = time.time()
             try:
                 yield
@@ -494,26 +497,26 @@ class ThreadingService:
                 logfire_logger.debug("Rate limited operation completed",
                                    duration=duration,
                                    tokens=estimated_tokens)
-    
+
     async def run_cpu_intensive(self, func: Callable, *args, **kwargs) -> Any:
         """Run CPU-intensive function in thread pool"""
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(self.cpu_executor, func, *args, **kwargs)
-    
+
     async def run_io_bound(self, func: Callable, *args, **kwargs) -> Any:
         """Run I/O-bound function in thread pool"""
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(self.io_executor, func, *args, **kwargs)
-    
+
     async def batch_process(
         self,
-        items: List[Any],
+        items: list[Any],
         process_func: Callable,
         mode: ProcessingMode = ProcessingMode.CPU_INTENSIVE,
-        websocket: Optional[WebSocket] = None,
-        progress_callback: Optional[Callable] = None,
+        websocket: WebSocket | None = None,
+        progress_callback: Callable | None = None,
         enable_worker_tracking: bool = False
-    ) -> List[Any]:
+    ) -> list[Any]:
         """Process items in batches with optimal threading"""
         return await self.memory_dispatcher.process_with_adaptive_concurrency(
             items=items,
@@ -523,30 +526,30 @@ class ThreadingService:
             progress_callback=progress_callback,
             enable_worker_tracking=enable_worker_tracking
         )
-    
+
     async def websocket_safe_process(
         self,
-        items: List[Any],
+        items: list[Any],
         process_func: Callable,
         operation_name: str = "processing"
-    ) -> List[Any]:
+    ) -> list[Any]:
         """Process items with WebSocket safety guarantees"""
         return await self.websocket_processor.process_with_progress(
             items=items,
             process_func=process_func,
             operation_name=operation_name
         )
-    
+
     def get_system_metrics(self) -> SystemMetrics:
         """Get current system performance metrics"""
         return self.memory_dispatcher.get_system_metrics()
-    
+
     async def _health_check_loop(self):
         """Monitor system health and adjust threading parameters"""
         while self._running:
             try:
                 metrics = self.get_system_metrics()
-                
+
                 # Log system metrics
                 logfire_logger.info("System health check",
                                   memory_percent=metrics.memory_percent,
@@ -554,32 +557,32 @@ class ThreadingService:
                                   available_memory_gb=metrics.available_memory_gb,
                                   active_threads=metrics.active_threads,
                                   active_websockets=len(self.websocket_processor.active_connections))
-                
+
                 # Alert on critical thresholds
                 if metrics.memory_percent > 90:
                     logfire_logger.warning("Critical memory usage",
                                          memory_percent=metrics.memory_percent)
                     # Force garbage collection
                     gc.collect()
-                
+
                 if metrics.cpu_percent > 95:
                     logfire_logger.warning("Critical CPU usage",
                                          cpu_percent=metrics.cpu_percent)
-                
+
                 # Check for memory leaks (too many threads)
                 if metrics.active_threads > self.config.max_workers * 3:
                     logfire_logger.warning("High thread count detected",
                                          active_threads=metrics.active_threads,
                                          max_expected=self.config.max_workers * 3)
-                
+
                 await asyncio.sleep(self.config.health_check_interval)
-                
+
             except Exception as e:
                 logfire_logger.error("Health check failed", error=str(e))
                 await asyncio.sleep(self.config.health_check_interval)
 
 # Global threading service instance
-_threading_service: Optional[ThreadingService] = None
+_threading_service: ThreadingService | None = None
 
 def get_threading_service() -> ThreadingService:
     """Get the global threading service instance"""
@@ -599,4 +602,4 @@ async def stop_threading_service():
     global _threading_service
     if _threading_service:
         await _threading_service.stop()
-        _threading_service = None 
+        _threading_service = None

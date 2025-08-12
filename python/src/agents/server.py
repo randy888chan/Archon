@@ -9,18 +9,19 @@ This service ONLY hosts PydanticAI agents. It does NOT contain:
 The agents use MCP tools for all data operations.
 """
 
-import os
-import logging
-import json
-from contextlib import asynccontextmanager
-from typing import Dict, Any, Optional, AsyncGenerator
-import httpx
 import asyncio
+import json
+import logging
+import os
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
+from typing import Any
 
+import httpx
+import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-import uvicorn
 
 # Import our PydanticAI agents
 from .document_agent import DocumentAgent
@@ -35,15 +36,15 @@ class AgentRequest(BaseModel):
     """Request model for agent interactions"""
     agent_type: str  # "document", "rag", etc.
     prompt: str
-    context: Optional[Dict[str, Any]] = None
-    options: Optional[Dict[str, Any]] = None
+    context: dict[str, Any] | None = None
+    options: dict[str, Any] | None = None
 
 class AgentResponse(BaseModel):
     """Response model for agent interactions"""
     success: bool
-    result: Optional[Any] = None
-    error: Optional[str] = None
-    metadata: Optional[Dict[str, Any]] = None
+    result: Any | None = None
+    error: str | None = None
+    metadata: dict[str, Any] | None = None
 
 # Agent registry
 AVAILABLE_AGENTS = {
@@ -58,7 +59,7 @@ async def fetch_credentials_from_server():
     """Fetch credentials from the server's internal API."""
     max_retries = 30  # Try for up to 5 minutes (30 * 10 seconds)
     retry_delay = 10  # seconds
-    
+
     for attempt in range(max_retries):
         try:
             async with httpx.AsyncClient() as client:
@@ -75,20 +76,20 @@ async def fetch_credentials_from_server():
                 )
                 response.raise_for_status()
                 credentials = response.json()
-                
+
                 # Set credentials as environment variables
                 for key, value in credentials.items():
                     if value is not None:
                         os.environ[key] = str(value)
                         logger.info(f"Set credential: {key}")
-                
+
                 # Store credentials globally for agent initialization
                 global AGENT_CREDENTIALS
                 AGENT_CREDENTIALS = credentials
-                
+
                 logger.info(f"Successfully fetched {len(credentials)} credentials from server")
                 return credentials
-                
+
         except (httpx.HTTPError, httpx.RequestError) as e:
             if attempt < max_retries - 1:
                 logger.warning(f"Failed to fetch credentials (attempt {attempt + 1}/{max_retries}): {e}")
@@ -103,14 +104,14 @@ async def fetch_credentials_from_server():
 async def lifespan(app: FastAPI):
     """Initialize and cleanup resources"""
     logger.info("Starting Agents service...")
-    
+
     # Fetch credentials from server first
     try:
         await fetch_credentials_from_server()
     except Exception as e:
         logger.error(f"Failed to fetch credentials: {e}")
         # Continue with defaults if we can't get credentials
-    
+
     # Initialize agents with fetched credentials
     app.state.agents = {}
     for name, agent_class in AVAILABLE_AGENTS.items():
@@ -118,14 +119,14 @@ async def lifespan(app: FastAPI):
             # Pass model configuration from credentials
             model_key = f"{name.upper()}_AGENT_MODEL"
             model = AGENT_CREDENTIALS.get(model_key, "openai:gpt-4o-mini")
-            
+
             app.state.agents[name] = agent_class(model=model)
             logger.info(f"Initialized {name} agent with model: {model}")
         except Exception as e:
             logger.error(f"Failed to initialize {name} agent: {e}")
-    
+
     yield
-    
+
     # Cleanup
     logger.info("Shutting down Agents service...")
 
@@ -161,19 +162,19 @@ async def run_agent(request: AgentRequest):
                 status_code=400,
                 detail=f"Unknown agent type: {request.agent_type}"
             )
-        
+
         agent = app.state.agents[request.agent_type]
-        
+
         # Prepare dependencies for the agent
         deps = {
             "context": request.context or {},
             "options": request.options or {},
             "mcp_endpoint": os.getenv("MCP_SERVICE_URL", "http://archon-mcp:8051")
         }
-        
+
         # Run the agent
         result = await agent.run(request.prompt, deps)
-        
+
         return AgentResponse(
             success=True,
             result=result,
@@ -182,7 +183,7 @@ async def run_agent(request: AgentRequest):
                 "model": agent.model
             }
         )
-        
+
     except Exception as e:
         logger.error(f"Error running {request.agent_type} agent: {e}")
         return AgentResponse(
@@ -194,7 +195,7 @@ async def run_agent(request: AgentRequest):
 async def list_agents():
     """List all available agents and their capabilities"""
     agents_info = {}
-    
+
     for name, agent in app.state.agents.items():
         agents_info[name] = {
             "name": agent.name,
@@ -202,7 +203,7 @@ async def list_agents():
             "description": agent.__class__.__doc__ or "No description available",
             "available": True
         }
-    
+
     return {
         "agents": agents_info,
         "total": len(agents_info)
@@ -222,9 +223,9 @@ async def stream_agent(agent_type: str, request: AgentRequest):
             status_code=400,
             detail=f"Unknown agent type: {agent_type}"
         )
-    
+
     agent = app.state.agents[agent_type]
-    
+
     async def generate() -> AsyncGenerator[str, None]:
         try:
             # Prepare dependencies based on agent type
@@ -246,7 +247,7 @@ async def stream_agent(agent_type: str, request: AgentRequest):
                 # Default dependencies
                 from .base_agent import ArchonDependencies
                 deps = ArchonDependencies()
-            
+
             # Use PydanticAI's run_stream method
             # run_stream returns an async context manager directly
             async with agent.run_stream(request.prompt, deps) as stream:
@@ -257,7 +258,7 @@ async def stream_agent(agent_type: str, request: AgentRequest):
                         'content': chunk
                     })
                     yield f"data: {event_data}\n\n"
-                
+
                 # Get the final structured result
                 try:
                     final_result = await stream.get_data()
@@ -273,7 +274,7 @@ async def stream_agent(agent_type: str, request: AgentRequest):
                         'content': ""
                     })
                     yield f"data: {event_data}\n\n"
-                    
+
         except Exception as e:
             logger.error(f"Error streaming {agent_type} agent: {e}")
             event_data = json.dumps({
@@ -281,7 +282,7 @@ async def stream_agent(agent_type: str, request: AgentRequest):
                 'error': str(e)
             })
             yield f"data: {event_data}\n\n"
-    
+
     # Return SSE response
     return StreamingResponse(
         generate(),
@@ -302,7 +303,7 @@ if __name__ == "__main__":
             "Default value: 8052"
         )
     port = int(agents_port)
-    
+
     uvicorn.run(
         "server:app",
         host="0.0.0.0",

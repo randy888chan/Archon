@@ -1,6 +1,4 @@
 """Business logic tests - Test core business rules and logic."""
-import pytest
-from datetime import datetime, timedelta
 
 
 def test_task_status_transitions(client):
@@ -29,11 +27,11 @@ def test_data_validation(client):
     # Empty title
     response = client.post("/api/projects", json={"title": ""})
     assert response.status_code in [400, 422]
-    
+
     # Missing required fields
     response = client.post("/api/projects", json={})
     assert response.status_code in [400, 422]
-    
+
     # Valid data
     response = client.post("/api/projects", json={"title": "Valid Project"})
     assert response.status_code in [200, 201, 422]
@@ -54,7 +52,7 @@ def test_crawl_depth_limits(client):
         "max_depth": 100
     })
     assert response.status_code in [200, 400, 404, 422]
-    
+
     # Valid depth
     response = client.post("/api/knowledge/crawl", json={
         "url": "https://example.com",
@@ -89,7 +87,7 @@ def test_source_management(client):
         "type": "documentation"
     })
     assert response.status_code in [200, 201, 400, 404, 422, 500]
-    
+
     # List sources
     response = client.get("/api/knowledge/sources")
     assert response.status_code in [200, 404, 500]
@@ -102,7 +100,7 @@ def test_version_control(client):
         "content": "Version 1 content"
     })
     assert response.status_code in [200, 201, 404, 422, 500]
-    
+
     # List versions
     response = client.get("/api/documents/test-id/versions")
     assert response.status_code in [200, 404, 500]

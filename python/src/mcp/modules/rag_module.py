@@ -10,12 +10,14 @@ This version uses HTTP calls to the server service instead of importing
 service modules directly, enabling true microservices architecture.
 """
 
-from mcp.server.fastmcp import FastMCP, Context
-from urllib.parse import urljoin
 import json
 import logging
 import os
+from urllib.parse import urljoin
+
 import httpx
+
+from mcp.server.fastmcp import Context, FastMCP
 
 # Import service discovery for HTTP communication
 from src.server.config.service_discovery import get_api_url
@@ -36,7 +38,7 @@ def get_bool_setting(key: str, default: bool = False) -> bool:
 
 def register_rag_tools(mcp: FastMCP):
     """Register all RAG tools with the MCP server."""
-    
+
     @mcp.tool()
     async def get_available_sources(ctx: Context) -> str:
         """
@@ -50,14 +52,14 @@ def register_rag_tools(mcp: FastMCP):
         try:
             api_url = get_api_url()
             timeout = httpx.Timeout(30.0, connect=5.0)
-            
+
             async with httpx.AsyncClient(timeout=timeout) as client:
                 response = await client.get(urljoin(api_url, "/api/rag/sources"))
-                
+
                 if response.status_code == 200:
                     result = response.json()
                     sources = result.get("sources", [])
-                    
+
                     return json.dumps({
                         "success": True,
                         "sources": sources,
@@ -69,14 +71,14 @@ def register_rag_tools(mcp: FastMCP):
                         "success": False,
                         "error": f"HTTP {response.status_code}: {error_detail}"
                     }, indent=2)
-                    
+
         except Exception as e:
             logger.error(f"Error getting sources: {e}")
             return json.dumps({
                 "success": False,
                 "error": str(e)
             }, indent=2)
-    
+
     @mcp.tool()
     async def perform_rag_query(ctx: Context, query: str, source: str = None, match_count: int = 5) -> str:
         """
@@ -97,7 +99,7 @@ def register_rag_tools(mcp: FastMCP):
         try:
             api_url = get_api_url()
             timeout = httpx.Timeout(30.0, connect=5.0)
-            
+
             async with httpx.AsyncClient(timeout=timeout) as client:
                 request_data = {
                     "query": query,
@@ -105,12 +107,12 @@ def register_rag_tools(mcp: FastMCP):
                 }
                 if source:
                     request_data["source"] = source
-                
+
                 response = await client.post(
                     urljoin(api_url, "/api/rag/query"),
                     json=request_data
                 )
-                
+
                 if response.status_code == 200:
                     result = response.json()
                     return json.dumps({
@@ -126,7 +128,7 @@ def register_rag_tools(mcp: FastMCP):
                         "results": [],
                         "error": f"HTTP {response.status_code}: {error_detail}"
                     }, indent=2)
-                    
+
         except Exception as e:
             logger.error(f"Error performing RAG query: {e}")
             return json.dumps({
@@ -134,7 +136,7 @@ def register_rag_tools(mcp: FastMCP):
                 "results": [],
                 "error": str(e)
             }, indent=2)
-    
+
     @mcp.tool()
     async def search_code_examples(ctx: Context, query: str, source_id: str = None, match_count: int = 5) -> str:
         """
@@ -157,7 +159,7 @@ def register_rag_tools(mcp: FastMCP):
         try:
             api_url = get_api_url()
             timeout = httpx.Timeout(30.0, connect=5.0)
-            
+
             async with httpx.AsyncClient(timeout=timeout) as client:
                 request_data = {
                     "query": query,
@@ -165,13 +167,13 @@ def register_rag_tools(mcp: FastMCP):
                 }
                 if source_id:
                     request_data["source"] = source_id
-                
+
                 # Call the dedicated code examples endpoint
                 response = await client.post(
                     urljoin(api_url, "/api/rag/code-examples"),
                     json=request_data
                 )
-                
+
                 if response.status_code == 200:
                     result = response.json()
                     return json.dumps({
@@ -187,7 +189,7 @@ def register_rag_tools(mcp: FastMCP):
                         "results": [],
                         "error": f"HTTP {response.status_code}: {error_detail}"
                     }, indent=2)
-                    
+
         except Exception as e:
             logger.error(f"Error searching code examples: {e}")
             return json.dumps({
@@ -195,7 +197,7 @@ def register_rag_tools(mcp: FastMCP):
                 "results": [],
                 "error": str(e)
             }, indent=2)
-    
+
 
     # Log successful registration
     logger.info("✓ RAG tools registered (HTTP-based version)")

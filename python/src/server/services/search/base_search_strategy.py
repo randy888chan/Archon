@@ -5,10 +5,11 @@ Implements the foundational vector similarity search that all other strategies b
 This is the core semantic search functionality.
 """
 
-from typing import List, Dict, Any, Optional
+from typing import Any
+
 from supabase import Client
 
-from ...config.logfire_config import safe_span, get_logger
+from ...config.logfire_config import get_logger, safe_span
 
 logger = get_logger(__name__)
 
@@ -25,11 +26,11 @@ class BaseSearchStrategy:
 
     async def vector_search(
         self,
-        query_embedding: List[float],
+        query_embedding: list[float],
         match_count: int,
-        filter_metadata: Optional[dict] = None,
+        filter_metadata: dict | None = None,
         table_rpc: str = "match_crawled_pages"
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         Perform basic vector similarity search.
         
@@ -44,7 +45,7 @@ class BaseSearchStrategy:
         Returns:
             List of matching documents with similarity scores
         """
-        with safe_span("base_vector_search", 
+        with safe_span("base_vector_search",
                       table=table_rpc,
                       match_count=match_count) as span:
             try:
@@ -53,7 +54,7 @@ class BaseSearchStrategy:
                     "query_embedding": query_embedding,
                     "match_count": match_count
                 }
-                
+
                 # Add filter parameters
                 if filter_metadata:
                     if "source" in filter_metadata:
@@ -63,10 +64,10 @@ class BaseSearchStrategy:
                         rpc_params["filter"] = filter_metadata
                 else:
                     rpc_params["filter"] = {}
-                
+
                 # Execute search
                 response = self.supabase_client.rpc(table_rpc, rpc_params).execute()
-                
+
                 # Filter by similarity threshold
                 filtered_results = []
                 if response.data:
@@ -74,12 +75,12 @@ class BaseSearchStrategy:
                         similarity = float(result.get("similarity", 0.0))
                         if similarity >= SIMILARITY_THRESHOLD:
                             filtered_results.append(result)
-                
+
                 span.set_attribute("results_found", len(filtered_results))
                 span.set_attribute("results_filtered", len(response.data) - len(filtered_results) if response.data else 0)
-                
+
                 return filtered_results
-                
+
             except Exception as e:
                 logger.error(f"Vector search failed: {e}")
                 span.set_attribute("error", str(e))

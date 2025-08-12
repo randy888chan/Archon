@@ -5,22 +5,21 @@ Handles the orchestration of crawling operations with progress tracking.
 Extracted from the monolithic _perform_crawl_with_progress function in knowledge_api.py.
 """
 import asyncio
-from typing import Dict, Any, List, Optional
-from urllib.parse import urlparse
-from queue import Queue
 import uuid
+from typing import Any, Optional
+from urllib.parse import urlparse
 
-from ...config.logfire_config import safe_logfire_info, safe_logfire_error
-from ..crawling.crawling_service import CrawlingService
-from ..storage.storage_services import DocumentStorageService
-from ..storage.document_storage_service import add_documents_to_supabase
-from .code_extraction_service import CodeExtractionService
 from ...api_routes.socketio_handlers import update_crawl_progress
-from ..source_management_service import update_source_info, extract_source_summary
+from ...config.logfire_config import safe_logfire_error, safe_logfire_info
+from ..crawling.crawling_service import CrawlingService
+from ..source_management_service import extract_source_summary, update_source_info
+from ..storage.document_storage_service import add_documents_to_supabase
+from ..storage.storage_services import DocumentStorageService
+from .code_extraction_service import CodeExtractionService
 from .progress_mapper import ProgressMapper
 
 # Global registry to track active orchestration services for cancellation support
-_active_orchestrations: Dict[str, 'CrawlOrchestrationService'] = {}
+_active_orchestrations: dict[str, 'CrawlOrchestrationService'] = {}
 
 def get_active_orchestration(progress_id: str) -> Optional['CrawlOrchestrationService']:
     """Get an active orchestration service by progress ID."""
@@ -41,7 +40,7 @@ class CrawlOrchestrationService:
     Orchestrates the crawling process for knowledge items.
     Handles URL type detection, crawling, document storage, code extraction, and progress tracking.
     """
-    
+
     def __init__(self, crawler, supabase_client, progress_id=None):
         """
         Initialize the crawl orchestration service.
@@ -62,25 +61,25 @@ class CrawlOrchestrationService:
         self.progress_mapper = ProgressMapper()
         # Cancellation support
         self._cancelled = False
-    
+
     def set_progress_id(self, progress_id: str):
         """Set the progress ID for Socket.IO updates."""
         self.progress_id = progress_id
-    
+
     def cancel(self):
         """Cancel the crawl operation."""
         self._cancelled = True
         safe_logfire_info(f"Crawl operation cancelled | progress_id={self.progress_id}")
-    
+
     def is_cancelled(self) -> bool:
         """Check if the crawl operation has been cancelled."""
         return self._cancelled
-    
+
     def _check_cancellation(self):
         """Check if cancelled and raise an exception if so."""
         if self._cancelled:
             raise asyncio.CancelledError("Crawl operation was cancelled by user")
-    
+
     def _is_documentation_site(self, url: str) -> bool:
         """Check if URL is a documentation site."""
         doc_patterns = [
@@ -89,7 +88,7 @@ class CrawlOrchestrationService:
             'docsify', 'mkdocs', 'copilotkit'
         ]
         return any(pattern in url.lower() for pattern in doc_patterns)
-    
+
     async def _create_crawl_progress_callback(self, base_status: str):
         """Create a progress callback for crawling operations."""
         async def callback(status: str, percentage: int, message: str, **kwargs):
@@ -105,14 +104,14 @@ class CrawlOrchestrationService:
                 await update_crawl_progress(self.progress_id, self.progress_state)
         return callback
 
-    async def _async_orchestrate_crawl(self, request: Dict[str, Any], task_id: str):
+    async def _async_orchestrate_crawl(self, request: dict[str, Any], task_id: str):
         """
         Async orchestration that runs in the main event loop.
         Browser operations happen here, only CPU-intensive work uses threads.
         """
         last_heartbeat = asyncio.get_event_loop().time()
         heartbeat_interval = 30.0  # Send heartbeat every 30 seconds
-        
+
         async def send_heartbeat_if_needed():
             """Send heartbeat to keep Socket.IO connection alive"""
             nonlocal last_heartbeat
@@ -126,16 +125,16 @@ class CrawlOrchestrationService:
                     'message': 'Processing...'
                 })
                 last_heartbeat = current_time
-        
+
         try:
             url = str(request.get('url', ''))
             safe_logfire_info(f"Starting async crawl orchestration | url={url} | task_id={task_id}")
-            
+
             # Extract source_id from the original URL
             parsed_original_url = urlparse(url)
             original_source_id = parsed_original_url.netloc or parsed_original_url.path
             safe_logfire_info(f"Using source_id '{original_source_id}' from original URL '{url}'")
-            
+
             # Helper to update progress with mapper
             async def update_mapped_progress(stage: str, stage_progress: int, message: str, **kwargs):
                 overall_progress = self.progress_mapper.map_progress(stage, stage_progress)
@@ -146,75 +145,75 @@ class CrawlOrchestrationService:
                     'message': message,
                     **kwargs
                 })
-            
+
             # Initial progress
             await update_mapped_progress('starting', 100, f'Starting crawl of {url}', currentUrl=url)
-            
+
             # Check for cancellation before proceeding
             self._check_cancellation()
-            
+
             # Analyzing stage
             await update_mapped_progress('analyzing', 50, f'Analyzing URL type for {url}')
-            
+
             # Detect URL type and perform crawl (async - stays in event loop)
             crawl_results, crawl_type = await self._crawl_by_url_type(url, request)
-            
+
             # Check for cancellation after crawling
             self._check_cancellation()
-            
+
             # Send heartbeat after potentially long crawl operation
             await send_heartbeat_if_needed()
-            
+
             if not crawl_results:
                 raise ValueError("No content was crawled from the provided URL")
-            
+
             # Processing stage
             await update_mapped_progress('processing', 50, 'Processing crawled content')
-            
+
             # Check for cancellation before document processing
             self._check_cancellation()
-            
+
             # Process and store documents
             storage_results = await self._process_and_store_documents(
                 crawl_results, request, crawl_type, original_source_id
             )
-            
+
             # Check for cancellation after document storage
             self._check_cancellation()
-            
+
             # Send heartbeat after document storage
             await send_heartbeat_if_needed()
-            
+
             # Extract code examples if requested
             code_examples_count = 0
             if request.get('extract_code_examples', True):
                 await update_mapped_progress('code_extraction', 0, 'Starting code extraction...')
-                
+
                 code_examples_count = await self._extract_and_store_code_examples(
                     crawl_results,
                     storage_results['url_to_full_document']
                 )
-                
+
                 # Send heartbeat after code extraction
                 await send_heartbeat_if_needed()
-            
+
             # Finalization
             await update_mapped_progress(
                 'finalization', 50, 'Finalizing crawl results...',
                 chunks_stored=storage_results['chunk_count'],
                 code_examples_found=code_examples_count
             )
-            
+
             # Complete - send both the progress update and completion event
             await update_mapped_progress(
-                'completed', 100, 
+                'completed', 100,
                 f'Crawl completed: {storage_results["chunk_count"]} chunks, {code_examples_count} code examples',
                 chunks_stored=storage_results['chunk_count'],
                 code_examples_found=code_examples_count,
                 processed_pages=len(crawl_results),
                 total_pages=len(crawl_results)
             )
-            
+
             # Also send the completion event that frontend expects
             from ...api_routes.socketio_handlers import complete_crawl_progress
             await complete_crawl_progress(task_id, {
@@ -225,12 +224,12 @@ class CrawlOrchestrationService:
                 'sourceId': storage_results.get('source_id', ''),
                 'log': 'Crawl completed successfully!'
             })
-            
+
             # Unregister after successful completion
             if self.progress_id:
                 unregister_orchestration(self.progress_id)
                 safe_logfire_info(f"Unregistered orchestration service after completion | progress_id={self.progress_id}")
-            
+
         except asyncio.CancelledError:
             safe_logfire_info(f"Crawl operation cancelled | progress_id={self.progress_id}")
             await self._handle_progress_update(task_id, {
@@ -257,7 +256,7 @@ class CrawlOrchestrationService:
             # Don't unregister here - let the crawl complete first
             pass
 
-    async def orchestrate_crawl(self, request: Dict[str, Any]) -> Dict[str, Any]:
+    async def orchestrate_crawl(self, request: dict[str, Any]) -> dict[str, Any]:
         """
         Main orchestration method - now non-blocking using asyncio.create_task.
         Browser operations stay in the main event loop.
@@ -270,17 +269,17 @@ class CrawlOrchestrationService:
         """
         url = str(request.get('url', ''))
         safe_logfire_info(f"Starting background crawl orchestration | url={url}")
-        
+
         # Create task ID
         task_id = self.progress_id or str(uuid.uuid4())
-        
+
         # Register this orchestration service for cancellation support
         if self.progress_id:
             register_orchestration(self.progress_id, self)
-        
+
         # Start the crawl as an async task in the main event loop
         asyncio.create_task(self._async_orchestrate_crawl(request, task_id))
-        
+
         # Return immediately
         return {
             "task_id": task_id,
@@ -288,8 +287,8 @@ class CrawlOrchestrationService:
             "message": f"Crawl operation started for {url}",
             "progress_id": self.progress_id
         }
-    
-    async def _crawl_by_url_type(self, url: str, request: Dict[str, Any]) -> tuple:
+
+    async def _crawl_by_url_type(self, url: str, request: dict[str, Any]) -> tuple:
         """
         Detect URL type and perform appropriate crawling.
         
@@ -298,7 +297,7 @@ class CrawlOrchestrationService:
         """
         crawl_results = []
         crawl_type = None
-        
+
         if self.crawling_service.is_txt(url):
             # Handle text files
             if self.progress_id:
@@ -315,7 +314,7 @@ class CrawlOrchestrationService:
                 end_progress=20
             )
             crawl_type = "text_file"
-            
+
         elif self.crawling_service.is_sitemap(url):
             # Handle sitemaps
             if self.progress_id:
@@ -326,7 +325,7 @@ class CrawlOrchestrationService:
                 })
                 await update_crawl_progress(self.progress_id, self.progress_state)
             sitemap_urls = self.crawling_service.parse_sitemap(url)
-            
+
             if sitemap_urls:
                 # Emit progress before starting batch crawl
                 if self.progress_id:
@@ -336,7 +335,7 @@ class CrawlOrchestrationService:
                         'log': f'Starting batch crawl of {len(sitemap_urls)} URLs...'
                     })
                     await update_crawl_progress(self.progress_id, self.progress_state)
-                
+
                 crawl_results = await self.crawling_service.crawl_batch_with_progress(
                     sitemap_urls,
                     progress_callback=await self._create_crawl_progress_callback('crawling'),
@@ -344,7 +343,7 @@ class CrawlOrchestrationService:
                     end_progress=20
                 )
                 crawl_type = "sitemap"
-                
+
         else:
             # Handle regular webpages with recursive crawling
             if self.progress_id:
@@ -354,11 +353,11 @@ class CrawlOrchestrationService:
                     'log': f'Starting recursive crawl with max depth {request.get("max_depth", 1)}...'
                 })
                 await update_crawl_progress(self.progress_id, self.progress_state)
-            
+
             max_depth = request.get('max_depth', 1)
             # Limit concurrent crawls for better performance
             max_concurrent = 20 if self._is_documentation_site(url) else 10
-            
+
             crawl_results = await self.crawling_service.crawl_recursive_with_progress(
                 [url],
                 max_depth=max_depth,
@@ -368,11 +367,11 @@ class CrawlOrchestrationService:
                 end_progress=20
             )
             crawl_type = "webpage"
-        
+
         return crawl_results, crawl_type
-    
-    async def _process_and_store_documents(self, crawl_results: List[Dict], request: Dict[str, Any], 
-                                          crawl_type: str, original_source_id: str) -> Dict[str, Any]:
+
+    async def _process_and_store_documents(self, crawl_results: list[dict], request: dict[str, Any],
+                                          crawl_type: str, original_source_id: str) -> dict[str, Any]:
         """
         Process crawled documents and store them in the database.
         
@@ -380,13 +379,13 @@ class CrawlOrchestrationService:
             Dict containing storage statistics and document mappings
         """
         # Progress will be reported by document storage service
-        
+
         # Import the document storage service for chunking
         from ..storage.storage_services import DocumentStorageService
-        
+
         # Initialize storage service for chunking
         storage_service = DocumentStorageService(self.supabase_client)
-        
+
         # Prepare data for chunked storage
         all_urls = []
         all_chunk_numbers = []
@@ -394,38 +393,38 @@ class CrawlOrchestrationService:
         all_metadatas = []
         source_word_counts = {}
         url_to_full_document = {}
-        
+
         # Process and chunk each document
         for doc_index, doc in enumerate(crawl_results):
             # Check for cancellation during document processing
             self._check_cancellation()
-            
+
             source_url = doc.get('url', '')
             markdown_content = doc.get('markdown', '')
-            
+
             if not markdown_content:
                 continue
-            
+
             # Store full document for code extraction context
             url_to_full_document[source_url] = markdown_content
-            
+
             # CHUNK THE CONTENT (restored from old implementation)
             chunks = storage_service.smart_chunk_text(markdown_content, chunk_size=5000)
-            
+
             # Use the original source_id for all documents
             source_id = original_source_id
             safe_logfire_info(f"Using original source_id '{source_id}' for URL '{source_url}'")
-            
+
             # Process each chunk
             for i, chunk in enumerate(chunks):
                 # Check for cancellation during chunk processing
                 if i % 10 == 0:  # Check every 10 chunks
                     self._check_cancellation()
-                
+
                 all_urls.append(source_url)
                 all_chunk_numbers.append(i)
                 all_contents.append(chunk)
-                
+
                 # Create metadata for each chunk
                 word_count = len(chunk.split())
                 metadata = {
@@ -441,41 +440,41 @@ class CrawlOrchestrationService:
                     'tags': request.get('tags', [])
                 }
                 all_metadatas.append(metadata)
-                
+
                 # Accumulate word count
                 source_word_counts[source_id] = source_word_counts.get(source_id, 0) + word_count
-                
+
                 # Yield control every 10 chunks to prevent event loop blocking
                 if i > 0 and i % 10 == 0:
                     await asyncio.sleep(0)
-            
+
             # Yield control after processing each document
             if doc_index > 0 and doc_index % 5 == 0:
                 await asyncio.sleep(0)
-        
+
         # Create/update source record FIRST before storing documents
         if all_contents and all_metadatas:
             # Find ALL unique source_ids in the crawl results
             unique_source_ids = set()
             source_id_contents = {}
             source_id_word_counts = {}
-            
+
             for i, metadata in enumerate(all_metadatas):
                 source_id = metadata['source_id']
                 unique_source_ids.add(source_id)
-                
+
                 # Group content by source_id for better summaries
                 if source_id not in source_id_contents:
                     source_id_contents[source_id] = []
                 source_id_contents[source_id].append(all_contents[i])
-                
+
                 # Track word counts per source_id
                 if source_id not in source_id_word_counts:
                     source_id_word_counts[source_id] = 0
                 source_id_word_counts[source_id] += metadata.get('word_count', 0)
-            
+
             safe_logfire_info(f"Found {len(unique_source_ids)} unique source_ids: {list(unique_source_ids)}")
-            
+
             # Create source records for ALL unique source_ids
             for source_id in unique_source_ids:
                 # Get combined content for this specific source_id
@@ -486,7 +485,7 @@ class CrawlOrchestrationService:
                         combined_content += ' ' + chunk
                     else:
                         break
-                
+
                 # Generate summary with fallback
                 try:
                     summary = extract_source_summary(source_id, combined_content)
@@ -494,7 +493,7 @@ class CrawlOrchestrationService:
                     safe_logfire_error(f"Failed to generate AI summary for '{source_id}': {str(e)}, using fallback")
                     # Fallback to simple summary
                     summary = f"Documentation from {source_id} - {len(source_contents)} pages crawled"
-                
+
                 # Update source info in database BEFORE storing documents
                 safe_logfire_info(f"About to create/update source record for '{source_id}' (word count: {source_id_word_counts[source_id]})")
                 try:
@@ -532,7 +531,7 @@ class CrawlOrchestrationService:
                     except Exception as fallback_error:
                         safe_logfire_error(f"Both source creation attempts failed for '{source_id}': {str(fallback_error)}")
                         raise Exception(f"Unable to create source record for '{source_id}'. This will cause foreign key violations. Error: {str(fallback_error)}")
-        
+
         # Verify ALL source records exist before proceeding with document storage
         if unique_source_ids:
             for source_id in unique_source_ids:
@@ -544,41 +543,41 @@ class CrawlOrchestrationService:
                 except Exception as e:
                     safe_logfire_error(f"Source verification failed for '{source_id}': {str(e)}")
                     raise
-            
+
             safe_logfire_info(f"All {len(unique_source_ids)} source records verified - proceeding with document storage")
-        
+
         # Document storage progress will be handled by the callback
-        
+
         # Contextual embeddings will be loaded from credential service in document_storage_service
-            
+
         safe_logfire_info(f"url_to_full_document keys: {list(url_to_full_document.keys())[:5]}")
-        
+
         # Log chunking results
         safe_logfire_info(f"Document storage | documents={len(crawl_results)} | chunks={len(all_contents)} | avg_chunks_per_doc={len(all_contents)/len(crawl_results):.1f}")
-        
+
         # Create a progress callback for document storage
-        async def doc_storage_callback(message: str, percentage: int, batch_info: Optional[dict] = None):
+        async def doc_storage_callback(message: str, percentage: int, batch_info: dict | None = None):
             if self.progress_id:
                 # Map percentage to document storage range (20-85%)
                 mapped_percentage = 20 + int((percentage / 100) * (85 - 20))
                 safe_logfire_info(f"Document storage progress mapping: {percentage}% -> {mapped_percentage}%")
-                
+
                 # Update progress state while preserving existing fields
                 self.progress_state.update({
                     'status': 'document_storage',
                     'percentage': mapped_percentage,
                     'log': message
                 })
-                
+
                 # Add batch_info fields if provided
                 if batch_info:
                     self.progress_state.update(batch_info)
-                
+
                 await update_crawl_progress(self.progress_id, self.progress_state)
-        
+
         # Call add_documents_to_supabase with the correct parameters
         # Progress update already handled at start of function
-        
+
         await add_documents_to_supabase(
             client=self.supabase_client,
             urls=all_urls,  # Now has entry per chunk
@@ -592,22 +591,22 @@ class CrawlOrchestrationService:
             provider=None,  # Use configured provider
             cancellation_check=self._check_cancellation  # Pass cancellation check
         )
-        
+
         # Progress will be at 80% after document storage completes
-        
+
         # Calculate actual chunk count
         chunk_count = len(all_contents)
-        
+
         # Source update already done during document storage
-        
+
         return {
             'chunk_count': chunk_count,
             'total_word_count': sum(source_word_counts.values()),
             'url_to_full_document': url_to_full_document
         }
-    
-    async def _extract_and_store_code_examples(self, crawl_results: List[Dict], 
-                                              url_to_full_document: Dict[str, str]) -> int:
+
+    async def _extract_and_store_code_examples(self, crawl_results: list[dict],
+                                              url_to_full_document: dict[str, str]) -> int:
         """
         Extract code examples from crawled documents and store them.
         
@@ -616,14 +615,14 @@ class CrawlOrchestrationService:
         """
         # Use CodeExtractionService
         code_service = CodeExtractionService(self.supabase_client)
-        
+
         # Create progress callback for code extraction
         async def code_progress_callback(data: dict):
             if self.progress_id:
                 # Update progress state while preserving existing fields
                 self.progress_state.update(data)
                 await update_crawl_progress(self.progress_id, self.progress_state)
-        
+
         result = await code_service.extract_and_store_code_examples(
             crawl_results,
             url_to_full_document,
@@ -631,12 +630,12 @@ class CrawlOrchestrationService:
             start_progress=85,
             end_progress=95
         )
-        
+
         # No need for duplicate progress update here - the code extraction service handles it
-        
+
         return result
-    
-    async def _handle_progress_update(self, task_id: str, update: Dict[str, Any]):
+
+    async def _handle_progress_update(self, task_id: str, update: dict[str, Any]):
         """
         Handle progress updates from background task.
         This is an async method that will be called from the BackgroundTaskManager in the main event loop.
@@ -647,7 +646,7 @@ class CrawlOrchestrationService:
             # Ensure progressId is always included
             if self.progress_id and 'progressId' not in self.progress_state:
                 self.progress_state['progressId'] = self.progress_id
-            
+
             # Throttle Socket.IO updates to prevent overwhelming the connection
             # Only send updates for:
             # 1. Status changes
@@ -655,8 +654,8 @@ class CrawlOrchestrationService:
             # 3. Important messages (errors, completion)
             current_status = update.get('status', '')
             current_percentage = update.get('percentage', 0)
-            
+
             # Always emit progress updates for real-time feedback
             # The socketio_handlers already has rate limiting built in
             await update_crawl_progress(self.progress_id, self.progress_state)
-    
+

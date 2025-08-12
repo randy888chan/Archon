@@ -6,6 +6,7 @@ including PDF, Word documents, and plain text files.
 """
 
 import io
+
 # Removed direct logging import - using unified config
 
 # Import document processing libraries with availability checks
@@ -14,22 +15,20 @@ try:
     PYPDF2_AVAILABLE = True
 except ImportError:
     PYPDF2_AVAILABLE = False
-    
+
 try:
     import pdfplumber
     PDFPLUMBER_AVAILABLE = True
 except ImportError:
     PDFPLUMBER_AVAILABLE = False
-    
+
 try:
     from docx import Document as DocxDocument
     DOCX_AVAILABLE = True
 except ImportError:
     DOCX_AVAILABLE = False
 
-from ..config.logfire_config import logfire
-
-from ..config.logfire_config import get_logger
+from ..config.logfire_config import get_logger, logfire
 
 logger = get_logger(__name__)
 
@@ -54,24 +53,24 @@ def extract_text_from_document(file_content: bytes, filename: str, content_type:
         # PDF files
         if content_type == 'application/pdf' or filename.lower().endswith('.pdf'):
             return extract_text_from_pdf(file_content)
-        
+
         # Word documents
-        elif (content_type in ['application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/msword'] 
+        elif (content_type in ['application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/msword']
               or filename.lower().endswith(('.docx', '.doc'))):
             return extract_text_from_docx(file_content)
-        
+
         # Text files (markdown, txt, etc.)
-        elif (content_type.startswith('text/') 
+        elif (content_type.startswith('text/')
               or filename.lower().endswith(('.txt', '.md', '.markdown', '.rst'))):
             return file_content.decode('utf-8', errors='ignore')
-        
+
         else:
             raise ValueError(f"Unsupported file format: {content_type} ({filename})")
-            
+
     except Exception as e:
-        logfire.error("Document text extraction failed", 
-                     filename=filename, 
-                     content_type=content_type, 
+        logfire.error("Document text extraction failed",
+                     filename=filename,
+                     content_type=content_type,
                      error=str(e))
         raise Exception(f"Failed to extract text from {filename}: {str(e)}")
 
@@ -88,9 +87,9 @@ def extract_text_from_pdf(file_content: bytes) -> str:
     """
     if not PDFPLUMBER_AVAILABLE and not PYPDF2_AVAILABLE:
         raise Exception("No PDF processing libraries available. Please install pdfplumber and PyPDF2.")
-    
+
     text_content = []
-    
+
     # First try with pdfplumber (better for complex layouts)
     if PDFPLUMBER_AVAILABLE:
         try:
@@ -103,20 +102,20 @@ def extract_text_from_pdf(file_content: bytes) -> str:
                     except Exception as e:
                         logfire.warning(f"pdfplumber failed on page {page_num + 1}: {e}")
                         continue
-            
+
             # If pdfplumber got good results, use them
             if text_content and len('\n'.join(text_content).strip()) > 100:
                 return '\n\n'.join(text_content)
-            
+
         except Exception as e:
             logfire.warning(f"pdfplumber extraction failed: {e}, trying PyPDF2")
-    
+
     # Fallback to PyPDF2
     if PYPDF2_AVAILABLE:
         try:
             text_content = []
             pdf_reader = PyPDF2.PdfReader(io.BytesIO(file_content))
-            
+
             for page_num, page in enumerate(pdf_reader.pages):
                 try:
                     page_text = page.extract_text()
@@ -125,15 +124,15 @@ def extract_text_from_pdf(file_content: bytes) -> str:
                 except Exception as e:
                     logfire.warning(f"PyPDF2 failed on page {page_num + 1}: {e}")
                     continue
-            
+
             if text_content:
                 return '\n\n'.join(text_content)
             else:
                 raise Exception("No text could be extracted from PDF")
-                
+
         except Exception as e:
             raise Exception(f"PyPDF2 failed to extract text: {str(e)}")
-    
+
     # If we get here, no libraries worked
     raise Exception("Failed to extract text from PDF - no working PDF libraries available")
 
@@ -150,15 +149,15 @@ def extract_text_from_docx(file_content: bytes) -> str:
     """
     if not DOCX_AVAILABLE:
         raise Exception("python-docx library not available. Please install python-docx.")
-    
+
     try:
         doc = DocxDocument(io.BytesIO(file_content))
         text_content = []
-        
+
         for paragraph in doc.paragraphs:
             if paragraph.text.strip():
                 text_content.append(paragraph.text)
-        
+
         # Also extract text from tables
         for table in doc.tables:
             for row in table.rows:
@@ -168,11 +167,11 @@ def extract_text_from_docx(file_content: bytes) -> str:
                         row_text.append(cell.text.strip())
                 if row_text:
                     text_content.append(' | '.join(row_text))
-        
+
         if not text_content:
             raise Exception("No text content found in document")
-            
+
         return '\n\n'.join(text_content)
-        
+
     except Exception as e:
         raise Exception(f"Failed to extract text from Word document: {str(e)}")

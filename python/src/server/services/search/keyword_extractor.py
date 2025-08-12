@@ -6,8 +6,6 @@ Uses lightweight Python string operations without heavy NLP dependencies.
 """
 
 import re
-from typing import List, Set
-from collections import Counter
 
 # Common stop words to filter out
 STOP_WORDS = {
@@ -15,7 +13,7 @@ STOP_WORDS = {
     'has', 'have', 'he', 'in', 'is', 'it', 'its', 'of', 'on', 'that', 'the',
     'to', 'was', 'will', 'with', 'what', 'when', 'where', 'which', 'who',
     'why', 'how', 'can', 'could', 'should', 'would', 'may', 'might', 'must',
-    'shall', 'will', 'do', 'does', 'did', 'done', 'this', 'these', 'those',
+    'shall', 'do', 'does', 'did', 'done', 'this', 'these', 'those',
     'there', 'their', 'them', 'they', 'we', 'you', 'your', 'our', 'us',
     'am', 'im', 'me', 'my', 'i', 'if', 'so', 'or', 'but', 'not', 'no', 'yes'
 }
@@ -54,12 +52,12 @@ PRESERVE_KEYWORDS = {
 
 class KeywordExtractor:
     """Simple keyword extraction for search queries"""
-    
+
     def __init__(self):
         self.stop_words = STOP_WORDS | TECHNICAL_STOP_WORDS
         self.preserve_keywords = PRESERVE_KEYWORDS
-    
-    def extract_keywords(self, query: str, min_length: int = 2, max_keywords: int = 10) -> List[str]:
+
+    def extract_keywords(self, query: str, min_length: int = 2, max_keywords: int = 10) -> list[str]:
         """
         Extract meaningful keywords from a search query.
         
@@ -73,25 +71,25 @@ class KeywordExtractor:
         """
         # Convert to lowercase for processing
         query_lower = query.lower()
-        
+
         # Step 1: Extract potential keywords (alphanumeric + some special chars)
         # Keep dashes and underscores as they're common in tech terms
         tokens = re.findall(r'[a-z0-9_-]+', query_lower)
-        
+
         # Step 2: Filter tokens
         keywords = []
         for token in tokens:
             # Skip if too short
             if len(token) < min_length:
                 continue
-            
+
             # Always keep if in preserve list
             if token in self.preserve_keywords:
                 keywords.append(token)
             # Skip if in stop words
             elif token not in self.stop_words:
                 keywords.append(token)
-        
+
         # Step 3: Handle special cases and compound terms
         # Look for common patterns like "best practices", "how to", etc.
         compound_patterns = [
@@ -106,11 +104,11 @@ class KeywordExtractor:
             (r'data[\s-]?base', 'database'),
             (r'web[\s-]?socket', 'websocket'),
         ]
-        
+
         for pattern, replacement in compound_patterns:
             if re.search(pattern, query_lower):
                 keywords.append(replacement)
-        
+
         # Step 4: Deduplicate while preserving order
         seen = set()
         unique_keywords = []
@@ -118,17 +116,17 @@ class KeywordExtractor:
             if keyword not in seen:
                 seen.add(keyword)
                 unique_keywords.append(keyword)
-        
+
         # Step 5: Prioritize keywords
         # - Original case-sensitive matches get priority
         # - Technical terms get priority
         # - Longer terms often more specific
         prioritized = self._prioritize_keywords(unique_keywords, query)
-        
+
         # Return top N keywords
         return prioritized[:max_keywords]
-    
-    def _prioritize_keywords(self, keywords: List[str], original_query: str) -> List[str]:
+
+    def _prioritize_keywords(self, keywords: list[str], original_query: str) -> list[str]:
         """
         Prioritize keywords based on various factors.
         
@@ -140,39 +138,39 @@ class KeywordExtractor:
             Keywords sorted by priority
         """
         keyword_scores = []
-        
+
         for keyword in keywords:
             score = 0
-            
+
             # Bonus for exact case match in original
             if keyword in original_query:
                 score += 3
-            
+
             # Bonus for being a known technical term
             if keyword in self.preserve_keywords:
                 score += 2
-            
+
             # Bonus for longer terms (more specific)
             if len(keyword) > 5:
                 score += 1
-            
+
             # Bonus for containing numbers (versions, etc.)
             if any(c.isdigit() for c in keyword):
                 score += 1
-            
+
             # Check if it appears multiple times (important term)
             count = original_query.lower().count(keyword)
             if count > 1:
                 score += (count - 1) * 2  # Give more weight to repeated terms
-            
+
             keyword_scores.append((keyword, score))
-        
+
         # Sort by score (descending) then by original order
         keyword_scores.sort(key=lambda x: (-x[1], keywords.index(x[0])))
-        
+
         return [kw for kw, _ in keyword_scores]
-    
-    def build_search_terms(self, keywords: List[str]) -> List[str]:
+
+    def build_search_terms(self, keywords: list[str]) -> list[str]:
         """
         Build search terms from keywords, including variations.
         
@@ -183,11 +181,11 @@ class KeywordExtractor:
             List of search terms including variations
         """
         search_terms = []
-        
+
         for keyword in keywords:
             # Add the keyword itself
             search_terms.append(keyword)
-            
+
             # Add plural/singular variations for common patterns
             if keyword.endswith('s') and len(keyword) > 3 and not keyword.endswith('ss'):
                 # Possible plural -> add singular (but not for words ending in ss)
@@ -201,7 +199,7 @@ class KeywordExtractor:
                     search_terms.append(keyword + 'es')  # Other words ending in s
                 else:
                     search_terms.append(keyword + 's')
-            
+
             # Add common variations
             if keyword.endswith('ing'):
                 # Remove -ing
@@ -209,14 +207,14 @@ class KeywordExtractor:
                 if len(base) > 2:
                     search_terms.append(base)
                     search_terms.append(base + 'e')  # e.g., "coding" -> "code"
-            
+
             if keyword.endswith('ed'):
                 # Remove -ed
                 base = keyword[:-2]
                 if len(base) > 2:
                     search_terms.append(base)
                     search_terms.append(base + 'e')  # e.g., "created" -> "create"
-        
+
         # Deduplicate
         seen = set()
         unique_terms = []
@@ -224,7 +222,7 @@ class KeywordExtractor:
             if term not in seen:
                 seen.add(term)
                 unique_terms.append(term)
-        
+
         return unique_terms
 
 
@@ -232,7 +230,7 @@ class KeywordExtractor:
 keyword_extractor = KeywordExtractor()
 
 
-def extract_keywords(query: str, min_length: int = 2, max_keywords: int = 10) -> List[str]:
+def extract_keywords(query: str, min_length: int = 2, max_keywords: int = 10) -> list[str]:
     """
     Convenience function to extract keywords from a query.
     
@@ -247,7 +245,7 @@ def extract_keywords(query: str, min_length: int = 2, max_keywords: int = 10) ->
     return keyword_extractor.extract_keywords(query, min_length, max_keywords)
 
 
-def build_search_terms(keywords: List[str]) -> List[str]:
+def build_search_terms(keywords: list[str]) -> list[str]:
     """
     Convenience function to build search terms from keywords.
     

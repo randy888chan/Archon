@@ -4,16 +4,13 @@ Comprehensive Tests for Async Background Task Manager
 Tests the pure async background task manager after removal of ThreadPoolExecutor.
 Focuses on async task execution, concurrency control, and progress tracking.
 """
-import pytest
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
-from typing import Dict, Any
+from typing import Any
+from unittest.mock import AsyncMock
 
-from src.server.services.background_task_manager import (
-    BackgroundTaskManager,
-    get_task_manager,
-    cleanup_task_manager
-)
+import pytest
+
+from src.server.services.background_task_manager import BackgroundTaskManager, cleanup_task_manager, get_task_manager
 
 
 class TestAsyncBackgroundTaskManager:
@@ -91,7 +88,7 @@ class TestAsyncBackgroundTaskManager:
             if len(call[0]) >= 2 and call[0][1].get('status') == 'error':
                 error_call = call
                 break
-        
+
         assert error_call is not None
         assert "Task failed intentionally" in error_call[0][1]['error']
 
@@ -126,7 +123,7 @@ class TestAsyncBackgroundTaskManager:
         """Test that concurrency is limited by semaphore"""
         # Use a task manager with limit of 2
         limited_manager = BackgroundTaskManager(max_concurrent_tasks=2)
-        
+
         running_tasks = []
         completed_tasks = []
 
@@ -200,7 +197,7 @@ class TestAsyncBackgroundTaskManager:
         """Test that progress callback is properly executed"""
         progress_updates = []
 
-        async def mock_progress_callback(task_id: str, update: Dict[str, Any]):
+        async def mock_progress_callback(task_id: str, update: dict[str, Any]):
             progress_updates.append((task_id, update))
 
         async def simple_task():
@@ -219,10 +216,10 @@ class TestAsyncBackgroundTaskManager:
 
         # Should have at least one progress update (completion)
         assert len(progress_updates) >= 1
-        
+
         # Check that task_id matches
         assert all(update[0] == task_id for update in progress_updates)
-        
+
         # Check for completion update
         completion_updates = [update for update in progress_updates if update[1].get('status') == 'complete']
         assert len(completion_updates) >= 1
@@ -231,7 +228,7 @@ class TestAsyncBackgroundTaskManager:
     @pytest.mark.asyncio
     async def test_progress_callback_error_handling(self, task_manager):
         """Test that task continues even if progress callback fails"""
-        async def failing_progress_callback(task_id: str, update: Dict[str, Any]):
+        async def failing_progress_callback(task_id: str, update: dict[str, Any]):
             raise Exception("Progress callback failed")
 
         async def simple_task():
@@ -385,7 +382,7 @@ class TestAsyncTaskPatterns:
             async def inner_task():
                 await asyncio.sleep(0.01)
                 return "inner result"
-            
+
             result = await inner_task()
             return f"outer: {result}"
 
@@ -473,7 +470,7 @@ class TestAsyncTaskPatterns:
         # Submit many tasks
         task_ids = []
         num_tasks = 20
-        
+
         for i in range(num_tasks):
             task_id = await task_manager.submit_task(
                 stress_task,
@@ -497,7 +494,7 @@ class TestAsyncTaskPatterns:
         # Use manager with limit of 2
         limited_manager = BackgroundTaskManager(max_concurrent_tasks=2)
         execution_order = []
-        
+
         async def ordered_task(task_id: int):
             execution_order.append(f"start-{task_id}")
             await asyncio.sleep(0.02)

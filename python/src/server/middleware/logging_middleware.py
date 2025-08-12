@@ -5,12 +5,13 @@ Automatically logs requests and responses using logfire when available.
 Follows 2025 best practices for simple, automatic instrumentation.
 """
 import time
-from typing import Callable
+from collections.abc import Callable
+
 from fastapi import Request, Response
 from fastapi.routing import APIRoute
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from ..config.logfire_config import get_logger, is_logfire_enabled, LOGFIRE_AVAILABLE
+from ..config.logfire_config import LOGFIRE_AVAILABLE, get_logger, is_logfire_enabled
 
 
 class LoggingMiddleware(BaseHTTPMiddleware):
@@ -19,40 +20,40 @@ class LoggingMiddleware(BaseHTTPMiddleware):
     
     Skips health check endpoints to reduce noise.
     """
-    
+
     SKIP_PATHS = {"/health", "/api/health", "/", "/docs", "/redoc", "/openapi.json"}
-    
+
     def __init__(self, app):
         super().__init__(app)
         self.logger = get_logger("middleware")
-    
+
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         # Skip logging for certain paths
         if request.url.path in self.SKIP_PATHS:
             return await call_next(request)
-        
+
         # Record start time
         start_time = time.time()
-        
+
         # Log the request
         self.logger.info(
             f"HTTP Request | method={request.method} | path={request.url.path} | client={request.client.host if request.client else 'unknown'}"
         )
-        
+
         try:
             # Process the request
             response = await call_next(request)
-            
+
             # Calculate duration
             duration = time.time() - start_time
-            
+
             # Log the response
             self.logger.info(
                 f"HTTP Response | method={request.method} | path={request.url.path} | status_code={response.status_code} | duration_ms={round(duration * 1000, 2)}"
             )
-            
+
             return response
-            
+
         except Exception as e:
             # Log errors
             duration = time.time() - start_time
@@ -69,7 +70,7 @@ def instrument_fastapi(app):
     This is the recommended approach for 2025 - let logfire handle the complexity.
     """
     logger = get_logger("instrumentation")
-    
+
     if is_logfire_enabled() and LOGFIRE_AVAILABLE:
         try:
             # Import logfire for instrumentation only when enabled
@@ -93,35 +94,35 @@ class LoggingRoute(APIRoute):
     
     This provides more granular logging than middleware alone.
     """
-    
+
     def get_route_handler(self) -> Callable:
         original_route_handler = super().get_route_handler()
         logger = get_logger("endpoint")
-        
+
         async def custom_route_handler(request: Request) -> Response:
             start_time = time.time()
-            
+
             # Get endpoint info
             endpoint_name = self.endpoint.__name__ if self.endpoint else "unknown"
-            
+
             try:
                 response = await original_route_handler(request)
                 duration = time.time() - start_time
-                
+
                 # Log successful endpoint execution
                 logger.info(
                     f"Endpoint: {endpoint_name} | duration_ms={round(duration * 1000, 2)} | status=success"
                 )
-                
+
                 return response
-                
+
             except Exception as e:
                 duration = time.time() - start_time
-                
+
                 # Log endpoint error
                 logger.error(
                     f"Endpoint: {endpoint_name} | duration_ms={round(duration * 1000, 2)} | status=error | error={str(e)}"
                 )
                 raise
-        
+
         return custom_route_handler

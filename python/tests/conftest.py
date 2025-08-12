@@ -1,8 +1,9 @@
 """Simple test configuration for Archon - Essential tests only."""
-import pytest
-from unittest.mock import MagicMock, patch
-from fastapi.testclient import TestClient
 import os
+from unittest.mock import MagicMock, patch
+
+import pytest
+from fastapi.testclient import TestClient
 
 # Set test environment
 os.environ["TEST_MODE"] = "true"
@@ -29,14 +30,14 @@ def prevent_real_db_calls():
 def mock_supabase_client():
     """Mock Supabase client for testing."""
     mock_client = MagicMock()
-    
+
     # Mock table operations with chaining support
     mock_table = MagicMock()
     mock_select = MagicMock()
     mock_insert = MagicMock()
     mock_update = MagicMock()
     mock_delete = MagicMock()
-    
+
     # Setup method chaining for select
     mock_select.execute.return_value.data = []
     mock_select.eq.return_value = mock_select
@@ -44,31 +45,31 @@ def mock_supabase_client():
     mock_select.order.return_value = mock_select
     mock_select.limit.return_value = mock_select
     mock_table.select.return_value = mock_select
-    
+
     # Setup method chaining for insert
     mock_insert.execute.return_value.data = [{"id": "test-id"}]
     mock_table.insert.return_value = mock_insert
-    
+
     # Setup method chaining for update
     mock_update.execute.return_value.data = [{"id": "test-id"}]
     mock_update.eq.return_value = mock_update
     mock_table.update.return_value = mock_update
-    
+
     # Setup method chaining for delete
     mock_delete.execute.return_value.data = []
     mock_delete.eq.return_value = mock_delete
     mock_table.delete.return_value = mock_delete
-    
+
     # Make table() return the mock table
     mock_client.table.return_value = mock_table
-    
+
     # Mock auth operations
     mock_client.auth = MagicMock()
     mock_client.auth.get_user.return_value = None
-    
+
     # Mock storage operations
     mock_client.storage = MagicMock()
-    
+
     return mock_client
 
 

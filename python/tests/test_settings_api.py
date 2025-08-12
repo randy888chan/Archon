@@ -2,8 +2,7 @@
 Simple tests for settings API credential handling.
 Focus on critical paths for optional settings with defaults.
 """
-import pytest
-from unittest.mock import patch, AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 
 def test_optional_setting_returns_default(client, mock_supabase_client):
@@ -11,10 +10,10 @@ def test_optional_setting_returns_default(client, mock_supabase_client):
     # Mock the entire credential_service instance
     mock_service = MagicMock()
     mock_service.get_credential = AsyncMock(return_value=None)
-    
+
     with patch('src.server.api_routes.settings_api.credential_service', mock_service):
         response = client.get("/api/credentials/DISCONNECT_SCREEN_ENABLED")
-        
+
         assert response.status_code == 200
         data = response.json()
         assert data['key'] == 'DISCONNECT_SCREEN_ENABLED'
@@ -29,10 +28,10 @@ def test_unknown_credential_returns_404(client, mock_supabase_client):
     # Mock the entire credential_service instance
     mock_service = MagicMock()
     mock_service.get_credential = AsyncMock(return_value=None)
-    
+
     with patch('src.server.api_routes.settings_api.credential_service', mock_service):
         response = client.get("/api/credentials/UNKNOWN_KEY_THAT_DOES_NOT_EXIST")
-        
+
         assert response.status_code == 404
         data = response.json()
         assert 'error' in data['detail']
@@ -45,10 +44,10 @@ def test_existing_credential_returns_normally(client, mock_supabase_client):
     # Mock the entire credential_service instance
     mock_service = MagicMock()
     mock_service.get_credential = AsyncMock(return_value=mock_value)
-    
+
     with patch('src.server.api_routes.settings_api.credential_service', mock_service):
         response = client.get("/api/credentials/SOME_EXISTING_KEY")
-        
+
         assert response.status_code == 200
         data = response.json()
         assert data['key'] == 'SOME_EXISTING_KEY'

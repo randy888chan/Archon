@@ -12,50 +12,50 @@ try:
 except ImportError:
     AsyncWebCrawler = None
     BrowserConfig = None
-    
-from ..config.logfire_config import safe_logfire_info, safe_logfire_error, get_logger
+
+from ..config.logfire_config import get_logger, safe_logfire_error, safe_logfire_info
 
 logger = get_logger(__name__)
 
 
 class CrawlerManager:
     """Manages the global crawler instance."""
-    
+
     _instance: Optional['CrawlerManager'] = None
-    _crawler: Optional[AsyncWebCrawler] = None
+    _crawler: AsyncWebCrawler | None = None
     _initialized: bool = False
-    
+
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super().__new__(cls)
         return cls._instance
-    
+
     async def get_crawler(self) -> AsyncWebCrawler:
         """Get or create the crawler instance."""
         if not self._initialized:
             await self.initialize()
         return self._crawler
-    
+
     async def initialize(self):
         """Initialize the crawler if not already initialized."""
         if self._initialized:
             safe_logfire_info("Crawler already initialized, skipping")
             return
-            
+
         try:
             safe_logfire_info("Initializing Crawl4AI crawler...")
             logger.info("=== CRAWLER INITIALIZATION START ===")
-            
+
             # Check if crawl4ai is available
             if not AsyncWebCrawler or not BrowserConfig:
                 logger.error("ERROR: crawl4ai not available")
                 logger.error(f"AsyncWebCrawler: {AsyncWebCrawler}")
                 logger.error(f"BrowserConfig: {BrowserConfig}")
                 raise ImportError("crawl4ai is not installed or available")
-            
+
             # Check for Docker environment
             in_docker = os.path.exists('/.dockerenv') or os.getenv('DOCKER_CONTAINER', False)
-            
+
             # Initialize browser config - same for Docker and local
             # crawl4ai/Playwright will handle Docker-specific settings internally
             browser_config = BrowserConfig(
@@ -99,21 +99,21 @@ class CrawlerManager:
                     '--disable-component-update'
                 ]
             )
-            
+
             safe_logfire_info(f"Creating AsyncWebCrawler with config | in_docker={in_docker}")
-            
+
             # Initialize crawler with the correct parameter name
             self._crawler = AsyncWebCrawler(config=browser_config)
             safe_logfire_info("AsyncWebCrawler instance created, entering context...")
             await self._crawler.__aenter__()
             self._initialized = True
             safe_logfire_info(f"Crawler entered context successfully | crawler={self._crawler}")
-            
+
             safe_logfire_info("✅ Crawler initialized successfully")
             logger.info("=== CRAWLER INITIALIZATION SUCCESS ===")
             logger.info(f"Crawler instance: {self._crawler}")
             logger.info(f"Initialized: {self._initialized}")
-            
+
         except Exception as e:
             safe_logfire_error(f"Failed to initialize crawler: {e}")
             import traceback
@@ -129,7 +129,7 @@ class CrawlerManager:
             self._crawler = None
             self._initialized = False
             raise Exception(f"Failed to initialize Crawl4AI crawler: {e}")
-    
+
     async def cleanup(self):
         """Clean up the crawler resources."""
         if self._crawler and self._initialized:
@@ -147,7 +147,7 @@ class CrawlerManager:
 _crawler_manager = CrawlerManager()
 
 
-async def get_crawler() -> Optional[AsyncWebCrawler]:
+async def get_crawler() -> AsyncWebCrawler | None:
     """Get the global crawler instance."""
     global _crawler_manager
     crawler = await _crawler_manager.get_crawler()

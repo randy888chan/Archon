@@ -5,17 +5,17 @@ These exceptions follow the alpha principle: "fail fast and loud" for data integ
 while allowing batch processes to continue by skipping failed items.
 """
 
-from typing import Optional, Dict, Any
+from typing import Any
 
 
 class EmbeddingError(Exception):
     """Base exception for all embedding-related errors."""
-    
+
     def __init__(
-        self, 
-        message: str, 
-        text_preview: Optional[str] = None,
-        batch_index: Optional[int] = None,
+        self,
+        message: str,
+        text_preview: str | None = None,
+        batch_index: int | None = None,
         **kwargs
     ):
         """
@@ -31,8 +31,8 @@ class EmbeddingError(Exception):
         self.batch_index = batch_index
         self.metadata = kwargs
         super().__init__(message)
-    
-    def to_dict(self) -> Dict[str, Any]:
+
+    def to_dict(self) -> dict[str, Any]:
         """Convert exception to dictionary for JSON serialization."""
         return {
             "error_type": self.__class__.__name__,
@@ -50,8 +50,8 @@ class EmbeddingQuotaExhaustedError(EmbeddingError):
     This is a CRITICAL error that should stop the entire process
     as continuing would be pointless without ability to create embeddings.
     """
-    
-    def __init__(self, message: str, tokens_used: Optional[int] = None, **kwargs):
+
+    def __init__(self, message: str, tokens_used: int | None = None, **kwargs):
         super().__init__(message, **kwargs)
         self.tokens_used = tokens_used
         if tokens_used:
@@ -65,7 +65,7 @@ class EmbeddingRateLimitError(EmbeddingError):
     This error should skip the current batch but allow the process to continue
     with other batches after appropriate delay.
     """
-    
+
     def __init__(self, message: str, retry_count: int = 0, **kwargs):
         super().__init__(message, **kwargs)
         self.retry_count = retry_count
@@ -89,8 +89,8 @@ class EmbeddingAPIError(EmbeddingError):
     These errors should skip the affected item but allow the process
     to continue with other items.
     """
-    
-    def __init__(self, message: str, original_error: Optional[Exception] = None, **kwargs):
+
+    def __init__(self, message: str, original_error: Exception | None = None, **kwargs):
         super().__init__(message, **kwargs)
         self.original_error = original_error
         if original_error:
@@ -105,8 +105,8 @@ class EmbeddingValidationError(EmbeddingError):
     This should never happen in normal operation but indicates
     a serious issue if it does.
     """
-    
-    def __init__(self, message: str, embedding_sample: Optional[list] = None, **kwargs):
+
+    def __init__(self, message: str, embedding_sample: list | None = None, **kwargs):
         super().__init__(message, **kwargs)
         if embedding_sample:
             # Store first 10 values as sample

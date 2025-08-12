@@ -13,49 +13,41 @@ The actual implementations have been moved to:
 """
 
 # Import all functions from new services for backward compatibility
+import asyncio
+
+# Keep some imports that are still needed
+import os
+from typing import Optional
+
+from ..services.client_manager import get_supabase_client
 from ..services.embeddings import (
     create_embedding,
     create_embeddings_batch,
-    get_openai_client,
     generate_contextual_embedding,
     generate_contextual_embeddings_batch,
-    process_chunk_with_context
+    get_openai_client,
+    process_chunk_with_context,
 )
 
 # Note: storage and search imports removed to avoid circular dependency
 # Import these directly from their modules when needed:
 # from ..services.storage import add_documents_to_supabase, extract_code_blocks, etc.
 # from ..services.search import search_documents, search_code_examples
-
 from ..services.source_management_service import (
     extract_source_summary,
     generate_source_title_and_metadata,
-    update_source_info
-)
-
-from ..services.client_manager import (
-    get_supabase_client
+    update_source_info,
 )
 
 # Re-export threading service imports for compatibility
-from ..services.threading_service import (
-    get_threading_service, 
-    ProcessingMode, 
-    ThreadingConfig, 
-    RateLimitConfig
-)
-
-# Keep some imports that are still needed
-import os
-import asyncio
-from typing import Optional
+from ..services.threading_service import ProcessingMode, RateLimitConfig, ThreadingConfig, get_threading_service
 
 # Global threading service instance for optimization
 _threading_service = None
 
 async def initialize_threading_service(
-    threading_config: Optional[ThreadingConfig] = None,
-    rate_limit_config: Optional[RateLimitConfig] = None
+    threading_config: ThreadingConfig | None = None,
+    rate_limit_config: RateLimitConfig | None = None
 ):
     """Initialize the global threading service for utilities"""
     global _threading_service
@@ -81,27 +73,27 @@ __all__ = [
     'ProcessingMode',
     'ThreadingConfig',
     'RateLimitConfig',
-    
+
     # Client functions
     'get_supabase_client',
-    
+
     # Embedding functions
     'create_embedding',
     'create_embeddings_batch',
     'create_embedding_async',
     'create_embeddings_batch_async',
     'get_openai_client',
-    
+
     # Contextual embedding functions
     'generate_contextual_embedding',
     'generate_contextual_embedding_async',
     'generate_contextual_embeddings_batch',
     'process_chunk_with_context',
     'process_chunk_with_context_async',
-    
+
     # Note: Document storage and search functions not exported from utils
     # to avoid circular dependencies. Import directly from services modules.
-    
+
     # Source management functions
     'extract_source_summary',
     'generate_source_title_and_metadata',

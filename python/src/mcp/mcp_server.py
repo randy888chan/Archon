@@ -13,21 +13,23 @@ Modules:
 Note: Crawling and document upload operations are handled directly by the
 API service and frontend, not through MCP tools.
 """
-from mcp.server.fastmcp import FastMCP, Context
-from contextlib import asynccontextmanager
-from collections.abc import AsyncIterator
-from dataclasses import dataclass
-from typing import Any
-from dotenv import load_dotenv
-from pathlib import Path
+import json
+import logging
 import os
 import sys
-import logging
-import traceback
-import time
-from datetime import datetime
 import threading
-import json
+import time
+import traceback
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+from dotenv import load_dotenv
+
+from mcp.server.fastmcp import Context, FastMCP
 
 # Add the project root to Python path for imports
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -49,13 +51,13 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Import Logfire configuration
-from src.server.config.logfire_config import setup_logfire, mcp_logger
-
-# Import session management
-from src.server.services.mcp_session_manager import get_session_manager
+from src.server.config.logfire_config import mcp_logger, setup_logfire
 
 # Import service client for HTTP calls
 from src.server.services.mcp_service_client import get_mcp_service_client
+
+# Import session management
+from src.server.services.mcp_session_manager import get_session_manager
 
 # Global initialization lock and flag
 _initialization_lock = threading.Lock()
@@ -100,21 +102,21 @@ async def perform_health_checks(context: ArchonContext):
     try:
         # Check dependent services
         service_health = await context.service_client.health_check()
-        
+
         context.health_status["api_service"] = service_health.get("api_service", False)
         context.health_status["agents_service"] = service_health.get("agents_service", False)
-        
+
         # Overall status
         all_critical_ready = context.health_status["api_service"]
-        
+
         context.health_status["status"] = "healthy" if all_critical_ready else "degraded"
         context.health_status["last_health_check"] = datetime.now().isoformat()
-        
+
         if not all_critical_ready:
             logger.warning(f"Health check failed: {context.health_status}")
         else:
             logger.info("Health check passed - dependent services healthy")
-            
+
     except Exception as e:
         logger.error(f"Health check error: {e}")
         context.health_status["status"] = "unhealthy"
@@ -126,13 +128,13 @@ async def lifespan(server: FastMCP) -> AsyncIterator[ArchonContext]:
     Lifecycle manager - no heavy dependencies.
     """
     global _initialization_complete, _shared_context
-    
+
     # Quick check without lock
     if _initialization_complete and _shared_context:
         logger.info("♻️ Reusing existing context for new SSE connection")
         yield _shared_context
         return
-    
+
     # Acquire lock for initialization
     with _initialization_lock:
         # Double-check pattern
@@ -140,52 +142,52 @@ async def lifespan(server: FastMCP) -> AsyncIterator[ArchonContext]:
             logger.info("♻️ Reusing existing context for new SSE connection")
             yield _shared_context
             return
-        
+
         logger.info("🚀 Starting MCP server...")
-        
+
         try:
             # Initialize session manager
             logger.info("🔐 Initializing session manager...")
             session_manager = get_session_manager()
             logger.info("✓ Session manager initialized")
-            
+
             # Initialize service client for HTTP calls
             logger.info("🌐 Initializing service client...")
             service_client = get_mcp_service_client()
             logger.info("✓ Service client initialized")
-            
-            
-            # Create context  
+
+
+            # Create context
             context = ArchonContext(
                 service_client=service_client
             )
-            
+
             # Perform initial health check
             await perform_health_checks(context)
-            
+
             logger.info("✓ MCP server ready")
-            
+
             # Store context globally
             _shared_context = context
             _initialization_complete = True
-            
+
             yield context
-            
+
         except Exception as e:
             logger.error(f"💥 Critical error in lifespan setup: {e}")
             logger.error(traceback.format_exc())
             raise
         finally:
-            # Clean up resources  
+            # Clean up resources
             logger.info("🧹 Cleaning up MCP server...")
             logger.info("✅ MCP server shutdown complete")
 
 # Initialize the main FastMCP server with fixed configuration
-try:    
+try:
     logger.info("🏗️ MCP SERVER INITIALIZATION:")
     logger.info("   Server Name: archon-mcp-server")
     logger.info("   Description: MCP server using HTTP calls")
-    
+
     mcp = FastMCP(
         "archon-mcp-server",
         description="MCP server for Archon - uses HTTP calls to other services",
@@ -194,7 +196,7 @@ try:
         port=server_port
     )
     logger.info("✓ FastMCP server instance created successfully")
-    
+
 except Exception as e:
     logger.error(f"✗ Failed to create FastMCP server: {e}")
     logger.error(traceback.format_exc())
@@ -212,7 +214,7 @@ async def health_check(ctx: Context) -> str:
     try:
         # Try to get the lifespan context
         context = getattr(ctx.request_context, 'lifespan_context', None)
-        
+
         if context is None:
             # Server starting up
             return json.dumps({
@@ -221,11 +223,11 @@ async def health_check(ctx: Context) -> str:
                 "message": "MCP server is initializing...",
                 "timestamp": datetime.now().isoformat()
             })
-        
+
         # Server is ready - perform health checks
         if hasattr(context, 'health_status') and context.health_status:
             await perform_health_checks(context)
-            
+
             return json.dumps({
                 "success": True,
                 "health": context.health_status,
@@ -239,7 +241,7 @@ async def health_check(ctx: Context) -> str:
                 "message": "MCP server is running",
                 "timestamp": datetime.now().isoformat()
             })
-            
+
     except Exception as e:
         logger.error(f"Health check failed: {e}")
         return json.dumps({
@@ -259,24 +261,24 @@ async def session_info(ctx: Context) -> str:
     """
     try:
         session_manager = get_session_manager()
-        
+
         # Build session info
         session_info_data = {
             'active_sessions': session_manager.get_active_session_count(),
             'session_timeout': session_manager.timeout
         }
-        
+
         # Add server uptime
         context = getattr(ctx.request_context, 'lifespan_context', None)
         if context and hasattr(context, 'startup_time'):
             session_info_data['server_uptime_seconds'] = time.time() - context.startup_time
-        
+
         return json.dumps({
             "success": True,
             "session_management": session_info_data,
             "timestamp": datetime.now().isoformat()
         })
-        
+
     except Exception as e:
         logger.error(f"Session info failed: {e}")
         return json.dumps({
@@ -289,9 +291,9 @@ async def session_info(ctx: Context) -> str:
 def register_modules():
     """Register all MCP tool modules."""
     logger.info("🔧 Registering MCP tool modules...")
-    
+
     modules_registered = 0
-    
+
     # Import and register RAG module (HTTP-based version)
     try:
         from src.mcp.modules.rag_module import register_rag_tools
@@ -303,7 +305,7 @@ def register_modules():
     except Exception as e:
         logger.error(f"✗ Error registering RAG module: {e}")
         logger.error(traceback.format_exc())
-    
+
     # Import and register Project module - only if Projects are enabled
     projects_enabled = os.getenv("PROJECTS_ENABLED", "true").lower() == "true"
     if projects_enabled:
@@ -319,9 +321,9 @@ def register_modules():
             logger.error(traceback.format_exc())
     else:
         logger.info("⚠ Project module skipped - Projects are disabled")
-    
+
     logger.info(f"📦 Total modules registered: {modules_registered}")
-    
+
     if modules_registered == 0:
         logger.error("💥 No modules were successfully registered!")
         raise RuntimeError("No MCP modules available")
@@ -339,16 +341,16 @@ def main():
     try:
         # Initialize Logfire first
         setup_logfire(service_name="archon-mcp-server")
-        
+
         logger.info("🚀 Starting Archon MCP Server")
         logger.info("   Mode: Streamable HTTP")
         logger.info(f"   URL: http://{server_host}:{server_port}/mcp")
-        
+
         mcp_logger.info("🔥 Logfire initialized for MCP server")
         mcp_logger.info(f"🌟 Starting MCP server - host={server_host}, port={server_port}")
-        
+
         mcp.run(transport="streamable-http")
-            
+
     except Exception as e:
         mcp_logger.error(f"💥 Fatal error in main - error={str(e)}, error_type={type(e).__name__}")
         logger.error(f"💥 Fatal error in main: {e}")

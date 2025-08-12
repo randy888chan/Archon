@@ -6,28 +6,31 @@ AI-assisted documentation generation and progress tracking.
 """
 
 import os
+
 # Removed direct logging import - using unified config
 from datetime import datetime
-from typing import Dict, Any, Optional, Tuple
+from typing import Any
+
 from src.server.utils import get_supabase_client
-from .progress_service import progress_service
+
 from ...config.logfire_config import get_logger
+from .progress_service import progress_service
 
 logger = get_logger(__name__)
 
 
 class ProjectCreationService:
     """Service class for advanced project creation with AI assistance"""
-    
+
     def __init__(self, supabase_client=None):
         """Initialize with optional supabase client"""
         self.supabase_client = supabase_client or get_supabase_client()
         self.progress_service = progress_service
-    
+
     async def create_project_with_ai(self, progress_id: str, title: str,
-                                    description: Optional[str] = None,
-                                    github_repo: Optional[str] = None,
-                                    **kwargs) -> Tuple[bool, Dict[str, Any]]:
+                                    description: str | None = None,
+                                    github_repo: str | None = None,
+                                    **kwargs) -> tuple[bool, dict[str, Any]]:
         """
         Create a project with AI-assisted documentation generation.
         
@@ -51,7 +54,7 @@ class ProjectCreationService:
                 'log': '🗄️ Setting up project database...'
             })
             logger.info("🏗️ [PROJECT-CREATION] Completed progress update: database_setup")
-            
+
             # Create basic project structure
             project_data = {
                 'title': title,
@@ -63,20 +66,20 @@ class ProjectCreationService:
                 'features': kwargs.get('features', {}),
                 'data': kwargs.get('data', {})
             }
-            
+
             # Add any additional fields from kwargs
             for key in ['pinned']:
                 if key in kwargs:
                     project_data[key] = kwargs[key]
-            
+
             # Create the project in database
             response = self.supabase_client.table('archon_projects').insert(project_data).execute()
             if not response.data:
                 raise Exception("Failed to create project in database")
-            
+
             project_id = response.data[0]['id']
             logger.info(f"Created project {project_id} in database")
-            
+
             # Update progress - AI processing
             logger.info("🏗️ [PROJECT-CREATION] About to call progress update: processing_requirements (50%)")
             await self.progress_service.update_progress(progress_id, {
@@ -85,17 +88,17 @@ class ProjectCreationService:
                 'log': '🧠 AI is analyzing project requirements...'
             })
             logger.info("🏗️ [PROJECT-CREATION] Completed progress update: processing_requirements")
-            
+
             # Generate AI documentation if API key is available
             ai_success = await self._generate_ai_documentation(
                 progress_id, project_id, title, description, github_repo
             )
-            
+
             # Final success - fetch complete project data
             final_project_response = self.supabase_client.table('archon_projects').select('*').eq('id', project_id).execute()
             if final_project_response.data:
                 final_project = final_project_response.data[0]
-                
+
                 # Prepare project data for frontend
                 project_data_for_frontend = {
                     'id': final_project['id'],
@@ -111,7 +114,7 @@ class ProjectCreationService:
                     'technical_sources': [],  # Empty initially
                     'business_sources': []     # Empty initially
                 }
-                
+
                 await self.progress_service.update_progress(progress_id, {
                     'percentage': 100,
                     'step': 'completed',
@@ -119,7 +122,7 @@ class ProjectCreationService:
                     'project_id': project_id,
                     'project': project_data_for_frontend
                 })
-                
+
                 return True, {
                     'project_id': project_id,
                     'project': project_data_for_frontend,
@@ -133,12 +136,12 @@ class ProjectCreationService:
                     'log': f'🎉 Project "{title}" created successfully!',
                     'project_id': project_id
                 })
-                
+
                 return True, {
                     'project_id': project_id,
                     'ai_documentation_generated': ai_success
                 }
-                
+
         except Exception as e:
             logger.error(f"🚨 [PROJECT-CREATION] Project creation failed: {str(e)}")
             try:
@@ -146,10 +149,10 @@ class ProjectCreationService:
             except Exception as progress_error:
                 logger.error(f"🚨 [PROJECT-CREATION] Failed to send error progress: {progress_error}")
             return False, {'error': str(e)}
-    
+
     async def _generate_ai_documentation(self, progress_id: str, project_id: str,
-                                       title: str, description: Optional[str],
-                                       github_repo: Optional[str]) -> bool:
+                                       title: str, description: str | None,
+                                       github_repo: str | None) -> bool:
         """
         Generate AI documentation for the project.
         
@@ -158,7 +161,7 @@ class ProjectCreationService:
         """
         try:
             api_key = os.getenv("OPENAI_API_KEY")
-            
+
             if not api_key:
                 await self.progress_service.update_progress(progress_id, {
                     'percentage': 85,
@@ -166,30 +169,30 @@ class ProjectCreationService:
                     'log': '⚠️ OpenAI API key not configured - skipping AI documentation generation'
                 })
                 return False
-            
+
             # Import DocumentAgent (lazy import to avoid startup issues)
             from ...agents.document_agent import DocumentAgent
-            
+
             await self.progress_service.update_progress(progress_id, {
                 'percentage': 70,
                 'step': 'ai_generation',
                 'log': '✨ AI is creating project documentation...'
             })
-            
+
             # Initialize DocumentAgent
             document_agent = DocumentAgent()
-            
+
             # Generate comprehensive PRD using conversation
             prd_request = f"Create a PRD document titled '{title} - Product Requirements Document' for a project called '{title}'"
             if description:
                 prd_request += f" with the following description: {description}"
             if github_repo:
                 prd_request += f" (GitHub repo: {github_repo})"
-            
+
             # Create a progress callback for the document agent
             async def agent_progress_callback(update_data):
                 await self.progress_service.update_progress(progress_id, update_data)
-            
+
             # Run the document agent to create PRD
             agent_result = await document_agent.run_conversation(
                 user_message=prd_request,
@@ -197,7 +200,7 @@ class ProjectCreationService:
                 user_id="system",
                 progress_callback=agent_progress_callback
             )
-            
+
             if agent_result.success:
                 await self.progress_service.update_progress(progress_id, {
                     'percentage': 85,
@@ -212,7 +215,7 @@ class ProjectCreationService:
                     'log': f'⚠️ Project created but AI documentation generation had issues: {agent_result.message}'
                 })
                 return False
-                
+
         except Exception as ai_error:
             logger.warning(f"AI generation failed, continuing with basic project: {ai_error}")
             await self.progress_service.update_progress(progress_id, {

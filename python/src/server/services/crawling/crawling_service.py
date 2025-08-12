@@ -7,15 +7,17 @@ single page crawling, batch crawling, and recursive crawling.
 """
 
 import asyncio
-from typing import List, Dict, Any
-from urllib.parse import urlparse, urldefrag
-from xml.etree import ElementTree
-import requests
 import traceback
+from typing import Any
+from urllib.parse import urldefrag, urlparse
+from xml.etree import ElementTree
 
-from crawl4ai import CrawlerRunConfig, CacheMode, MemoryAdaptiveDispatcher
+import requests
+from crawl4ai import CacheMode, CrawlerRunConfig, MemoryAdaptiveDispatcher
 from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
+
 from src.server.utils import get_supabase_client
+
 from ...config.logfire_config import get_logger
 from ..credential_service import credential_service
 
@@ -24,45 +26,45 @@ logger = get_logger(__name__)
 
 class CrawlingService:
     """Service class for web crawling operations"""
-    
+
     # Common code block selectors for various editors and documentation frameworks
     CODE_BLOCK_SELECTORS = [
         # Milkdown
         ".milkdown-code-block pre",
-        
+
         # Monaco Editor
         ".monaco-editor .view-lines",
-        
+
         # CodeMirror
         ".cm-editor .cm-content",
         ".cm-line",
-        
+
         # Prism.js (used by Docusaurus, Docsify, Gatsby)
         "pre[class*='language-']",
         "code[class*='language-']",
         ".prism-code",
-        
+
         # highlight.js
         "pre code.hljs",
         ".hljs",
-        
+
         # Shiki (used by VitePress, Nextra)
         ".shiki",
         "div[class*='language-'] pre",
         ".astro-code",
-        
+
         # Generic patterns
         "pre code",
         ".code-block",
         ".codeblock",
         ".highlight pre"
     ]
-    
+
     def __init__(self, crawler=None, supabase_client=None):
         """Initialize with optional crawler and supabase client"""
         self.crawler = crawler
         self.supabase_client = supabase_client or get_supabase_client()
-    
+
     def _get_markdown_generator(self):
         """Get markdown generator that preserves code blocks."""
         return DefaultMarkdownGenerator(
@@ -80,7 +82,7 @@ class CrawlingService:
                 "code_language_callback": lambda el: el.get('class', '').replace('language-', '') if el else ''
             }
         )
-    
+
     def is_sitemap(self, url: str) -> bool:
         """Check if a URL is a sitemap with error handling."""
         try:
@@ -97,28 +99,28 @@ class CrawlingService:
             logger.warning(f"Error checking if URL is text file: {e}")
             return False
 
-    def parse_sitemap(self, sitemap_url: str) -> List[str]:
+    def parse_sitemap(self, sitemap_url: str) -> list[str]:
         """Parse a sitemap and extract URLs with comprehensive error handling."""
         urls = []
-        
+
         try:
             logger.info(f"Parsing sitemap: {sitemap_url}")
             resp = requests.get(sitemap_url, timeout=30)
-            
+
             if resp.status_code != 200:
                 logger.error(f"Failed to fetch sitemap: HTTP {resp.status_code}")
                 return urls
-                
+
             try:
                 tree = ElementTree.fromstring(resp.content)
                 urls = [loc.text for loc in tree.findall('.//{*}loc') if loc.text]
                 logger.info(f"Successfully extracted {len(urls)} URLs from sitemap")
-                
+
             except ElementTree.ParseError as e:
                 logger.error(f"Error parsing sitemap XML: {e}")
             except Exception as e:
                 logger.error(f"Unexpected error parsing sitemap: {e}")
-                
+
         except requests.exceptions.RequestException as e:
             logger.error(f"Network error fetching sitemap: {e}")
         except Exception as e:
@@ -130,7 +132,7 @@ class CrawlingService:
     def _transform_github_url(self, url: str) -> str:
         """Transform GitHub URLs to raw content URLs for better content extraction."""
         import re
-        
+
         # Pattern for GitHub file URLs
         github_file_pattern = r'https://github\.com/([^/]+)/([^/]+)/blob/([^/]+)/(.+)'
         match = re.match(github_file_pattern, url)
@@ -139,7 +141,7 @@ class CrawlingService:
             raw_url = f'https://raw.githubusercontent.com/{owner}/{repo}/{branch}/{path}'
             logger.info(f"Transformed GitHub file URL to raw: {url} -> {raw_url}")
             return raw_url
-        
+
         # Pattern for GitHub directory URLs
         github_dir_pattern = r'https://github\.com/([^/]+)/([^/]+)/tree/([^/]+)/(.+)'
         match = re.match(github_dir_pattern, url)
@@ -147,9 +149,9 @@ class CrawlingService:
             # For directories, we can't directly get raw content
             # Return original URL but log a warning
             logger.warning(f"GitHub directory URL detected: {url} - consider using specific file URLs or GitHub API")
-        
+
         return url
-    
+
     def _is_documentation_site(self, url: str) -> bool:
         """Check if URL is likely a documentation site that needs special handling."""
         doc_patterns = [
@@ -164,14 +166,14 @@ class CrawlingService:
             'docsify',
             'mkdocs'
         ]
-        
+
         url_lower = url.lower()
         return any(pattern in url_lower for pattern in doc_patterns)
-    
+
     def _get_wait_selector_for_docs(self, url: str) -> str:
         """Get appropriate wait selector based on documentation framework."""
         url_lower = url.lower()
-        
+
         # Common selectors for different documentation frameworks
         if 'docusaurus' in url_lower:
             return '.markdown, .theme-doc-markdown, article'
@@ -193,7 +195,7 @@ class CrawlingService:
             # Simplified generic selector - just wait for body to have content
             return 'body'
 
-    async def crawl_single_page(self, url: str, retry_count: int = 3) -> Dict[str, Any]:
+    async def crawl_single_page(self, url: str, retry_count: int = 3) -> dict[str, Any]:
         """
         Crawl a single web page and return the result with retry logic.
         
@@ -207,9 +209,9 @@ class CrawlingService:
         # Transform GitHub URLs to raw content URLs if applicable
         original_url = url
         url = self._transform_github_url(url)
-        
+
         last_error = None
-        
+
         for attempt in range(retry_count):
             try:
                 if not self.crawler:
@@ -218,20 +220,20 @@ class CrawlingService:
                         "success": False,
                         "error": "No crawler instance available - crawler initialization may have failed"
                     }
-                
+
                 # Use ENABLED cache mode for better performance, BYPASS only on retries
                 cache_mode = CacheMode.BYPASS if attempt > 0 else CacheMode.ENABLED
-                
+
                 # Check if this is a documentation site that needs special handling
                 is_doc_site = self._is_documentation_site(url)
-                
+
                 # Enhanced configuration for documentation sites
                 if is_doc_site:
                     wait_selector = self._get_wait_selector_for_docs(url)
                     logger.info(f"Detected documentation site, using wait selector: {wait_selector}")
-                    
+
                     crawl_config = CrawlerRunConfig(
-                        cache_mode=cache_mode, 
+                        cache_mode=cache_mode,
                         stream=True,  # Enable streaming for faster parallel processing
                         markdown_generator=self._get_markdown_generator(),
                         # Wait for documentation content to load
@@ -256,7 +258,7 @@ class CrawlingService:
                 else:
                     # Configuration for regular sites
                     crawl_config = CrawlerRunConfig(
-                        cache_mode=cache_mode, 
+                        cache_mode=cache_mode,
                         stream=True,  # Enable streaming
                         markdown_generator=self._get_markdown_generator(),
                         wait_until='domcontentloaded',  # Use domcontentloaded for better reliability
@@ -264,10 +266,10 @@ class CrawlingService:
                         delay_before_return_html=0.3,  # Reduced from 1.0s
                         scan_full_page=True  # Trigger lazy loading
                     )
-                
+
                 logger.info(f"Crawling {url} (attempt {attempt + 1}/{retry_count})")
                 logger.info(f"Using wait_until: {crawl_config.wait_until}, page_timeout: {crawl_config.page_timeout}")
-                
+
                 try:
                     result = await self.crawler.arun(url=url, config=crawl_config)
                 except Exception as e:
@@ -276,40 +278,40 @@ class CrawlingService:
                     if attempt < retry_count - 1:
                         await asyncio.sleep(2 ** attempt)
                     continue
-                
+
                 if not result.success:
                     last_error = f"Failed to crawl {url}: {result.error_message}"
                     logger.warning(f"Crawl attempt {attempt + 1} failed: {last_error}")
-                    
+
                     # Exponential backoff before retry
                     if attempt < retry_count - 1:
                         await asyncio.sleep(2 ** attempt)
                     continue
-                
+
                 # Validate content
                 if not result.markdown or len(result.markdown.strip()) < 50:
                     last_error = f"Insufficient content from {url}"
                     logger.warning(f"Crawl attempt {attempt + 1}: {last_error}")
-                    
+
                     if attempt < retry_count - 1:
                         await asyncio.sleep(2 ** attempt)
                     continue
-                
+
                 # Success! Return both markdown AND HTML
                 # Debug logging to see what we got
                 markdown_sample = result.markdown[:1000] if result.markdown else "NO MARKDOWN"
                 has_triple_backticks = '```' in result.markdown if result.markdown else False
                 backtick_count = result.markdown.count('```') if result.markdown else 0
-                
+
                 logger.info(f"Crawl result for {url} | has_markdown={bool(result.markdown)} | markdown_length={len(result.markdown) if result.markdown else 0} | has_triple_backticks={has_triple_backticks} | backtick_count={backtick_count}")
-                
+
                 # Log markdown info for debugging if needed
                 if backtick_count > 0:
                     logger.info(f"Markdown has {backtick_count} code blocks for {url}")
-                
+
                 if 'getting-started' in url:
                     logger.info(f"Markdown sample for getting-started: {markdown_sample}")
-                
+
                 return {
                     "success": True,
                     "url": original_url,  # Use original URL for tracking
@@ -319,43 +321,43 @@ class CrawlingService:
                     "links": result.links,
                     "content_length": len(result.markdown)
                 }
-                
-            except asyncio.TimeoutError:
+
+            except TimeoutError:
                 last_error = f"Timeout crawling {url}"
                 logger.warning(f"Crawl attempt {attempt + 1} timed out")
             except Exception as e:
                 last_error = f"Error crawling page: {str(e)}"
                 logger.error(f"Error on attempt {attempt + 1} crawling {url}: {e}")
                 logger.error(traceback.format_exc())
-            
+
             # Exponential backoff before retry
             if attempt < retry_count - 1:
                 await asyncio.sleep(2 ** attempt)
-        
+
         # All retries failed
         return {
             "success": False,
             "error": last_error or f"Failed to crawl {url} after {retry_count} attempts"
         }
 
-    async def crawl_markdown_file(self, url: str, progress_callback=None, 
-                                 start_progress: int = 10, end_progress: int = 20) -> List[Dict[str, Any]]:
+    async def crawl_markdown_file(self, url: str, progress_callback=None,
+                                 start_progress: int = 10, end_progress: int = 20) -> list[dict[str, Any]]:
         """Crawl a .txt or markdown file with comprehensive error handling and progress reporting."""
         try:
             # Transform GitHub URLs to raw content URLs if applicable
             original_url = url
             url = self._transform_github_url(url)
             logger.info(f"Crawling markdown file: {url}")
-            
+
             # Define local report_progress helper like in other methods
             async def report_progress(percentage: int, message: str):
                 """Helper to report progress if callback is available"""
                 if progress_callback:
                     await progress_callback('crawling', percentage, message)
-            
+
             # Report initial progress
             await report_progress(start_progress, f"Fetching text file: {url}")
-            
+
             # Use consistent configuration even for text files
             crawl_config = CrawlerRunConfig(
                 cache_mode=CacheMode.ENABLED,
@@ -365,10 +367,10 @@ class CrawlingService:
             result = await self.crawler.arun(url=url, config=crawl_config)
             if result.success and result.markdown:
                 logger.info(f"Successfully crawled markdown file: {url}")
-                
+
                 # Report completion progress
                 await report_progress(end_progress, f"Text file crawled successfully: {original_url}")
-                
+
                 return [{'url': original_url, 'markdown': result.markdown, 'html': result.html}]
             else:
                 logger.error(f"Failed to crawl {url}: {result.error_message}")
@@ -378,16 +380,16 @@ class CrawlingService:
             logger.error(traceback.format_exc())
             return []
 
-    async def crawl_batch_with_progress(self, urls: List[str], max_concurrent: int = None, 
-                                       progress_callback=None, start_progress: int = 15, 
-                                       end_progress: int = 60) -> List[Dict[str, Any]]:
+    async def crawl_batch_with_progress(self, urls: list[str], max_concurrent: int = None,
+                                       progress_callback=None, start_progress: int = 15,
+                                       end_progress: int = 60) -> list[dict[str, Any]]:
         """Batch crawl multiple URLs in parallel with progress reporting."""
         if not self.crawler:
             logger.error("No crawler instance available for batch crawling")
             if progress_callback:
                 await progress_callback('error', 0, 'Crawler not available')
             return []
-            
+
         # Load settings from database first
         try:
             settings = await credential_service.get_credentials_by_category("rag_strategy")
@@ -404,15 +406,15 @@ class CrawlingService:
             memory_threshold = 80.0
             check_interval = 0.5
             settings = {}  # Empty dict for defaults
-            
+
         # Check if any URLs are documentation sites
         has_doc_sites = any(self._is_documentation_site(url) for url in urls)
-        
+
         if has_doc_sites:
             logger.info("Detected documentation sites in batch, using enhanced configuration")
             # Use generic documentation selectors for batch crawling
             crawl_config = CrawlerRunConfig(
-                cache_mode=CacheMode.BYPASS, 
+                cache_mode=CacheMode.BYPASS,
                 stream=True,  # Enable streaming for faster parallel processing
                 markdown_generator=self._get_markdown_generator(),
                 wait_for='body',  # Simple selector for batch
@@ -428,7 +430,7 @@ class CrawlingService:
         else:
             # Configuration for regular batch crawling
             crawl_config = CrawlerRunConfig(
-                cache_mode=CacheMode.BYPASS, 
+                cache_mode=CacheMode.BYPASS,
                 stream=True,  # Enable streaming
                 markdown_generator=self._get_markdown_generator(),
                 wait_until=settings.get("CRAWL_WAIT_STRATEGY", "domcontentloaded"),
@@ -436,7 +438,7 @@ class CrawlingService:
                 delay_before_return_html=float(settings.get("CRAWL_DELAY_BEFORE_HTML", "0.5")),
                 scan_full_page=True
             )
-            
+
         dispatcher = MemoryAdaptiveDispatcher(
             memory_threshold_percent=memory_threshold,
             check_interval=check_interval,
@@ -450,11 +452,11 @@ class CrawlingService:
 
         total_urls = len(urls)
         await report_progress(start_progress, f'Starting to crawl {total_urls} URLs...')
-        
+
         # Use configured batch size
         successful_results = []
         processed = 0
-        
+
         # Transform all URLs at the beginning
         url_mapping = {}  # Map transformed URLs back to original
         transformed_urls = []
@@ -462,20 +464,20 @@ class CrawlingService:
             transformed = self._transform_github_url(url)
             transformed_urls.append(transformed)
             url_mapping[transformed] = url
-        
+
         for i in range(0, total_urls, batch_size):
             batch_urls = transformed_urls[i:i + batch_size]
             batch_start = i
             batch_end = min(i + batch_size, total_urls)
-            
+
             # Report batch start with smooth progress
             progress_percentage = start_progress + int((i / total_urls) * (end_progress - start_progress))
             await report_progress(progress_percentage, f'Processing batch {batch_start+1}-{batch_end} of {total_urls} URLs...')
-            
+
             # Crawl this batch using arun_many with streaming
             logger.info(f"Starting parallel crawl of batch {batch_start+1}-{batch_end} ({len(batch_urls)} URLs)")
             batch_results = await self.crawler.arun_many(urls=batch_urls, config=crawl_config, dispatcher=dispatcher)
-            
+
             # Handle streaming results
             j = 0
             async for result in batch_results:
@@ -484,33 +486,33 @@ class CrawlingService:
                     # Map back to original URL
                     original_url = url_mapping.get(result.url, result.url)
                     successful_results.append({
-                        'url': original_url, 
+                        'url': original_url,
                         'markdown': result.markdown,
                         'html': result.html  # Use raw HTML
                     })
                 else:
                     logger.warning(f"Failed to crawl {result.url}: {getattr(result, 'error_message', 'Unknown error')}")
-                
+
                 # Report individual URL progress with smooth increments
                 progress_percentage = start_progress + int((processed / total_urls) * (end_progress - start_progress))
                 # Report more frequently for smoother progress
                 if processed % 5 == 0 or processed == total_urls:  # Report every 5 URLs or at the end
                     await report_progress(progress_percentage, f'Crawled {processed}/{total_urls} pages ({len(successful_results)} successful)')
                 j += 1
-        
+
         await report_progress(end_progress, f'Batch crawling completed: {len(successful_results)}/{total_urls} pages successful')
         return successful_results
 
-    async def crawl_recursive_with_progress(self, start_urls: List[str], max_depth: int = 3, 
-                                          max_concurrent: int = None, progress_callback=None, 
-                                          start_progress: int = 10, end_progress: int = 60) -> List[Dict[str, Any]]:
+    async def crawl_recursive_with_progress(self, start_urls: list[str], max_depth: int = 3,
+                                          max_concurrent: int = None, progress_callback=None,
+                                          start_progress: int = 10, end_progress: int = 60) -> list[dict[str, Any]]:
         """Recursively crawl internal links from start URLs up to a maximum depth with progress reporting."""
         if not self.crawler:
             logger.error("No crawler instance available for recursive crawling")
             if progress_callback:
                 await progress_callback('error', 0, 'Crawler not available')
             return []
-            
+
         # Load settings from database
         try:
             settings = await credential_service.get_credentials_by_category("rag_strategy")
@@ -527,14 +529,14 @@ class CrawlingService:
             memory_threshold = 80.0
             check_interval = 0.5
             settings = {}  # Empty dict for defaults
-            
+
         # Check if start URLs include documentation sites
         has_doc_sites = any(self._is_documentation_site(url) for url in start_urls)
-        
+
         if has_doc_sites:
             logger.info("Detected documentation sites for recursive crawl, using enhanced configuration")
             run_config = CrawlerRunConfig(
-                cache_mode=CacheMode.BYPASS, 
+                cache_mode=CacheMode.BYPASS,
                 stream=True,  # Enable streaming for faster parallel processing
                 markdown_generator=self._get_markdown_generator(),
                 wait_for='body',
@@ -550,7 +552,7 @@ class CrawlingService:
         else:
             # Configuration for regular recursive crawling
             run_config = CrawlerRunConfig(
-                cache_mode=CacheMode.BYPASS, 
+                cache_mode=CacheMode.BYPASS,
                 stream=True,  # Enable streaming
                 markdown_generator=self._get_markdown_generator(),
                 wait_until=settings.get("CRAWL_WAIT_STRATEGY", "domcontentloaded"),
@@ -558,7 +560,7 @@ class CrawlingService:
                 delay_before_return_html=float(settings.get("CRAWL_DELAY_BEFORE_HTML", "0.5")),
                 scan_full_page=True
             )
-            
+
         dispatcher = MemoryAdaptiveDispatcher(
             memory_threshold_percent=memory_threshold,
             check_interval=check_interval,
@@ -593,28 +595,28 @@ class CrawlingService:
             # Calculate progress for this depth level
             depth_start = start_progress + int((depth / max_depth) * (end_progress - start_progress) * 0.8)
             depth_end = start_progress + int(((depth + 1) / max_depth) * (end_progress - start_progress) * 0.8)
-            
+
             await report_progress(depth_start, f'Crawling depth {depth + 1}/{max_depth}: {len(urls_to_crawl)} URLs to process')
 
             # Use configured batch size for recursive crawling
             next_level_urls = set()
             depth_successful = 0
-            
+
             for batch_idx in range(0, len(urls_to_crawl), batch_size):
                 batch_urls = urls_to_crawl[batch_idx:batch_idx + batch_size]
                 batch_end_idx = min(batch_idx + batch_size, len(urls_to_crawl))
-                
+
                 # Calculate progress for this batch within the depth
                 batch_progress = depth_start + int((batch_idx / len(urls_to_crawl)) * (depth_end - depth_start))
-                await report_progress(batch_progress, 
+                await report_progress(batch_progress,
                                     f'Depth {depth + 1}: crawling URLs {batch_idx + 1}-{batch_end_idx} of {len(urls_to_crawl)}',
-                                    totalPages=total_processed + batch_idx, 
+                                    totalPages=total_processed + batch_idx,
                                     processedPages=len(results_all))
-                
+
                 # Use arun_many for native parallel crawling with streaming
                 logger.info(f"Starting parallel crawl of {len(batch_urls)} URLs with arun_many")
                 batch_results = await self.crawler.arun_many(urls=batch_urls, config=run_config, dispatcher=dispatcher)
-                
+
                 # Handle streaming results from arun_many
                 i = 0
                 async for result in batch_results:
@@ -624,19 +626,19 @@ class CrawlingService:
                         if self._transform_github_url(orig_url) == result.url:
                             original_url = orig_url
                             break
-                    
+
                     norm_url = normalize_url(original_url)
                     visited.add(norm_url)
                     total_processed += 1
-                    
+
                     if result.success and result.markdown:
                         results_all.append({
-                            'url': original_url, 
+                            'url': original_url,
                             'markdown': result.markdown,
                             'html': result.html  # Always use raw HTML for code extraction
                         })
                         depth_successful += 1
-                        
+
                         # Find internal links for next depth
                         for link in result.links.get("internal", []):
                             next_url = normalize_url(link["href"])
@@ -644,21 +646,21 @@ class CrawlingService:
                                 next_level_urls.add(next_url)
                     else:
                         logger.warning(f"Failed to crawl {original_url}: {getattr(result, 'error_message', 'Unknown error')}")
-                    
+
                     # Report progress every few URLs
                     current_idx = batch_idx + i + 1
                     if current_idx % 5 == 0 or current_idx == len(urls_to_crawl):
                         current_progress = depth_start + int((current_idx / len(urls_to_crawl)) * (depth_end - depth_start))
                         await report_progress(current_progress,
                                             f'Depth {depth + 1}: processed {current_idx}/{len(urls_to_crawl)} URLs ({depth_successful} successful)',
-                                            totalPages=total_processed, 
+                                            totalPages=total_processed,
                                             processedPages=len(results_all))
                     i += 1
 
             current_urls = next_level_urls
-            
+
             # Report completion of this depth
-            await report_progress(depth_end, 
+            await report_progress(depth_end,
                                 f'Depth {depth + 1} completed: {depth_successful} pages crawled, {len(next_level_urls)} URLs found for next depth')
 
         await report_progress(end_progress, f'Recursive crawling completed: {len(results_all)} total pages crawled across {max_depth} depth levels')

@@ -12,35 +12,36 @@ Modules:
 """
 
 import asyncio
+import logging
 import os
 from contextlib import asynccontextmanager
-import logging
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-# Import Logfire configuration
-from .config.logfire_config import setup_logfire, api_logger
+from .api_routes.agent_chat_api import router as agent_chat_router
+from .api_routes.bug_report_api import router as bug_report_router
+from .api_routes.coverage_api import router as coverage_router
+from .api_routes.internal_api import router as internal_router
+from .api_routes.knowledge_api import router as knowledge_router
+from .api_routes.mcp_api import router as mcp_router
+from .api_routes.projects_api import router as projects_router
 
-# Import Socket.IO integration
-from .socketio_app import create_socketio_app
 # Import Socket.IO handlers to ensure they're registered
-
 # Import modular API routers
 from .api_routes.settings_api import router as settings_router
-from .api_routes.mcp_api import router as mcp_router
-from .api_routes.knowledge_api import router as knowledge_router  
-from .api_routes.projects_api import router as projects_router
 from .api_routes.tests_api import router as tests_router
-from .api_routes.agent_chat_api import router as agent_chat_router
-from .api_routes.internal_api import router as internal_router
-from .api_routes.coverage_api import router as coverage_router
-from .api_routes.bug_report_api import router as bug_report_router
+
+# Import Logfire configuration
+from .config.logfire_config import api_logger, setup_logfire
+from .services.background_task_manager import cleanup_task_manager
+from .services.crawler_manager import cleanup_crawler, initialize_crawler
 
 # Import utilities and core classes
 from .services.credential_service import initialize_credentials
-from .services.crawler_manager import initialize_crawler, cleanup_crawler
-from .services.background_task_manager import cleanup_task_manager
+
+# Import Socket.IO integration
+from .socketio_app import create_socketio_app
 
 # Import missing dependencies that the modular APIs need
 try:
@@ -56,7 +57,6 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 # Set up logging configuration to reduce noise
-import uvicorn.logging
 
 # Override uvicorn's access log format to be less verbose
 uvicorn_logger = logging.getLogger("uvicorn.access")
@@ -72,38 +72,38 @@ async def lifespan(app: FastAPI):
     """Application lifespan manager for startup and shutdown tasks."""
     global _initialization_complete
     _initialization_complete = False
-    
+
     # Startup
     logger.info("🚀 Starting Archon backend...")
-    
+
     try:
         # Initialize credentials from database FIRST - this is the foundation for everything else
         await initialize_credentials()
-        
+
         # Now that credentials are loaded, we can properly initialize logging
         # This must happen AFTER credentials so LOGFIRE_ENABLED is set from database
         setup_logfire(service_name="archon-backend")
-        
+
         # Now we can safely use the logger
         logger.info("✅ Credentials initialized")
         api_logger.info("🔥 Logfire initialized for backend")
-        
+
         # Initialize crawling context
         try:
             await initialize_crawler()
         except Exception as e:
             api_logger.warning(f"Could not fully initialize crawling context: {str(e)}")
-        
+
         # Make crawling context available to modules
         # Crawler is now managed by CrawlerManager
-        
+
         # Initialize Socket.IO services
         try:
             # Import API modules to register their Socket.IO handlers
             api_logger.info("✅ Socket.IO handlers imported from API modules")
         except Exception as e:
             api_logger.warning(f"Could not initialize Socket.IO services: {e}")
-        
+
         # Initialize prompt service
         try:
             from .services.prompt_service import prompt_service
@@ -111,7 +111,7 @@ async def lifespan(app: FastAPI):
             api_logger.info("✅ Prompt service initialized")
         except Exception as e:
             api_logger.warning(f"Could not initialize prompt service: {e}")
-        
+
         # Set the main event loop for background tasks
         try:
             from .services.background_task_manager import get_task_manager
@@ -121,42 +121,42 @@ async def lifespan(app: FastAPI):
             api_logger.info("✅ Main event loop set for background tasks")
         except Exception as e:
             api_logger.warning(f"Could not set main event loop: {e}")
-        
+
         # MCP Client functionality removed from architecture
         # Agents now use MCP tools directly
-        
+
         # Mark initialization as complete
         _initialization_complete = True
         api_logger.info("🎉 Archon backend started successfully!")
-        
+
     except Exception as e:
         api_logger.error(f"❌ Failed to start backend: {str(e)}")
         raise
-    
+
     yield
-    
+
     # Shutdown
     _initialization_complete = False
     api_logger.info("🛑 Shutting down Archon backend...")
-    
+
     try:
         # MCP Client cleanup not needed
-        
+
         # Cleanup crawling context
         try:
             await cleanup_crawler()
         except Exception as e:
             api_logger.warning("Could not cleanup crawling context", error=str(e))
-        
+
         # Cleanup background task manager
         try:
             await cleanup_task_manager()
             api_logger.info("Background task manager cleaned up")
         except Exception as e:
             api_logger.warning("Could not cleanup background task manager", error=str(e))
-        
+
         api_logger.info("✅ Cleanup completed")
-        
+
     except Exception as e:
         api_logger.error(f"❌ Error during shutdown: {str(e)}")
 
@@ -216,7 +216,7 @@ async def root():
         "modules": [
             "settings",
             "mcp",
-            "mcp-clients", 
+            "mcp-clients",
             "knowledge",
             "projects"
         ]
@@ -227,7 +227,7 @@ async def root():
 async def health_check():
     """Health check endpoint that indicates true readiness including credential loading."""
     from datetime import datetime
-    
+
     # Check if initialization is complete
     if not _initialization_complete:
         return {
@@ -237,10 +237,10 @@ async def health_check():
             "message": "Backend is starting up, credentials loading...",
             "ready": False
         }
-    
+
     return {
         "status": "healthy",
-        "service": "archon-backend", 
+        "service": "archon-backend",
         "timestamp": datetime.now().isoformat(),
         "ready": True,
         "credentials_loaded": True
@@ -262,7 +262,7 @@ socket_app = create_socketio_app(app)
 def main():
     """Main entry point for running the server."""
     import uvicorn
-    
+
     # Require ARCHON_SERVER_PORT to be set
     server_port = os.getenv("ARCHON_SERVER_PORT")
     if not server_port:
@@ -271,7 +271,7 @@ def main():
             "Please set it in your .env file or environment. "
             "Default value: 8181"
         )
-    
+
     uvicorn.run(
         "src.server.main:socket_app",
         host="0.0.0.0",
@@ -281,4 +281,4 @@ def main():
     )
 
 if __name__ == "__main__":
-    main() 
+    main()

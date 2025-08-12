@@ -15,10 +15,10 @@ Usage:
         safe_set_attribute(span, "key", "value")
 """
 
-import os
 import logging
-from typing import Optional, Any
+import os
 from contextlib import contextmanager
+from typing import Any
 
 # Try to import logfire (optional dependency)
 LOGFIRE_AVAILABLE = False
@@ -38,20 +38,20 @@ _logfire_enabled = False
 def is_logfire_enabled() -> bool:
     """Check if Logfire should be enabled based on environment variables."""
     global _logfire_enabled
-    
+
     # Check environment variable (master switch)
     env_enabled = os.getenv("LOGFIRE_ENABLED", "false").lower()
     if env_enabled in ("true", "1", "yes", "on"):
         _logfire_enabled = True
     else:
         _logfire_enabled = False
-    
+
     return _logfire_enabled and LOGFIRE_AVAILABLE
 
 
 def setup_logfire(
-    token: Optional[str] = None,
-    environment: str = "development", 
+    token: str | None = None,
+    environment: str = "development",
     service_name: str = "archon-server"
 ) -> None:
     """
@@ -67,17 +67,17 @@ def setup_logfire(
         service_name: Service name for Logfire
     """
     global _logfire_configured, _logfire_enabled
-    
+
     if _logfire_configured:
         return
-    
+
     _logfire_enabled = is_logfire_enabled()
     handlers = []
-    
+
     if _logfire_enabled:
         # Get logfire token
         logfire_token = token or os.getenv("LOGFIRE_TOKEN")
-        
+
         if logfire_token:
             try:
                 # Configure logfire
@@ -87,18 +87,18 @@ def setup_logfire(
                     environment=environment,
                     send_to_logfire=True
                 )
-                
+
                 # Add LogfireLoggingHandler to capture all standard logging
                 handlers.append(logfire.LogfireLoggingHandler())
                 logging.info(f"✅ Logfire enabled for {service_name}")
-                
+
             except Exception as e:
                 logging.error(f"❌ Failed to configure Logfire: {e}. Using standard logging.")
                 _logfire_enabled = False
         else:
             logging.info("❌ LOGFIRE_TOKEN not found. Using standard logging.")
             _logfire_enabled = False
-    
+
     if not _logfire_enabled and LOGFIRE_AVAILABLE:
         try:
             # Configure logfire but disable sending to remote
@@ -106,11 +106,11 @@ def setup_logfire(
             logging.info("📝 Logfire configured but disabled (send_to_logfire=False)")
         except Exception as e:
             logging.warning(f"⚠️  Warning: Could not configure Logfire in disabled mode: {e}")
-    
+
     # Set up standard Python logging (always)
     if not handlers:
         handlers.append(logging.StreamHandler())
-    
+
     # Configure root logging
     logging.basicConfig(
         level=logging.INFO,
@@ -119,7 +119,7 @@ def setup_logfire(
         handlers=handlers,
         force=True
     )
-    
+
     _logfire_configured = True
     logging.info(f"📋 Logging configured (Logfire: {'enabled' if _logfire_enabled else 'disabled'})")
 
@@ -164,18 +164,18 @@ def safe_span(name: str, **kwargs):
 
 class NoOpSpan:
     """No-operation span for when Logfire is disabled."""
-    
+
     def set_attribute(self, key: str, value: Any) -> None:
         """No-op set_attribute method."""
         pass
-    
+
     def record_exception(self, exception: Exception) -> None:
         """No-op record_exception method."""
         pass
-    
+
     def __enter__(self):
         return self
-    
+
     def __exit__(self, exc_type, exc_val, exc_tb):
         pass
 
@@ -287,7 +287,7 @@ __all__ = [
     'setup_logfire',
     'get_logger',
     'safe_span',
-    'safe_set_attribute', 
+    'safe_set_attribute',
     'safe_record_exception',
     'safe_logfire_info',
     'safe_logfire_error',
@@ -295,7 +295,7 @@ __all__ = [
     'safe_logfire_debug',
     'is_logfire_enabled',
     'api_logger',
-    'mcp_logger', 
+    'mcp_logger',
     'rag_logger',
     'search_logger',
     'crawl_logger',
