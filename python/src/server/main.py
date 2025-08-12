@@ -27,15 +27,15 @@ from .socketio_app import create_socketio_app
 # Import Socket.IO handlers to ensure they're registered
 
 # Import modular API routers
-from .fastapi.settings_api import router as settings_router
-from .fastapi.mcp_api import router as mcp_router
-from .fastapi.knowledge_api import router as knowledge_router  
-from .fastapi.projects_api import router as projects_router
-from .fastapi.tests_api import router as tests_router
-from .fastapi.agent_chat_api import router as agent_chat_router
-from .fastapi.internal_api import router as internal_router
-from .fastapi.coverage_api import router as coverage_router
-from .fastapi.bug_report_api import router as bug_report_router
+from .api_routes.settings_api import router as settings_router
+from .api_routes.mcp_api import router as mcp_router
+from .api_routes.knowledge_api import router as knowledge_router  
+from .api_routes.projects_api import router as projects_router
+from .api_routes.tests_api import router as tests_router
+from .api_routes.agent_chat_api import router as agent_chat_router
+from .api_routes.internal_api import router as internal_router
+from .api_routes.coverage_api import router as coverage_router
+from .api_routes.bug_report_api import router as bug_report_router
 
 # Import utilities and core classes
 from .services.credential_service import initialize_credentials
@@ -259,7 +259,8 @@ socket_app = create_socketio_app(app)
 # Export the socket_app for uvicorn to use
 # The socket_app still handles all FastAPI routes, but also adds Socket.IO support
 
-if __name__ == "__main__":
+def main():
+    """Main entry point for running the server."""
     import uvicorn
     
     # Require ARCHON_SERVER_PORT to be set
@@ -272,9 +273,12 @@ if __name__ == "__main__":
         )
     
     uvicorn.run(
-        "main:socket_app",
+        "src.server.main:socket_app",
         host="0.0.0.0",
         port=int(server_port),
         reload=True,
         log_level="info"
-    ) 
+    )
+
+if __name__ == "__main__":
+    main() 

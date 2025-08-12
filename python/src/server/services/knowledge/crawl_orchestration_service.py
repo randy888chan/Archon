@@ -15,7 +15,7 @@ from ..crawling.crawling_service import CrawlingService
 from ..storage.storage_services import DocumentStorageService
 from ..storage.document_storage_service import add_documents_to_supabase
 from .code_extraction_service import CodeExtractionService
-from ...fastapi.socketio_handlers import update_crawl_progress
+from ...api_routes.socketio_handlers import update_crawl_progress
 from ..source_management_service import update_source_info, extract_source_summary
 from .progress_mapper import ProgressMapper
 
@@ -216,7 +216,7 @@ class CrawlOrchestrationService:
             )
             
             # Also send the completion event that frontend expects
-            from ...fastapi.socketio_handlers import complete_crawl_progress
+            from ...api_routes.socketio_handlers import complete_crawl_progress
             await complete_crawl_progress(task_id, {
                 'chunks_stored': storage_results['chunk_count'],
                 'code_examples_found': code_examples_count,

@@ -16,7 +16,7 @@ logger = get_logger(__name__)
 
 # Import Socket.IO broadcasting capability
 try:
-    from ...fastapi.socketio_broadcasts import broadcast_task_update
+    from ...api_routes.socketio_broadcasts import broadcast_task_update
     _broadcast_available = True
     logger.info("✅ Socket.IO broadcasting is AVAILABLE - real-time updates enabled")
 except ImportError as e:

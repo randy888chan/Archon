@@ -490,7 +490,7 @@ async def crawl_stop(sid, data):
             logger.warning(f"⚠️  [SOCKETIO] No active orchestration found for {progress_id}")
         
         # Cancel the asyncio task if it exists
-        from ..fastapi.knowledge_api import active_crawl_tasks
+        from ..api_routes.knowledge_api import active_crawl_tasks
         if progress_id in active_crawl_tasks:
             task = active_crawl_tasks[progress_id]
             if not task.done():

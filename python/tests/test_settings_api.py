@@ -12,7 +12,7 @@ def test_optional_setting_returns_default(client, mock_supabase_client):
     mock_service = MagicMock()
     mock_service.get_credential = AsyncMock(return_value=None)
     
-    with patch('src.server.fastapi.settings_api.credential_service', mock_service):
+    with patch('src.server.api_routes.settings_api.credential_service', mock_service):
         response = client.get("/api/credentials/DISCONNECT_SCREEN_ENABLED")
         
         assert response.status_code == 200
@@ -30,7 +30,7 @@ def test_unknown_credential_returns_404(client, mock_supabase_client):
     mock_service = MagicMock()
     mock_service.get_credential = AsyncMock(return_value=None)
     
-    with patch('src.server.fastapi.settings_api.credential_service', mock_service):
+    with patch('src.server.api_routes.settings_api.credential_service', mock_service):
         response = client.get("/api/credentials/UNKNOWN_KEY_THAT_DOES_NOT_EXIST")
         
         assert response.status_code == 404
@@ -46,7 +46,7 @@ def test_existing_credential_returns_normally(client, mock_supabase_client):
     mock_service = MagicMock()
     mock_service.get_credential = AsyncMock(return_value=mock_value)
     
-    with patch('src.server.fastapi.settings_api.credential_service', mock_service):
+    with patch('src.server.api_routes.settings_api.credential_service', mock_service):
         response = client.get("/api/credentials/SOME_EXISTING_KEY")
         
         assert response.status_code == 200
