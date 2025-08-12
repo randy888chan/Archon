@@ -5,7 +5,7 @@ Handles crawling of individual web pages.
 """
 import asyncio
 import traceback
-from typing import Dict, Any, List, Optional, Callable
+from typing import Dict, Any, List, Optional, Callable, Awaitable
 
 from crawl4ai import CrawlerRunConfig, CacheMode
 from ....config.logfire_config import get_logger
@@ -21,8 +21,8 @@ class SinglePageCrawlStrategy:
         Initialize single page crawl strategy.
         
         Args:
-            crawler: The Crawl4AI crawler instance
-            markdown_generator: The markdown generator to use
+            crawler (AsyncWebCrawler): The Crawl4AI crawler instance for web crawling operations
+            markdown_generator (DefaultMarkdownGenerator): The markdown generator instance for converting HTML to markdown
         """
         self.crawler = crawler
         self.markdown_generator = markdown_generator

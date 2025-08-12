@@ -22,8 +22,8 @@ class RecursiveCrawlStrategy:
         Initialize recursive crawl strategy.
         
         Args:
-            crawler: The Crawl4AI crawler instance
-            markdown_generator: The markdown generator to use
+            crawler (AsyncWebCrawler): The Crawl4AI crawler instance for web crawling operations
+            markdown_generator (DefaultMarkdownGenerator): The markdown generator instance for converting HTML to markdown
         """
         self.crawler = crawler
         self.markdown_generator = markdown_generator

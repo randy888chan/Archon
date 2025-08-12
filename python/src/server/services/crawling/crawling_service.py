@@ -8,11 +8,24 @@ batch crawling, recursive crawling, and overall orchestration with progress trac
 
 import asyncio
 import uuid
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Callable, Awaitable
 from urllib.parse import urlparse
 
 from ...config.logfire_config import safe_logfire_info, safe_logfire_error, get_logger
 from ...utils import get_supabase_client
+
+# Lazy import socket.IO handlers to avoid circular dependencies
+# These are imported as module-level variables but resolved at runtime
+update_crawl_progress = None
+complete_crawl_progress = None
+
+def _ensure_socketio_imports():
+    """Ensure socket.IO handlers are imported."""
+    global update_crawl_progress, complete_crawl_progress
+    if update_crawl_progress is None:
+        from ...fastapi.socketio_handlers import update_crawl_progress as _update, complete_crawl_progress as _complete
+        update_crawl_progress = _update
+        complete_crawl_progress = _complete
 
 # Import strategies
 from .strategies.batch import BatchCrawlStrategy
@@ -110,9 +123,16 @@ class CrawlingService:
         if self._cancelled:
             raise asyncio.CancelledError("Crawl operation was cancelled by user")
     
-    async def _create_crawl_progress_callback(self, base_status: str):
-        """Create a progress callback for crawling operations."""
-        from ...fastapi.socketio_handlers import update_crawl_progress
+    async def _create_crawl_progress_callback(self, base_status: str) -> Callable[[str, int, str], Awaitable[None]]:
+        """Create a progress callback for crawling operations.
+        
+        Args:
+            base_status: The base status to use for progress updates
+            
+        Returns:
+            Async callback function with signature (status: str, percentage: int, message: str, **kwargs) -> None
+        """
+        _ensure_socketio_imports()
         
         async def callback(status: str, percentage: int, message: str, **kwargs):
             if self.progress_id:
@@ -127,11 +147,15 @@ class CrawlingService:
                 await update_crawl_progress(self.progress_id, self.progress_state)
         return callback
     
-    async def _handle_progress_update(self, task_id: str, update: Dict[str, Any]):
+    async def _handle_progress_update(self, task_id: str, update: Dict[str, Any]) -> None:
         """
         Handle progress updates from background task.
+        
+        Args:
+            task_id: The task ID for the progress update
+            update: Dictionary containing progress update data
         """
-        from ...fastapi.socketio_handlers import update_crawl_progress
+        _ensure_socketio_imports()
         
         if self.progress_id:
             # Update and preserve progress state
@@ -300,7 +324,7 @@ class CrawlingService:
             # Process and store documents using document storage operations
             async def doc_storage_callback(message: str, percentage: int, batch_info: Optional[dict] = None):
                 if self.progress_id:
-                    from ...fastapi.socketio_handlers import update_crawl_progress
+                    _ensure_socketio_imports()
                     # Map percentage to document storage range (20-85%)
                     mapped_percentage = 20 + int((percentage / 100) * (85 - 20))
                     safe_logfire_info(f"Document storage progress mapping: {percentage}% -> {mapped_percentage}%")
@@ -341,7 +365,7 @@ class CrawlingService:
                 # Create progress callback for code extraction
                 async def code_progress_callback(data: dict):
                     if self.progress_id:
-                        from ...fastapi.socketio_handlers import update_crawl_progress
+                        _ensure_socketio_imports()
                         # Update progress state while preserving existing fields
                         self.progress_state.update(data)
                         await update_crawl_progress(self.progress_id, self.progress_state)
@@ -375,7 +399,7 @@ class CrawlingService:
             )
             
             # Also send the completion event that frontend expects
-            from ...fastapi.socketio_handlers import complete_crawl_progress
+            _ensure_socketio_imports()
             await complete_crawl_progress(task_id, {
                 'chunks_stored': storage_results['chunk_count'],
                 'code_examples_found': code_examples_count,
@@ -420,7 +444,7 @@ class CrawlingService:
         Returns:
             Tuple of (crawl_results, crawl_type)
         """
-        from ...fastapi.socketio_handlers import update_crawl_progress
+        _ensure_socketio_imports()
         
         crawl_results = []
         crawl_type = None
