@@ -46,7 +46,7 @@ class HybridSearchStrategy:
         Args:
             query: The search query text
             match_count: Number of results to return
-            table_name: The table to search (documents, crawled_pages, or code_examples)
+            table_name: The table to search (documents, archon_crawled_pages, or archon_code_examples)
             filter_metadata: Optional metadata filters
             select_fields: Optional specific fields to select (default: all)
 
@@ -83,7 +83,7 @@ class HybridSearchStrategy:
                 search_pattern = f"%{keyword}%"
 
                 # Handle different search patterns based on table
-                if table_name == "code_examples":
+                if table_name == "archon_code_examples":
                     # Search both content and summary for code examples
                     query_builder = query_builder.or_(
                         f"content.ilike.{search_pattern},summary.ilike.{search_pattern}"
@@ -109,7 +109,7 @@ class HybridSearchStrategy:
                             content = result.get("content", "").lower()
                             summary = (
                                 result.get("summary", "").lower()
-                                if table_name == "code_examples"
+                                if table_name == "archon_code_examples"
                                 else ""
                             )
                             combined_text = f"{content} {summary}"
@@ -148,7 +148,7 @@ class HybridSearchStrategy:
         filter_metadata: dict | None = None,
     ) -> list[dict[str, Any]]:
         """
-        Perform hybrid search on crawled_pages table combining vector and keyword search.
+        Perform hybrid search on archon_crawled_pages table combining vector and keyword search.
 
         Args:
             query: Original search query text
@@ -173,7 +173,7 @@ class HybridSearchStrategy:
                 keyword_results = await self.keyword_search(
                     query=query,
                     match_count=match_count * 2,
-                    table_name="crawled_pages",
+                    table_name="archon_crawled_pages",
                     filter_metadata=filter_metadata,
                     select_fields="id, url, chunk_number, content, metadata, source_id",
                 )
@@ -206,7 +206,7 @@ class HybridSearchStrategy:
         source_id: str | None = None,
     ) -> list[dict[str, Any]]:
         """
-        Perform hybrid search on code_examples table combining vector and keyword search.
+        Perform hybrid search on archon_code_examples table combining vector and keyword search.
 
         Args:
             query: Search query text
@@ -246,7 +246,7 @@ class HybridSearchStrategy:
                 keyword_results = await self.keyword_search(
                     query=query,
                     match_count=match_count * 2,
-                    table_name="code_examples",
+                    table_name="archon_code_examples",
                     filter_metadata=keyword_filter,
                     select_fields="id, url, chunk_number, content, summary, metadata, source_id",
                 )
