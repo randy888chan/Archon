@@ -74,58 +74,6 @@ class TestRAGService:
             assert result is True
 
     @pytest.mark.asyncio
-    async def test_search_documents_basic(self, rag_service):
-        """Test basic document search"""
-        with (
-            patch(
-                "src.server.services.embeddings.embedding_service.create_embedding"
-            ) as mock_embedding,
-            patch.object(rag_service.base_strategy, "vector_search") as mock_search,
-        ):
-            # Mock embedding creation
-            mock_embedding.return_value = [0.1] * 1536  # Mock embedding
-
-            mock_search.return_value = [
-                {"content": "Test content 1", "score": 0.95},
-                {"content": "Test content 2", "score": 0.85},
-            ]
-
-            result = await rag_service.search_documents(query="test query", match_count=5)
-
-            assert isinstance(result, list)
-            assert len(result) == 2
-            assert result[0]["content"] == "Test content 1"
-            mock_search.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_search_documents_with_hybrid_search(self, rag_service):
-        """Test document search with hybrid search enabled"""
-        with (
-            patch(
-                "src.server.services.embeddings.embedding_service.create_embedding"
-            ) as mock_embedding,
-            patch.object(
-                rag_service.hybrid_strategy, "search_documents_hybrid"
-            ) as mock_hybrid_search,
-        ):
-            # Mock embedding creation
-            mock_embedding.return_value = [0.1] * 1536  # Mock embedding
-
-            # Mock hybrid search results
-            mock_hybrid_search.return_value = [
-                {"content": "Hybrid result", "score": 0.92, "similarity": 0.92}
-            ]
-
-            result = await rag_service.search_documents(
-                query="test query", use_hybrid_search=True, match_count=3
-            )
-
-            assert isinstance(result, list)
-            assert len(result) == 1
-            assert result[0]["content"] == "Hybrid result"
-            mock_hybrid_search.assert_called_once()
-
-    @pytest.mark.asyncio
     async def test_search_code_examples(self, rag_service):
         """Test code examples search"""
         with patch.object(

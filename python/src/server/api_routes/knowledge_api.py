@@ -18,14 +18,16 @@ from datetime import datetime
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 
+from ..utils import get_supabase_client
+from ..services.storage import DocumentStorageService
+from ..services.search.rag_service import RAGService
+from ..services.knowledge import KnowledgeItemService, DatabaseMetricsService
+from ..services.crawling import CrawlOrchestrationService
+from ..services.crawler_manager import get_crawler
+
 # Import unified logging
 from ..config.logfire_config import get_logger, safe_logfire_error, safe_logfire_info
 from ..services.crawler_manager import get_crawler
-from ..services.knowledge import (
-    CrawlOrchestrationService,
-    DatabaseMetricsService,
-    KnowledgeItemService,
-)
 from ..services.search.rag_service import RAGService
 from ..services.storage import DocumentStorageService
 from ..utils import get_supabase_client
@@ -587,8 +589,7 @@ async def _perform_upload_with_progress(
             raise asyncio.CancelledError("Document upload was cancelled by user")
 
     # Import ProgressMapper to prevent progress from going backwards
-    from ..services.knowledge.progress_mapper import ProgressMapper
-
+    from ..services.crawling.progress_mapper import ProgressMapper
     progress_mapper = ProgressMapper()
 
     try:
@@ -900,11 +901,8 @@ async def get_crawl_task_status(task_id: str):
 async def stop_crawl_task(progress_id: str):
     """Stop a running crawl task."""
     try:
-        from ..services.knowledge.crawl_orchestration_service import (
-            get_active_orchestration,
-            unregister_orchestration,
-        )
-
+        from ..services.crawling import get_active_orchestration, unregister_orchestration
+        
         # Emit stopping status immediately
         await sio.emit(
             "crawl:stopping",
