@@ -5,8 +5,9 @@ Handles bug report submission to GitHub Issues with automatic context formatting
 """
 
 import os
+from typing import Any
+
 import httpx
-from typing import Dict, Any, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
@@ -18,10 +19,10 @@ router = APIRouter(prefix="/api/bug-report", tags=["bug-report"])
 
 
 class BugContext(BaseModel):
-    error: Dict[str, Any]
-    app: Dict[str, Any]
-    system: Dict[str, Any]
-    services: Dict[str, bool]
+    error: dict[str, Any]
+    app: dict[str, Any]
+    system: dict[str, Any]
+    services: dict[str, bool]
     logs: list[str]
 
 
@@ -38,8 +39,8 @@ class BugReportRequest(BaseModel):
 
 class BugReportResponse(BaseModel):
     success: bool
-    issue_number: Optional[int] = None
-    issue_url: Optional[str] = None
+    issue_number: int | None = None
+    issue_url: str | None = None
     message: str
 
 
@@ -48,7 +49,7 @@ class GitHubService:
         self.token = os.getenv("GITHUB_TOKEN")
         self.repo = os.getenv("GITHUB_REPO", "dynamous-community/Archon-V2-Alpha")
 
-    async def create_issue(self, bug_report: BugReportRequest) -> Dict[str, Any]:
+    async def create_issue(self, bug_report: BugReportRequest) -> dict[str, Any]:
         """Create a GitHub issue from a bug report."""
 
         if not self.token:

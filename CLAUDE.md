@@ -211,7 +211,7 @@ LOG_LEVEL=INFO                         # DEBUG, INFO, WARNING, ERROR
 ### Backend Structure
 
 - `src/server/` - Main FastAPI application
-- `src/server/fastapi/` - API route handlers
+- `src/server/api_routes/` - API route handlers
 - `src/server/services/` - Business logic services
 - `src/mcp/` - MCP server implementation
 - `src/agents/` - PydanticAI agent implementations
@@ -230,7 +230,7 @@ Key tables in Supabase:
 
 ### Add a new API endpoint
 
-1. Create route handler in `python/src/server/fastapi/`
+1. Create route handler in `python/src/server/api_routes/`
 2. Add service logic in `python/src/server/services/`
 3. Include router in `python/src/server/main.py`
 4. Update frontend service in `archon-ui-main/src/services/`
@@ -248,6 +248,16 @@ Key tables in Supabase:
 2. View MCP logs: `docker-compose logs archon-mcp`
 3. Test tool execution via UI MCP page
 4. Verify Supabase connection and credentials
+
+## Code Quality Standards
+
+We enforce code quality through automated linting and type checking:
+
+- **Python 3.12** with 120 character line length
+- **Ruff** for linting - checks for errors, warnings, unused imports, and code style
+- **Mypy** for type checking - ensures type safety across the codebase
+- **Auto-formatting** on save in IDEs to maintain consistent style
+- Run `uv run ruff check` and `uv run mypy src/` locally before committing
 
 ## MCP Tools Available
 
