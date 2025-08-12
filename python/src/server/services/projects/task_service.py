@@ -15,18 +15,29 @@ from ...config.logfire_config import get_logger
 
 logger = get_logger(__name__)
 
-# Import Socket.IO broadcasting capability
+# Import Socket.IO instance directly to avoid circular imports
 try:
-    from ...api_routes.socketio_broadcasts import broadcast_task_update
-
+    from ...socketio_app import get_socketio_instance
+    
+    _sio = get_socketio_instance()
     _broadcast_available = True
     logger.info("✅ Socket.IO broadcasting is AVAILABLE - real-time updates enabled")
+    
+    async def broadcast_task_update(project_id: str, event_type: str, task_data: dict):
+        """Broadcast task updates to project room."""
+        await _sio.emit(event_type, task_data, room=project_id)
+        logger.info(
+            f"✅ Broadcasted {event_type} for task {task_data.get('id', 'unknown')} to project {project_id}"
+        )
+        
 except ImportError as e:
     logger.warning(f"❌ Socket.IO broadcasting not available - ImportError: {e}")
     _broadcast_available = False
+    _sio = None
 
     # Dummy function when broadcasting is not available
     async def broadcast_task_update(*args, **kwargs):
+        logger.debug(f"Socket.IO broadcast skipped - not available")
         pass
 
 except Exception as e:
@@ -35,9 +46,11 @@ except Exception as e:
 
     logger.warning(f"❌ Full traceback: {traceback.format_exc()}")
     _broadcast_available = False
+    _sio = None
 
     # Dummy function when broadcasting is not available
     async def broadcast_task_update(*args, **kwargs):
+        logger.debug(f"Socket.IO broadcast skipped - not available")
         pass
 
 
