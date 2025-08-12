@@ -540,11 +540,7 @@ async def crawl_stop(sid, data):
 
     try:
         # Get the orchestration service
-        from ..services.knowledge.crawl_orchestration_service import (
-            get_active_orchestration,
-            unregister_orchestration,
-        )
-
+        from ..services.crawling import get_active_orchestration, unregister_orchestration
         orchestration = get_active_orchestration(progress_id)
 
         if orchestration:
