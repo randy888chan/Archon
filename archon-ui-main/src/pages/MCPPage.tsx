@@ -233,7 +233,8 @@ export const MCPPage = () => {
         }, null, 2);
         
       case 'cline':
-        // Cline uses stdio transport with mcp-remote
+      case 'kiro':
+        // Cline and Kiro use stdio transport with mcp-remote
         return JSON.stringify({
           mcpServers: {
             archon: {
@@ -253,7 +254,6 @@ export const MCPPage = () => {
         }, null, 2);
         
       case 'cursor':
-      case 'kiro':
       case 'augment':
         return JSON.stringify({
           mcpServers: {
