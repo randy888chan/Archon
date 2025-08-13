@@ -101,12 +101,16 @@ async def get_llm_client(provider: str | None = None, use_embedding_provider: bo
             logger.info("OpenAI client created successfully")
 
         elif provider_name == "ollama":
+            # Ensure base_url doesn't have double /v1 paths
+            # Database stores http://localhost:11434/v1, OpenAI client will add /chat/completions
+            clean_base_url = base_url or "http://localhost:11434/v1"
+            
             # Ollama requires an API key in the client but doesn't actually use it
             client = openai.AsyncOpenAI(
                 api_key="ollama",  # Required but unused by Ollama
-                base_url=base_url or "http://localhost:11434/v1",
+                base_url=clean_base_url,
             )
-            logger.info(f"Ollama client created successfully with base URL: {base_url}")
+            logger.info(f"Ollama client created successfully with base URL: {clean_base_url}")
 
         elif provider_name == "google":
             if not api_key:
