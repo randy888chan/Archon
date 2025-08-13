@@ -75,7 +75,7 @@ INSERT INTO archon_settings (key, value, is_encrypted, category, description) VA
 
 -- RAG Strategy Configuration (all default to true)
 INSERT INTO archon_settings (key, value, is_encrypted, category, description) VALUES
-('USE_CONTEXTUAL_EMBEDDINGS', 'true', true, 'rag_strategy', 'Enhances embeddings with contextual information for better retrieval'),
+('USE_CONTEXTUAL_EMBEDDINGS', 'false', true, 'rag_strategy', 'Enhances embeddings with contextual information for better retrieval'),
 ('CONTEXTUAL_EMBEDDINGS_MAX_WORKERS', '3', false, 'rag_strategy', 'Maximum parallel workers for contextual embedding generation (1-10)'),
 ('USE_HYBRID_SEARCH', 'true', true, 'rag_strategy', 'Combines vector similarity search with keyword search for better results'),
 ('USE_AGENTIC_RAG', 'true', true, 'rag_strategy', 'Enables code example extraction, storage, and specialized code search functionality'),

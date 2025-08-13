@@ -205,9 +205,9 @@ async def add_documents_to_supabase(
                         sub_batch_contents = batch_contents[ctx_i:ctx_end]
                         sub_batch_docs = full_documents[ctx_i:ctx_end]
 
-                        # Process sub-batch with a single API call using asyncio.to_thread
-                        sub_results = await asyncio.to_thread(
-                            generate_contextual_embeddings_batch, sub_batch_docs, sub_batch_contents
+                        # Process sub-batch with a single API call
+                        sub_results = await generate_contextual_embeddings_batch(
+                            sub_batch_docs, sub_batch_contents
                         )
 
                         # Extract results from this sub-batch
