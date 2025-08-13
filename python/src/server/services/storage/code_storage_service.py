@@ -837,7 +837,7 @@ async def add_code_examples_to_supabase(
                 full_documents.append(full_doc)
 
             # Generate contextual embeddings
-            contextual_results = generate_contextual_embeddings_batch(
+            contextual_results = await generate_contextual_embeddings_batch(
                 full_documents, combined_texts
             )
 

@@ -554,13 +554,12 @@ async def create_task(request: CreateTaskRequest):
 async def list_tasks(
     status: str | None = None,
     project_id: str | None = None,
-    parent_task_id: str | None = None,
     include_closed: bool = False,
     page: int = 1,
     per_page: int = 50,
     exclude_large_fields: bool = False,
 ):
-    """List tasks with optional filters including status, project, and parent task."""
+    """List tasks with optional filters including status and project."""
     try:
         logfire.info(
             f"Listing tasks | status={status} | project_id={project_id} | include_closed={include_closed} | page={page} | per_page={per_page}"
@@ -570,7 +569,6 @@ async def list_tasks(
         task_service = TaskService()
         success, result = task_service.list_tasks(
             project_id=project_id,
-            parent_task_id=parent_task_id,
             status=status,
             include_closed=include_closed,
         )

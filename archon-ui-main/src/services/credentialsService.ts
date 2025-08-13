@@ -121,9 +121,9 @@ class CredentialsService {
     const settings: RagSettings = {
       USE_CONTEXTUAL_EMBEDDINGS: false,
       CONTEXTUAL_EMBEDDINGS_MAX_WORKERS: 3,
-      USE_HYBRID_SEARCH: false,
-      USE_AGENTIC_RAG: false,
-      USE_RERANKING: false,
+      USE_HYBRID_SEARCH: true,
+      USE_AGENTIC_RAG: true,
+      USE_RERANKING: true,
       MODEL_CHOICE: 'gpt-4.1-nano',
       LLM_PROVIDER: 'openai',
       LLM_BASE_URL: '',
