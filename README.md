@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <em>Power up your AI coding assistants with your own custom knowledge base and task management solution as an MCP server</em>
+  <em>Power up your AI coding assistants with your own custom knowledge base and task management as an MCP server</em>
 </p>
 
 <p align="center">
@@ -24,7 +24,9 @@ Archon is the **command center** for AI coding assistants. For you, it's a sleek
 - **Real-time updates** as you add new content and collaborate with your coding assistant on tasks
 - **Much more** coming soon to build Archon into an integrated environment for all context engineering
 
-It doesn't matter what you're building or if it's a new/existing codebase - Archon's knowledge and task management capabilities will improve the output of your AI coding assistant for anything.
+This new vision for Archon replaces the old one (the agenteer). Archon used to be the AI agent that builds other agents, and now you can use Archon to do that and more.
+
+> It doesn't matter what you're building or if it's a new/existing codebase - Archon's knowledge and task management capabilities will improve the output of **any** AI driven coding.
 
 ## 🔗 Important Links
 
