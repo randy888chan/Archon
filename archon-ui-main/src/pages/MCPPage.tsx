@@ -9,6 +9,9 @@ import { mcpServerService, ServerStatus, LogEntry, ServerConfig } from '../servi
 import { IDEGlobalRules } from '../components/settings/IDEGlobalRules';
 // import { MCPClients } from '../components/mcp/MCPClients'; // Commented out - feature not implemented
 
+// Supported IDE/Agent types
+type SupportedIDE = 'windsurf' | 'cursor' | 'claudecode' | 'cline' | 'kiro' | 'augment';
+
 /**
  * MCP Dashboard Page Component
  * 
@@ -44,7 +47,7 @@ export const MCPPage = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isStarting, setIsStarting] = useState(false);
   const [isStopping, setIsStopping] = useState(false);
-  const [selectedIDE, setSelectedIDE] = useState<'windsurf' | 'cursor' | 'claudecode' | 'cline' | 'kiro' | 'augment'>('windsurf');
+  const [selectedIDE, setSelectedIDE] = useState<SupportedIDE>('windsurf');
   const logsEndRef = useRef<HTMLDivElement>(null);
   const logsContainerRef = useRef<HTMLDivElement>(null);
   const statusPollInterval = useRef<NodeJS.Timeout | null>(null);
@@ -214,15 +217,19 @@ export const MCPPage = () => {
 
 
 
-  const getConfigForIDE = (ide: 'windsurf' | 'cursor' | 'claudecode' | 'cline' | 'kiro' | 'augment') => {
-    if (!config) return '';
+  const getConfigForIDE = (ide: SupportedIDE) => {
+    if (!config || !config.host || !config.port) {
+      return '// Configuration not available. Please ensure the server is running.';
+    }
+    
+    const mcpUrl = `http://${config.host}:${config.port}/mcp`;
     
     switch(ide) {
       case 'claudecode':
         return JSON.stringify({
           name: "archon",
           transport: "http",
-          url: `http://${config.host}:${config.port}/mcp`
+          url: mcpUrl
         }, null, 2);
         
       case 'cline':
@@ -231,7 +238,7 @@ export const MCPPage = () => {
           mcpServers: {
             archon: {
               command: "npx",
-              args: ["mcp-remote", `http://${config.host}:${config.port}/mcp`]
+              args: ["mcp-remote", mcpUrl]
             }
           }
         }, null, 2);
@@ -240,7 +247,7 @@ export const MCPPage = () => {
         return JSON.stringify({
           mcpServers: {
             archon: {
-              serverUrl: `http://${config.host}:${config.port}/mcp`
+              serverUrl: mcpUrl
             }
           }
         }, null, 2);
@@ -251,7 +258,7 @@ export const MCPPage = () => {
         return JSON.stringify({
           mcpServers: {
             archon: {
-              url: `http://${config.host}:${config.port}/mcp`
+              url: mcpUrl
             }
           }
         }, null, 2);
@@ -261,7 +268,7 @@ export const MCPPage = () => {
     }
   };
 
-  const getIDEInstructions = (ide: 'windsurf' | 'cursor' | 'claudecode' | 'cline' | 'kiro' | 'augment') => {
+  const getIDEInstructions = (ide: SupportedIDE) => {
     switch (ide) {
       case 'windsurf':
         return {

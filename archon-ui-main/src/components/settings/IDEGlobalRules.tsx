@@ -507,8 +507,9 @@ archon:manage_task(
         </div>
 
         {/* Rule Type Selector */}
-        <div className="flex items-center space-x-6">
-          <label className="flex items-center">
+        <fieldset className="flex items-center space-x-6">
+          <legend className="sr-only">Select rule type</legend>
+          <label className="flex items-center cursor-pointer">
             <input
               type="radio"
               name="ruleType"
@@ -516,10 +517,11 @@ archon:manage_task(
               checked={selectedRuleType === 'claude'}
               onChange={() => setSelectedRuleType('claude')}
               className="mr-2 text-blue-500 focus:ring-blue-500"
+              aria-label="Claude Code Rules - Comprehensive Archon workflow instructions for Claude"
             />
             <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Claude Code Rules</span>
           </label>
-          <label className="flex items-center">
+          <label className="flex items-center cursor-pointer">
             <input
               type="radio"
               name="ruleType"
@@ -527,10 +529,11 @@ archon:manage_task(
               checked={selectedRuleType === 'universal'}
               onChange={() => setSelectedRuleType('universal')}
               className="mr-2 text-blue-500 focus:ring-blue-500"
+              aria-label="Universal Agent Rules - Simplified workflow for all other AI agents"
             />
             <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Universal Agent Rules</span>
           </label>
-        </div>
+        </fieldset>
 
         <div className="border border-blue-200 dark:border-blue-800/30 bg-gradient-to-br from-blue-500/10 to-blue-600/10 backdrop-blur-sm rounded-md h-[400px] flex flex-col">
           <div className="p-4 pb-2 border-b border-blue-200/50 dark:border-blue-800/30">
