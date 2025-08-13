@@ -16,6 +16,8 @@
 
 ## 🎯 What is Archon?
 
+> Archon is currently in beta! Expect things to not work 100%, and please feel free to share any feedback and contribute with fixes/new features!
+
 Archon is the **command center** for AI coding assistants. For you, it's a sleek interface to manage knowledge, context, and tasks for your projects. For the AI coding assistant(s), it's a **Model Context Protocol (MCP) server** to collaborate on and leverage the same knowledge, context, and tasks. Connect Claude Code, Kiro, Cursor, Windsurf, etc. to give your AI agents access to:
 
 - **Your documentation** (crawled websites, uploaded PDFs/docs)
@@ -32,7 +34,7 @@ This new vision for Archon replaces the old one (the agenteer). Archon used to b
 
 - **[GitHub Discussions](https://github.com/coleam00/Archon/discussions)** - Join the conversation and share ideas about Archon
 - **[Contributing Guide](CONTRIBUTING.md)** - How to get involved and contribute to Archon
-- **[Introduction Video](#)** - Coming Soon
+- **[Introduction Video](https://youtu.be/8pRc_s2VQIo)** - Getting Started Guide and Vision for Archon
 - **[Dynamous AI Mastery](https://dynamous.ai)** - The birthplace of Archon - come join a vibrant community of other early AI adopters all helping each other transform their careers and businesses!
 
 ## Quick Start
@@ -70,7 +72,7 @@ This new vision for Archon replaces the old one (the agenteer). Archon used to b
    This starts the core microservices:
    - **Server**: Core API and business logic (Port: 8181)
    - **MCP Server**: Protocol interface for AI clients (Port: 8051)
-   - **Agents**: AI operations and streaming (Port: 8052)
+   - **Agents (coming soon!)**: AI operations and streaming (Port: 8052)
    - **UI**: Web interface (Port: 3737)
 
    Ports are configurable in your .env as well!
@@ -125,17 +127,6 @@ Once everything is running:
 | **API Service** | archon-server | http://localhost:8181 | Web crawling, document processing |
 | **MCP Server** | archon-mcp | http://localhost:8051 | Model Context Protocol interface |
 | **Agents Service** | archon-agents | http://localhost:8052 | AI/ML operations, reranking |
-
-### Optional Documentation Service
-
-The documentation service is optional. To run it:
-
-```bash
-# Start core services + documentation
-docker-compose -f docker-compose.yml -f docker-compose.docs.yml up --build -d
-```
-
-Then access documentation at: **http://localhost:3838**
 
 ## What's Included
 

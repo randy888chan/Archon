@@ -168,9 +168,22 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
         </div>
       </div>
       {/* Floating Chat Button - Only visible when chat is closed */}
-      {!isChatOpen && <button onClick={() => setIsChatOpen(true)} className="fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full flex items-center justify-center backdrop-blur-md bg-gradient-to-b from-white/10 to-black/30 dark:from-white/10 dark:to-black/30 from-blue-100/80 to-blue-50/60 shadow-[0_0_20px_rgba(59,130,246,0.3)] dark:shadow-[0_0_20px_rgba(59,130,246,0.7)] hover:shadow-[0_0_25px_rgba(59,130,246,0.5)] dark:hover:shadow-[0_0_25px_rgba(59,130,246,0.9)] transition-all duration-300 overflow-hidden border border-blue-200 dark:border-transparent" aria-label="Open Knowledge Assistant">
-          <img src="/logo-neon.svg" alt="Archon" className="w-7 h-7" />
-        </button>}
+      {!isChatOpen && (
+        <div className="fixed bottom-6 right-6 z-50 group">
+          <button 
+            disabled
+            className="w-14 h-14 rounded-full flex items-center justify-center backdrop-blur-md bg-gradient-to-b from-gray-100/80 to-gray-50/60 dark:from-gray-700/30 dark:to-gray-800/30 shadow-[0_0_10px_rgba(156,163,175,0.3)] dark:shadow-[0_0_10px_rgba(156,163,175,0.3)] cursor-not-allowed opacity-60 overflow-hidden border border-gray-300 dark:border-gray-600" 
+            aria-label="Knowledge Assistant - Coming Soon">
+            <img src="/logo-neon.svg" alt="Archon" className="w-7 h-7 grayscale opacity-50" />
+          </button>
+          {/* Tooltip */}
+          <div className="absolute bottom-full right-0 mb-2 px-3 py-2 bg-gray-800 dark:bg-gray-900 text-white text-sm rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap">
+            <div className="font-medium">Coming Soon</div>
+            <div className="text-xs text-gray-300">Knowledge Assistant is under development</div>
+            <div className="absolute bottom-0 right-6 transform translate-y-1/2 rotate-45 w-2 h-2 bg-gray-800 dark:bg-gray-900"></div>
+          </div>
+        </div>
+      )}
       {/* Chat Sidebar - Slides in/out from right */}
       <div className="fixed top-0 right-0 h-full z-40 transition-transform duration-300 ease-in-out transform" style={{
       transform: isChatOpen ? 'translateX(0)' : 'translateX(100%)'
