@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { SideNavigation } from './SideNavigation';
 import { ArchonChatPanel } from './ArchonChatPanel';
 import { X } from 'lucide-react';
 import { useToast } from '../../contexts/ToastContext';
 import { credentialsService } from '../../services/credentialsService';
+import { isLmConfigured } from '../../utils/onboarding';
 /**
  * Props for the MainLayout component
  */
@@ -26,6 +27,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
   const [isChatOpen, setIsChatOpen] = useState(false);
   const { showToast } = useToast();
   const navigate = useNavigate();
+  const location = useLocation();
   const [backendReady, setBackendReady] = useState(false);
 
   // Check backend readiness
@@ -36,11 +38,17 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
       const retryDelay = 1000;
       
       try {
+        // Create AbortController for proper timeout handling
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        
         // Check if backend is responding with a simple health check
         const response = await fetch(`${credentialsService['baseUrl']}/health`, {
           method: 'GET',
-          timeout: 5000
-        } as any);
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
         
         if (response.ok) {
           const healthData = await response.json();
@@ -68,7 +76,10 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
           throw new Error(`Backend health check failed: ${response.status}`);
         }
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        // Handle AbortError separately for timeout
+        const errorMessage = error instanceof Error 
+          ? (error.name === 'AbortError' ? 'Request timeout (5s)' : error.message)
+          : 'Unknown error';
         console.log(`Backend not ready yet (attempt ${retryCount + 1}/${maxRetries}):`, errorMessage);
         
         // Retry if we haven't exceeded max retries
@@ -89,6 +100,59 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
       checkBackendHealth();
     }, 1000); // Wait 1 second for initial app startup
   }, [showToast, navigate]); // Removed backendReady from dependencies to prevent double execution
+
+  // Check for onboarding redirect after backend is ready
+  useEffect(() => {
+    const checkOnboarding = async () => {
+      // Skip if not ready, already on onboarding, or already dismissed
+      if (!backendReady || location.pathname === '/onboarding') {
+        return;
+      }
+
+      // Check if onboarding was already dismissed
+      if (localStorage.getItem('onboardingDismissed') === 'true') {
+        return;
+      }
+
+      try {
+        // Fetch credentials in parallel
+        const [ragCreds, apiKeyCreds] = await Promise.all([
+          credentialsService.getCredentialsByCategory('rag_strategy'),
+          credentialsService.getCredentialsByCategory('api_keys')
+        ]);
+
+        // Check if LM is configured
+        const configured = isLmConfigured(ragCreds, apiKeyCreds);
+        
+        if (!configured) {
+          // Redirect to onboarding
+          navigate('/onboarding', { replace: true });
+        }
+      } catch (error) {
+        // Detailed error handling per alpha principles - fail loud but don't block
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        const errorDetails = {
+          context: 'Onboarding configuration check',
+          pathname: location.pathname,
+          error: errorMessage,
+          timestamp: new Date().toISOString()
+        };
+        
+        // Log with full context and stack trace
+        console.error('ONBOARDING_CHECK_FAILED:', errorDetails, error);
+        
+        // Make error visible to user but don't block app functionality
+        showToast(
+          `Configuration check failed: ${errorMessage}. You can manually configure in Settings.`,
+          'warning'
+        );
+        
+        // Let user continue - onboarding is optional, they can configure manually
+      }
+    };
+
+    checkOnboarding();
+  }, [backendReady, location.pathname, navigate, showToast]);
 
   return <div className="relative min-h-screen bg-white dark:bg-black overflow-hidden">
       {/* Fixed full-page background grid that doesn't scroll */}
