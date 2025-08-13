@@ -570,7 +570,6 @@ async def list_tasks(
         task_service = TaskService()
         success, result = task_service.list_tasks(
             project_id=project_id,
-            parent_task_id=parent_task_id,
             status=status,
             include_closed=include_closed,
         )
