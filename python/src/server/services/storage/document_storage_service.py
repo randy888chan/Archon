@@ -19,6 +19,33 @@ from ..embeddings.dimension_validator import (
 from ..embeddings.exceptions import VectorStorageError, DimensionValidationError
 
 
+def extract_source_id_from_url(url: str) -> str:
+    """
+    Extract a meaningful source_id from a URL.
+    
+    For GitHub URLs, includes the repository path (e.g., github.com/user/repo).
+    For other URLs, uses the domain.
+    
+    Args:
+        url: The URL to extract source_id from
+        
+    Returns:
+        str: The extracted source_id
+    """
+    parsed_url = urlparse(url)
+    domain = parsed_url.netloc or parsed_url.path
+    
+    # Special handling for GitHub URLs to include repository path
+    if domain == "github.com" and parsed_url.path:
+        # Extract user/repo from path like /user/repo/blob/main/file.py
+        path_parts = [part for part in parsed_url.path.split('/') if part]
+        if len(path_parts) >= 2:
+            # Include github.com/user/repo
+            return f"github.com/{path_parts[0]}/{path_parts[1]}"
+    
+    return domain
+
+
 async def add_documents_to_supabase(
     client,
     urls: list[str],
@@ -298,8 +325,7 @@ async def add_documents_to_supabase(
                     source_id = batch_metadatas[j]["source_id"]
                 else:
                     # Fallback: Extract source_id from URL
-                    parsed_url = urlparse(batch_urls[j])
-                    source_id = parsed_url.netloc or parsed_url.path
+                    source_id = extract_source_id_from_url(batch_urls[j])
                 
                 # Get appropriate embedding column name based on dimensions
                 try:

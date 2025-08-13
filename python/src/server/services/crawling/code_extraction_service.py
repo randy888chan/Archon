@@ -17,6 +17,33 @@ from ..storage.code_storage_service import (
 )
 
 
+def extract_source_id_from_url(url: str) -> str:
+    """
+    Extract a meaningful source_id from a URL.
+    
+    For GitHub URLs, includes the repository path (e.g., github.com/user/repo).
+    For other URLs, uses the domain.
+    
+    Args:
+        url: The URL to extract source_id from
+        
+    Returns:
+        str: The extracted source_id
+    """
+    parsed_url = urlparse(url)
+    domain = parsed_url.netloc or parsed_url.path
+    
+    # Special handling for GitHub URLs to include repository path
+    if domain == "github.com" and parsed_url.path:
+        # Extract user/repo from path like /user/repo/blob/main/file.py
+        path_parts = [part for part in parsed_url.path.split('/') if part]
+        if len(path_parts) >= 2:
+            # Include github.com/user/repo
+            return f"github.com/{path_parts[0]}/{path_parts[1]}"
+    
+    return domain
+
+
 class CodeExtractionService:
     """
     Service for extracting and processing code examples from documents.
@@ -307,8 +334,7 @@ class CodeExtractionService:
 
                 if code_blocks:
                     # Always extract source_id from URL
-                    parsed_url = urlparse(source_url)
-                    source_id = parsed_url.netloc or parsed_url.path
+                    source_id = extract_source_id_from_url(source_url)
 
                     for block in code_blocks:
                         all_code_blocks.append({

@@ -14,6 +14,34 @@ from urllib.parse import urlparse
 from ...config.logfire_config import safe_logfire_info, safe_logfire_error, get_logger
 from ...utils import get_supabase_client
 
+
+def extract_source_id_from_url(url: str) -> str:
+    """
+    Extract a meaningful source_id from a URL.
+    
+    For GitHub URLs, includes the repository path (e.g., github.com/user/repo).
+    For other URLs, uses the domain.
+    
+    Args:
+        url: The URL to extract source_id from
+        
+    Returns:
+        str: The extracted source_id
+    """
+    parsed_url = urlparse(url)
+    domain = parsed_url.netloc or parsed_url.path
+    
+    # Special handling for GitHub URLs to include repository path
+    if domain == "github.com" and parsed_url.path:
+        # Extract user/repo from path like /user/repo/blob/main/file.py
+        path_parts = [part for part in parsed_url.path.split('/') if part]
+        if len(path_parts) >= 2:
+            # Include github.com/user/repo
+            return f"github.com/{path_parts[0]}/{path_parts[1]}"
+    
+    return domain
+
+
 # Lazy import socket.IO handlers to avoid circular dependencies
 # These are imported as module-level variables but resolved at runtime
 update_crawl_progress = None
@@ -279,8 +307,7 @@ class CrawlingService:
             safe_logfire_info(f"Starting async crawl orchestration | url={url} | task_id={task_id}")
             
             # Extract source_id from the original URL
-            parsed_original_url = urlparse(url)
-            original_source_id = parsed_original_url.netloc or parsed_original_url.path
+            original_source_id = extract_source_id_from_url(url)
             safe_logfire_info(f"Using source_id '{original_source_id}' from original URL '{url}'")
             
             # Helper to update progress with mapper
