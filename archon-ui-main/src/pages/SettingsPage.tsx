@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Loader, Settings, ChevronDown, ChevronUp, Palette, Key, Brain, Code, Activity, FileCode, Bug } from 'lucide-react';
+import { Loader, Settings, ChevronDown, ChevronUp, Palette, Key, Brain, Code, Activity, Bug } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useToast } from '../contexts/ToastContext';
 import { useSettings } from '../contexts/SettingsContext';
@@ -9,7 +9,6 @@ import { APIKeysSection } from '../components/settings/APIKeysSection';
 import { RAGSettings } from '../components/settings/RAGSettings';
 import { CodeExtractionSettings } from '../components/settings/CodeExtractionSettings';
 import { TestStatus } from '../components/settings/TestStatus';
-import { IDEGlobalRules } from '../components/settings/IDEGlobalRules';
 import { ButtonPlayground } from '../components/settings/ButtonPlayground';
 import { CollapsibleSettingsCard } from '../components/ui/CollapsibleSettingsCard';
 import { BugReportButton } from '../components/bug-report/BugReportButton';
@@ -43,7 +42,6 @@ export const SettingsPage = () => {
   const [showButtonPlayground, setShowButtonPlayground] = useState(false);
 
   const { showToast } = useToast();
-  const { projectsEnabled } = useSettings();
   
   // Use staggered entrance animation
   const { isVisible, containerVariants, itemVariants, titleVariants } = useStaggeredEntrance(
@@ -118,19 +116,6 @@ export const SettingsPage = () => {
               <FeaturesSection />
             </CollapsibleSettingsCard>
           </motion.div>
-          {projectsEnabled && (
-            <motion.div variants={itemVariants}>
-              <CollapsibleSettingsCard
-                title="IDE Global Rules"
-                icon={FileCode}
-                accentColor="pink"
-                storageKey="ide-rules"
-                defaultExpanded={true}
-              >
-                <IDEGlobalRules />
-              </CollapsibleSettingsCard>
-            </motion.div>
-          )}
           <motion.div variants={itemVariants}>
             <CollapsibleSettingsCard
               title="Test Status"

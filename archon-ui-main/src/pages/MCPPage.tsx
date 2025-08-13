@@ -6,6 +6,7 @@ import { Button } from '../components/ui/Button';
 import { useStaggeredEntrance } from '../hooks/useStaggeredEntrance';
 import { useToast } from '../contexts/ToastContext';
 import { mcpServerService, ServerStatus, LogEntry, ServerConfig } from '../services/mcpServerService';
+import { IDEGlobalRules } from '../components/settings/IDEGlobalRules';
 // import { MCPClients } from '../components/mcp/MCPClients'; // Commented out - feature not implemented
 
 /**
@@ -43,7 +44,7 @@ export const MCPPage = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isStarting, setIsStarting] = useState(false);
   const [isStopping, setIsStopping] = useState(false);
-  const [selectedIDE, setSelectedIDE] = useState<'windsurf' | 'cursor' | 'claudecode'>('windsurf');
+  const [selectedIDE, setSelectedIDE] = useState<'windsurf' | 'cursor' | 'claudecode' | 'cline' | 'kiro' | 'augment'>('windsurf');
   const logsEndRef = useRef<HTMLDivElement>(null);
   const logsContainerRef = useRef<HTMLDivElement>(null);
   const statusPollInterval = useRef<NodeJS.Timeout | null>(null);
@@ -213,41 +214,54 @@ export const MCPPage = () => {
 
 
 
-  const getConfigForIDE = (ide: 'windsurf' | 'cursor' | 'claudecode') => {
+  const getConfigForIDE = (ide: 'windsurf' | 'cursor' | 'claudecode' | 'cline' | 'kiro' | 'augment') => {
     if (!config) return '';
     
-    if (ide === 'cursor') {
-      // Cursor connecting to Streamable HTTP server
-      const cursorConfig = {
-        mcpServers: {
-          archon: {
-            url: `http://${config.host}:${config.port}/mcp`
+    switch(ide) {
+      case 'claudecode':
+        return JSON.stringify({
+          name: "archon",
+          transport: "http",
+          url: `http://${config.host}:${config.port}/mcp`
+        }, null, 2);
+        
+      case 'cline':
+        // Cline uses stdio transport with mcp-remote
+        return JSON.stringify({
+          mcpServers: {
+            archon: {
+              command: "npx",
+              args: ["mcp-remote", `http://${config.host}:${config.port}/mcp`]
+            }
           }
-        }
-      };
-      return JSON.stringify(cursorConfig, null, 2);
-    } else if (ide === 'windsurf') {
-      // Windsurf can use Streamable HTTP transport
-      const windsurfConfig = {
-        mcpServers: {
-          archon: {
-            "serverUrl": `http://${config.host}:${config.port}/mcp`
+        }, null, 2);
+        
+      case 'windsurf':
+        return JSON.stringify({
+          mcpServers: {
+            archon: {
+              serverUrl: `http://${config.host}:${config.port}/mcp`
+            }
           }
-        }
-      };
-      return JSON.stringify(windsurfConfig, null, 2);
-    } else {
-      // Claude Code uses CLI commands, show HTTP config as example
-      const claudeConfig = {
-        name: "archon",
-        transport: "http",
-        url: `http://${config.host}:${config.port}/mcp`
-      };
-      return JSON.stringify(claudeConfig, null, 2);
+        }, null, 2);
+        
+      case 'cursor':
+      case 'kiro':
+      case 'augment':
+        return JSON.stringify({
+          mcpServers: {
+            archon: {
+              url: `http://${config.host}:${config.port}/mcp`
+            }
+          }
+        }, null, 2);
+        
+      default:
+        return '';
     }
   };
 
-  const getIDEInstructions = (ide: 'windsurf' | 'cursor' | 'claudecode') => {
+  const getIDEInstructions = (ide: 'windsurf' | 'cursor' | 'claudecode' | 'cline' | 'kiro' | 'augment') => {
     switch (ide) {
       case 'windsurf':
         return {
@@ -277,6 +291,42 @@ export const MCPPage = () => {
             `2. claude mcp add --transport http archon http://${config?.host}:${config?.port}/mcp`,
             '3. The connection will be established automatically'
           ]
+        };
+      case 'cline':
+        return {
+          title: 'Cline Configuration',
+          steps: [
+            '1. Open VS Code settings (Cmd/Ctrl + ,)',
+            '2. Search for "cline.mcpServers"',
+            '3. Click "Edit in settings.json"',
+            '4. Add the configuration shown below',
+            '5. Restart VS Code for changes to take effect'
+          ]
+        };
+      case 'kiro':
+        return {
+          title: 'Kiro Configuration',
+          steps: [
+            '1. Open Kiro settings',
+            '2. Navigate to MCP Servers section',
+            '3. Add the configuration shown below',
+            '4. Save and restart Kiro'
+          ]
+        };
+      case 'augment':
+        return {
+          title: 'Augment Configuration',
+          steps: [
+            '1. Open Augment settings',
+            '2. Navigate to Extensions > MCP',
+            '3. Add the configuration shown below',
+            '4. Reload configuration'
+          ]
+        };
+      default:
+        return {
+          title: 'Configuration',
+          steps: ['Add the configuration to your IDE settings']
         };
     }
   };
@@ -483,16 +533,16 @@ export const MCPPage = () => {
                     
                     {/* IDE Selection Tabs */}
                     <div className="mb-4">
-                      <div className="flex border-b border-gray-200 dark:border-zinc-700 mb-3">
+                      <div className="flex flex-wrap border-b border-gray-200 dark:border-zinc-700 mb-3">
                         <button
-                          onClick={() => setSelectedIDE('windsurf')}
+                          onClick={() => setSelectedIDE('claudecode')}
                           className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-                            selectedIDE === 'windsurf'
+                            selectedIDE === 'claudecode'
                               ? 'border-blue-500 text-blue-600 dark:text-blue-400'
                               : 'border-transparent text-gray-500 dark:text-zinc-400 hover:text-gray-700 dark:hover:text-zinc-300'
                           } cursor-pointer`}
                         >
-                          Windsurf
+                          Claude Code
                         </button>
                         <button
                           onClick={() => setSelectedIDE('cursor')}
@@ -505,14 +555,44 @@ export const MCPPage = () => {
                           Cursor
                         </button>
                         <button
-                          onClick={() => setSelectedIDE('claudecode')}
+                          onClick={() => setSelectedIDE('windsurf')}
                           className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-                            selectedIDE === 'claudecode'
+                            selectedIDE === 'windsurf'
                               ? 'border-blue-500 text-blue-600 dark:text-blue-400'
                               : 'border-transparent text-gray-500 dark:text-zinc-400 hover:text-gray-700 dark:hover:text-zinc-300'
                           } cursor-pointer`}
                         >
-                          Claude Code
+                          Windsurf
+                        </button>
+                        <button
+                          onClick={() => setSelectedIDE('cline')}
+                          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                            selectedIDE === 'cline'
+                              ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                              : 'border-transparent text-gray-500 dark:text-zinc-400 hover:text-gray-700 dark:hover:text-zinc-300'
+                          } cursor-pointer`}
+                        >
+                          Cline
+                        </button>
+                        <button
+                          onClick={() => setSelectedIDE('kiro')}
+                          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                            selectedIDE === 'kiro'
+                              ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                              : 'border-transparent text-gray-500 dark:text-zinc-400 hover:text-gray-700 dark:hover:text-zinc-300'
+                          } cursor-pointer`}
+                        >
+                          Kiro
+                        </button>
+                        <button
+                          onClick={() => setSelectedIDE('augment')}
+                          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                            selectedIDE === 'augment'
+                              ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                              : 'border-transparent text-gray-500 dark:text-zinc-400 hover:text-gray-700 dark:hover:text-zinc-300'
+                          } cursor-pointer`}
+                        >
+                          Augment
                         </button>
                       </div>
                     </div>
@@ -538,7 +618,15 @@ export const MCPPage = () => {
                           ? 'Copy this configuration and add it to ~/.cursor/mcp.json'
                           : selectedIDE === 'windsurf'
                           ? 'Copy this configuration and add it to your Windsurf MCP settings'
-                          : 'This shows the configuration format for Claude Code'
+                          : selectedIDE === 'claudecode'
+                          ? 'This shows the configuration format for Claude Code'
+                          : selectedIDE === 'cline'
+                          ? 'Copy this configuration and add it to VS Code settings.json under "cline.mcpServers"'
+                          : selectedIDE === 'kiro'
+                          ? 'Copy this configuration and add it to your Kiro MCP settings'
+                          : selectedIDE === 'augment'
+                          ? 'Copy this configuration and add it to your Augment MCP settings'
+                          : 'Copy this configuration and add it to your IDE settings'
                         }
                       </p>
                     </div>
@@ -622,6 +710,15 @@ export const MCPPage = () => {
                 </div>
               </Card>
             </div>
+          </motion.div>
+
+          {/* Global Rules Section */}
+          <motion.div className="mt-6" variants={itemVariants}>
+            <h2 className="text-xl font-semibold text-gray-800 dark:text-white mb-4 flex items-center">
+              <Server className="mr-2 text-pink-500" size={20} />
+              Global IDE Rules
+            </h2>
+            <IDEGlobalRules />
           </motion.div>
         </>
       )}
