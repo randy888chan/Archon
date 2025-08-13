@@ -19,15 +19,7 @@ export default defineConfig(({ mode }: ConfigEnv): UserConfig => {
   const internalHost = 'archon-server';  // Docker service name for internal communication
   const externalHost = process.env.HOST || 'localhost';  // Host for external access
   const host = isDocker ? internalHost : externalHost;
-  const port = process.env.ARCHON_SERVER_PORT;
-  
-  if (!port) {
-    throw new Error(
-      'ARCHON_SERVER_PORT environment variable is required. ' +
-      'Please set it in your .env file or environment. ' +
-      'Default value: 8181'
-    );
-  }
+  const port = process.env.ARCHON_SERVER_PORT || env.ARCHON_SERVER_PORT || '8181';
   
   return {
     plugins: [
