@@ -30,9 +30,9 @@ class RAGStrategyConfig:
     """Configuration for RAG strategies."""
 
     use_contextual_embeddings: bool = False
-    use_hybrid_search: bool = False
-    use_agentic_rag: bool = False
-    use_reranking: bool = False
+    use_hybrid_search: bool = True
+    use_agentic_rag: bool = True
+    use_reranking: bool = True
 
 
 def validate_openai_api_key(api_key: str) -> bool:
