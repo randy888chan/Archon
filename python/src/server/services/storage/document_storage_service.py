@@ -9,14 +9,14 @@ import os
 from typing import Any
 from urllib.parse import urlparse
 
-from ...config.logfire_config import search_logger, safe_span
-from ..embeddings.embedding_service import create_embeddings_batch, get_dimension_column_name
+from ...config.logfire_config import safe_span, search_logger
+from ..credential_service import credential_service
 from ..embeddings.contextual_embedding_service import generate_contextual_embeddings_batch
+from ..embeddings.embedding_service import create_embeddings_batch, get_dimension_column_name
 from ..embeddings.dimension_validator import (
     get_safe_dimension_column, log_dimension_operation, validate_batch_consistency
 )
 from ..embeddings.exceptions import VectorStorageError, DimensionValidationError
-from ..credential_service import credential_service
 
 
 async def add_documents_to_supabase(
@@ -274,7 +274,7 @@ async def add_documents_to_supabase(
             except Exception as validation_error:
                 search_logger.error(f"Batch validation failed: {validation_error}")
                 log_dimension_operation("document_storage", 1536, False, f"Validation error: {validation_error}")
-
+            
             # Prepare batch data - only for successful embeddings
             batch_data = []
             # Map successful texts back to their original indices
@@ -310,13 +310,14 @@ async def add_documents_to_supabase(
                     # Fallback to default 1536-dimensional column
                     column_name = "embedding_1536"
                 
+
                 data = {
                     "url": batch_urls[j],
                     "chunk_number": batch_chunk_numbers[j],
                     "content": text,  # Use the successful text
                     "metadata": {"chunk_size": len(text), **batch_metadatas[j]},
                     "source_id": source_id,
-                    column_name: embedding,  # Use the successful embedding with dynamic column name
+                    column_name: embedding  # Use the successful embedding with the appropriate column name
                 }
                 batch_data.append(data)
 

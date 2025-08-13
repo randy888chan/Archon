@@ -82,6 +82,19 @@ def get_embedding_dimensions(model_name: str) -> int:
     Returns:
         Number of dimensions for the model
     """
+    # Import the new dimension service 
+    from .embedding_dimension_service import embedding_dimension_service
+    
+    # Try to get dimensions from the new service first
+    try:
+        # Use the new dimension service which has comprehensive model support
+        dimensions = embedding_dimension_service._get_known_model_dimension(model_name)
+        if dimensions:
+            return dimensions
+    except Exception as e:
+        search_logger.warning(f"Failed to get dimensions from dimension service: {e}")
+    
+    # Fallback to legacy hardcoded dimensions for backward compatibility
     # OpenAI models
     if model_name in ['text-embedding-3-large']:
         return 3072
@@ -94,6 +107,9 @@ def get_embedding_dimensions(model_name: str) -> int:
         return 768
     elif 'all-MiniLM-L12-v2' in model_name:
         return 384
+    # Ollama models - now handled by dimension service, but keep one for fallback
+    elif 'snowflake-arctic-embed2' in model_name:
+        return 1024  # Updated to correct dimension
     # Default fallback
     else:
         search_logger.warning(f"Unknown model dimensions for {model_name}, defaulting to 1536")
@@ -186,6 +202,10 @@ async def create_embedding(text: str, provider: str | None = None) -> list[float
                 f"Embedding error: {error_msg}", text_preview=text, original_error=e
             )
 
+# Alias for backward compatibility with tests and other modules
+create_embedding_async = create_embedding
+
+
 
 async def create_embeddings_batch(
     texts: list[str],
@@ -247,9 +267,7 @@ async def create_embeddings_batch(
                         "rag_strategy"
                     )
                     batch_size = int(rag_settings.get("EMBEDDING_BATCH_SIZE", "100"))
-                    # Get dimensions from the actual model being used
-                    embedding_model = await get_embedding_model(provider=provider)
-                    embedding_dimensions = get_embedding_dimensions(embedding_model)
+                    embedding_dimensions = int(rag_settings.get("EMBEDDING_DIMENSIONS", "1536"))
                 except Exception as e:
                     search_logger.warning(f"Failed to load embedding settings: {e}, using defaults")
                     batch_size = 100
@@ -278,23 +296,25 @@ async def create_embeddings_batch(
                                     response = await client.embeddings.create(
                                         model=embedding_model,
                                         input=batch,
-                                        dimensions=embedding_dimensions,
+                                        dimensions=get_embedding_dimensions(embedding_model)
                                     )
-
-                                    # Add successful embeddings with validation
+                                    
+                                    # Extract embeddings and validate consistency
                                     batch_embeddings = [item.embedding for item in response.data]
                                     
-                                    # Validate embedding dimensions and consistency
+                                    # Validate embedding dimensions
+                                    embedding_model_dims = get_embedding_dimensions(embedding_model)
                                     is_consistent, consistency_msg = validate_batch_consistency(batch_embeddings)
-                                    if not is_consistent:
-                                        search_logger.warning(f"Batch {batch_index} consistency validation failed: {consistency_msg}")
-                                        log_dimension_operation("embedding_creation", embedding_dimensions, False, consistency_msg)
-                                    else:
-                                        log_dimension_operation("embedding_creation", embedding_dimensions, True)
                                     
-                                    for text, embedding in zip(batch, batch_embeddings, strict=False):
+                                    if not is_consistent:
+                                        search_logger.warning(f"Batch consistency validation failed: {consistency_msg}")
+                                        log_dimension_operation("embedding_creation", embedding_model_dims, False, consistency_msg)
+                                    else:
+                                        log_dimension_operation("embedding_creation", embedding_model_dims, True)
+                                    
+                                    # Add successful embeddings
+                                    for text, embedding in zip(batch, batch_embeddings):
                                         result.add_success(embedding, text)
-
                                     break  # Success, exit retry loop
 
                                 except openai.RateLimitError as e:

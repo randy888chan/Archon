@@ -28,11 +28,9 @@ from .api_routes.mcp_api import router as mcp_router
 from .api_routes.projects_api import router as projects_router
 
 # Import Socket.IO handlers to ensure they're registered
-from .api_routes import socketio_handlers  # This registers all Socket.IO event handlers
-
-# Import modular API routers
 from .api_routes.settings_api import router as settings_router
 from .api_routes.tests_api import router as tests_router
+from .api_routes.embedding_model_api import router as embedding_model_router
 
 # Import Logfire configuration
 from .config.logfire_config import api_logger, setup_logfire
@@ -212,6 +210,7 @@ app.include_router(agent_chat_router)
 app.include_router(internal_router)
 app.include_router(coverage_router)
 app.include_router(bug_report_router)
+app.include_router(embedding_model_router)
 
 
 # Root endpoint

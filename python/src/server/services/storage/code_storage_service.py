@@ -909,7 +909,7 @@ async def add_code_examples_to_supabase(
                 "summary": summaries[idx],
                 "metadata": metadatas[idx],  # Store as JSON object, not string
                 "source_id": source_id,
-                column_name: embedding,
+                column_name: embedding
             })
 
         # Insert batch into Supabase with retry logic
