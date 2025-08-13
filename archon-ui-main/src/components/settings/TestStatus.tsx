@@ -177,7 +177,7 @@ export const TestStatus = () => {
   const handleStreamMessage = (testType: TestType, message: TestStreamMessage) => {
     updateTestState(testType, (prev) => {
       const newLogs = [...prev.logs];
-      let newResults = [...prev.results];
+      const newResults = [...prev.results];
 
       switch (message.type) {
         case 'status':

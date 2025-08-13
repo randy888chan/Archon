@@ -66,7 +66,7 @@ const ReactFlowDiagram = ({ reactFlowInstance, lucideIcons }) => {
       id: 'claude',
       type: 'ide', 
       position: { x: 50, y: 150 },
-      data: { label: 'Claude Desktop', icon: '/img/claude-logo.svg' },
+      data: { label: 'Claude Code', icon: '/img/claude-logo.svg' },
       draggable: false
     },
     {

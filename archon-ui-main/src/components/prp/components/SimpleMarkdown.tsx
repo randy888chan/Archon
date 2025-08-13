@@ -38,7 +38,7 @@ export const SimpleMarkdown: React.FC<SimpleMarkdownProps> = ({ content, classNa
   };
   
   const processInlineMarkdown = (text: string): React.ReactNode => {
-    let processed = text;
+    const processed = text;
     const elements: React.ReactNode[] = [];
     let lastIndex = 0;
     
@@ -55,7 +55,7 @@ export const SimpleMarkdown: React.FC<SimpleMarkdownProps> = ({ content, classNa
     
     // Process *italic* text
     const italicRegex = /\*(.*?)\*/g;
-    let remainingText = processed.slice(lastIndex);
+    const remainingText = processed.slice(lastIndex);
     lastIndex = 0;
     const italicElements: React.ReactNode[] = [];
     
