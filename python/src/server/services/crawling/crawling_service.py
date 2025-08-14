@@ -62,7 +62,7 @@ def _ensure_socketio_imports():
     """Ensure socket.IO handlers are imported."""
     global update_crawl_progress, complete_crawl_progress
     if update_crawl_progress is None:
-        from ....api_routes.socketio_handlers import update_crawl_progress as _update, complete_crawl_progress as _complete
+        from ...api_routes.socketio_handlers import update_crawl_progress as _update, complete_crawl_progress as _complete
         update_crawl_progress = _update
         complete_crawl_progress = _complete
 
@@ -241,7 +241,7 @@ class CrawlingService:
         if self.progress_mapper.should_send_heartbeat():
             heartbeat_data = self.progress_mapper.generate_heartbeat()
             heartbeat_data['progressId'] = self.progress_id
-            from ..api_routes.socketio_handlers import broadcast_crawl_heartbeat
+            from ...api_routes.socketio_handlers import broadcast_crawl_heartbeat
             await broadcast_crawl_heartbeat(self.progress_id, heartbeat_data)
         
         # Check for stalls and broadcast stall detection
@@ -254,7 +254,7 @@ class CrawlingService:
                 'last_update': enhanced_progress.get('last_update'),
                 'suggested_action': 'Please check system resources or consider restarting the operation'
             }
-            from ..api_routes.socketio_handlers import broadcast_stall_detection
+            from ...api_routes.socketio_handlers import broadcast_stall_detection
             await broadcast_stall_detection(self.progress_id, stall_data)
         
         # Broadcast performance metrics if available
@@ -263,7 +263,7 @@ class CrawlingService:
                 'progressId': self.progress_id,
                 **self.progress_mapper.get_performance_metrics()
             }
-            from ....api_routes.socketio_handlers import broadcast_crawl_performance
+            from ...api_routes.socketio_handlers import broadcast_crawl_performance
             await broadcast_crawl_performance(self.progress_id, performance_data)
         
         # Always emit enhanced progress updates for real-time feedback
@@ -460,14 +460,54 @@ class CrawlingService:
                     
                     await update_crawl_progress(self.progress_id, self.progress_state)
             
-            storage_results = await self.doc_storage_ops.process_and_store_documents(
-                crawl_results,
-                request,
-                crawl_type,
-                original_source_id,
-                doc_storage_callback,
-                self._check_cancellation
-            )
+            # ENHANCED LOGGING: Wrap document storage with detailed exception capture
+            try:
+                safe_logfire_info("🚀 CALLING process_and_store_documents")
+                safe_logfire_info(f"  • crawl_results count: {len(crawl_results)}")
+                safe_logfire_info(f"  • request keys: {list(request.keys())}")
+                safe_logfire_info(f"  • crawl_type: {crawl_type}")
+                safe_logfire_info(f"  • original_source_id: {original_source_id}")
+                safe_logfire_info(f"  • doc_storage_ops: {type(self.doc_storage_ops)}")
+                
+                storage_results = await self.doc_storage_ops.process_and_store_documents(
+                    crawl_results,
+                    request,
+                    crawl_type,
+                    original_source_id,
+                    doc_storage_callback,
+                    self._check_cancellation
+                )
+                
+                safe_logfire_info("✅ SUCCESSFULLY COMPLETED process_and_store_documents")
+                safe_logfire_info(f"  • storage_results keys: {list(storage_results.keys()) if storage_results else 'None'}")
+                
+            except Exception as doc_storage_error:
+                # CRITICAL: This is the exact error causing the processing stage failure!
+                import traceback
+                error_details = {
+                    "function": "process_and_store_documents",
+                    "error_type": type(doc_storage_error).__name__,
+                    "error_message": str(doc_storage_error),
+                    "traceback": traceback.format_exc(),
+                    "crawl_results_count": len(crawl_results),
+                    "request_keys": list(request.keys()),
+                    "crawl_type": crawl_type,
+                    "original_source_id": original_source_id,
+                    "doc_storage_ops_type": str(type(self.doc_storage_ops))
+                }
+                
+                safe_logfire_error("❌ DOCUMENT STORAGE FAILURE - THIS IS THE ROOT CAUSE!")
+                safe_logfire_error("=" * 80)
+                safe_logfire_error(f"ERROR TYPE: {error_details['error_type']}")
+                safe_logfire_error(f"ERROR MESSAGE: {error_details['error_message']}")
+                safe_logfire_error(f"CRAWL RESULTS COUNT: {error_details['crawl_results_count']}")
+                safe_logfire_error(f"ORIGINAL SOURCE ID: {error_details['original_source_id']}")
+                safe_logfire_error("FULL TRACEBACK:")
+                safe_logfire_error(error_details['traceback'])
+                safe_logfire_error("=" * 80)
+                
+                # Re-raise to be caught by the main exception handler
+                raise doc_storage_error
             
             # Check for cancellation after document storage
             self._check_cancellation()
@@ -557,7 +597,21 @@ class CrawlingService:
                 unregister_orchestration(self.progress_id)
                 safe_logfire_info(f"Unregistered orchestration service on cancellation | progress_id={self.progress_id}")
         except Exception as e:
-            safe_logfire_error(f"Async crawl orchestration failed | error={str(e)}")
+            # Enhanced error logging with full diagnostics
+            import traceback
+            error_details = {
+                "error_type": type(e).__name__,
+                "error_message": str(e),
+                "traceback": traceback.format_exc(),
+                "progress_id": self.progress_id,
+                "url": url if 'url' in locals() else 'unknown',
+                "crawl_type": crawl_type if 'crawl_type' in locals() else 'unknown',
+                "stage": "orchestration"
+            }
+            
+            safe_logfire_error(f"CRITICAL: Async crawl orchestration failed | error={str(e)}")
+            safe_logfire_error(f"Full error diagnostics: {error_details}")
+            
             await self._handle_progress_update(task_id, {
                 'status': 'error',
                 'percentage': -1,

@@ -113,40 +113,59 @@ async def broadcast_progress_update(progress_id: str, progress_data: dict):
 
 
 async def broadcast_crawl_progress(progress_id: str, data: dict):
-    """Broadcast crawl progress to subscribers with resilience and rate limiting."""
+    """Enhanced broadcast crawl progress with performance metrics and heartbeat support."""
     # Ensure progressId is included in the data
     data["progressId"] = progress_id
 
-    # Rate limiting: Check if we've broadcasted too recently
+    # Add timestamp if not present
+    if "timestamp" not in data:
+        data["timestamp"] = time.time()
+
+    # Rate limiting with enhanced logic for different event types
     current_time = time.time()
     last_broadcast = _last_broadcast_times.get(progress_id, 0)
     time_since_last = current_time - last_broadcast
 
-    # Skip this update if it's too soon (except for important statuses)
-    important_statuses = ["error", "completed", "complete", "starting"]
+    # Important events that should always be broadcast
+    important_statuses = ["error", "completed", "complete", "starting", "stalled"]
     current_status = data.get("status", "")
+    event_type = data.get("type", "progress")
 
-    if time_since_last < _min_broadcast_interval and current_status not in important_statuses:
-        # Skip this update - too frequent
+    # Different rate limiting for different event types
+    should_broadcast = False
+    
+    if event_type == "heartbeat":
+        # Heartbeats have their own rate limiting (every 5 seconds)
+        should_broadcast = time_since_last >= 5.0
+    elif current_status in important_statuses:
+        # Always broadcast important status changes
+        should_broadcast = True
+    elif "substage" in data and data["substage"]:
+        # Substage updates get reduced rate limiting
+        should_broadcast = time_since_last >= 0.5  # 500ms for substage updates
+    else:
+        # Regular progress updates use standard rate limiting
+        should_broadcast = time_since_last >= _min_broadcast_interval
+
+    if not should_broadcast:
         return
 
     # Update last broadcast time
     _last_broadcast_times[progress_id] = current_time
 
     # Clean up old entries (older than 5 minutes)
-    if len(_last_broadcast_times) > 100:  # Only clean when it gets large
+    if len(_last_broadcast_times) > 100:
         cutoff_time = current_time - 300  # 5 minutes
         old_keys = [pid for pid, t in _last_broadcast_times.items() if t <= cutoff_time]
         for key in old_keys:
             del _last_broadcast_times[key]
 
-    # Add resilience - don't let Socket.IO errors crash the crawl
+    # Enhanced logging with performance metrics
     try:
         # Get detailed room info for debugging
         room_sids = []
         all_rooms = {}
         if hasattr(sio.manager, "rooms"):
-            # Get all rooms for all namespaces
             for namespace in sio.manager.rooms:
                 all_rooms[namespace] = {}
                 for room, sids in sio.manager.rooms[namespace].items():
@@ -154,39 +173,66 @@ async def broadcast_crawl_progress(progress_id: str, data: dict):
                     if namespace == "/" and room == progress_id:
                         room_sids = list(sids)
 
-        logger.debug(f"Broadcasting to room '{progress_id}'")
-        logger.debug(f"Room {progress_id} has {len(room_sids)} subscribers: {room_sids}")
-        logger.debug(f"All rooms in namespace '/': {list(all_rooms.get('/', {}).keys())}")
+        logger.debug(f"Broadcasting {event_type} to room '{progress_id}' with {len(room_sids)} subscribers")
 
         # Log if the room doesn't exist
         if not room_sids:
-            logger.warning(f"Room '{progress_id}' has no subscribers!")
-            logger.warning(
-                f"Room '{progress_id}' has no subscribers when broadcasting crawl progress"
-            )
+            logger.warning(f"Room '{progress_id}' has no subscribers for {event_type} event")
 
     except Exception as e:
         logger.debug(f"Could not get room info: {e}")
-        import traceback
 
-        traceback.print_exc()
-
-    # Log only important broadcasts (reduce log spam)
-    if current_status in important_statuses or data.get("percentage", 0) % 10 == 0:
+    # Enhanced logging with performance data
+    log_this_broadcast = (
+        current_status in important_statuses or 
+        event_type == "heartbeat" or
+        data.get("percentage", 0) % 5 == 0 or  # Log every 5% progress
+        "processing_rate" in data
+    )
+    
+    if log_this_broadcast:
+        stage_info = f"{data.get('stage', 'unknown')}"
+        if data.get('substage'):
+            stage_info += f".{data['substage']}"
+            
+        performance_info = ""
+        if data.get('processing_rate', 0) > 0:
+            performance_info = f" | rate={data['processing_rate']}/s"
+        if data.get('items_processed') and data.get('total_items'):
+            performance_info += f" | items={data['items_processed']}/{data['total_items']}"
+            
         logger.info(
-            f"📢 [SOCKETIO] Broadcasting crawl_progress to room: {progress_id} | status={current_status} | progress={data.get('percentage', 'N/A')}%"
+            f"📢 [SOCKETIO] Broadcasting {event_type} to room: {progress_id} | "
+            f"status={current_status} | progress={data.get('percentage', 'N/A')}% | "
+            f"stage={stage_info}{performance_info}"
         )
 
     # Emit the event with error handling
     try:
-        await sio.emit("crawl_progress", data, room=progress_id)
-        logger.info(f"✅ [SOCKETIO] Broadcasted crawl progress for {progress_id}")
+        # Choose event name based on type
+        event_name = "crawl_progress"
+        if event_type == "heartbeat":
+            event_name = "crawl_heartbeat"
+        elif event_type == "performance":
+            event_name = "crawl_performance"
+        elif event_type == "stall_detection":
+            event_name = "crawl_stall_detected"
+        elif event_type == "recovery":
+            event_name = "crawl_recovery"
+
+        await sio.emit(event_name, data, room=progress_id)
+        
+        # Also emit to generic crawl_progress for backward compatibility
+        if event_name != "crawl_progress":
+            await sio.emit("crawl_progress", data, room=progress_id)
+            
+        logger.debug(f"✅ [SOCKETIO] Broadcasted {event_name} for {progress_id}")
+        
     except Exception as e:
         # Don't let Socket.IO errors crash the crawl
-        logger.error(f"❌ [SOCKETIO] Failed to emit crawl_progress: {e}")
+        logger.error(f"❌ [SOCKETIO] Failed to emit {event_name}: {e}")
         logger.error(f"Error type: {type(e).__name__}")
         import traceback
-
         logger.error(f"Traceback: {traceback.format_exc()}")
         # Continue execution - crawl should not fail due to Socket.IO issues
 
@@ -214,6 +260,34 @@ async def error_crawl_progress(progress_id: str, error_msg: str):
     """Signal crawl progress error."""
     data = {"status": "error", "error": error_msg, "progressId": progress_id}
     await broadcast_crawl_progress(progress_id, data)
+
+
+# Enhanced progress helper functions for improved user experience
+async def broadcast_crawl_heartbeat(progress_id: str, heartbeat_data: dict):
+    """Broadcast heartbeat to show system is actively processing."""
+    heartbeat_data["type"] = "heartbeat"
+    heartbeat_data["status"] = heartbeat_data.get("status", "processing")
+    await broadcast_crawl_progress(progress_id, heartbeat_data)
+
+
+async def broadcast_crawl_performance(progress_id: str, performance_data: dict):
+    """Broadcast performance metrics for monitoring."""
+    performance_data["type"] = "performance"
+    await broadcast_crawl_progress(progress_id, performance_data)
+
+
+async def broadcast_stall_detection(progress_id: str, stall_data: dict):
+    """Broadcast stall detection notification."""
+    stall_data["type"] = "stall_detection"
+    stall_data["status"] = "stalled"
+    await broadcast_crawl_progress(progress_id, stall_data)
+
+
+async def broadcast_recovery_notification(progress_id: str, recovery_data: dict):
+    """Broadcast recovery from stall notification."""
+    recovery_data["type"] = "recovery"
+    recovery_data["status"] = "processing"
+    await broadcast_crawl_progress(progress_id, recovery_data)
 
 
 @sio.event

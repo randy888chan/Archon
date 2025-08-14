@@ -106,9 +106,12 @@ async def get_llm_client(provider: str | None = None, use_embedding_provider: bo
             clean_base_url = base_url or "http://localhost:11434/v1"
             
             # Ollama requires an API key in the client but doesn't actually use it
+            # Add timeout and disable retries for fast failure detection
             client = openai.AsyncOpenAI(
                 api_key="ollama",  # Required but unused by Ollama
                 base_url=clean_base_url,
+                timeout=60.0,  # 1-minute timeout to fail fast on overload
+                max_retries=0  # Disable internal retries - handle retries at batch level
             )
             logger.info(f"Ollama client created successfully with base URL: {clean_base_url}")
 

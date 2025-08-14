@@ -39,6 +39,27 @@ export interface CrawlProgressData {
   workers?: WorkerProgress[] | any[];  // Updated to support new worker format
   error?: string;
   completed?: boolean;
+  
+  // Enhanced progress tracking
+  type?: 'progress' | 'heartbeat' | 'performance' | 'stall_detection' | 'recovery';
+  stage?: string;
+  substage?: string;
+  processing_rate?: number;
+  items_processed?: number;
+  total_items?: number;
+  heartbeat_id?: number;
+  last_update?: number;
+  time_since_update?: number;
+  timestamp?: number;
+  
+  // Stall detection
+  suggested_action?: string;
+  
+  // Performance metrics
+  uptime?: number;
+  completion_percentage?: number;
+  heartbeat_count?: number;
+  
   // Additional properties for document upload and crawling
   uploadType?: 'document' | 'crawl';
   fileName?: string;
@@ -50,6 +71,7 @@ export interface CrawlProgressData {
   wordCount?: number;
   duration?: string;
   sourceId?: string;
+  
   // Original crawl parameters for retry functionality
   originalCrawlParams?: {
     url: string;
@@ -61,12 +83,14 @@ export interface CrawlProgressData {
       max_concurrent?: number;
     };
   };
+  
   // Original upload parameters for retry functionality
   originalUploadParams?: {
     file: File;
     tags?: string[];
     knowledge_type?: string;
   };
+  
   // Simplified batch progress (snake_case from backend)
   completed_batches?: number;
   total_batches?: number;
@@ -74,9 +98,11 @@ export interface CrawlProgressData {
   active_workers?: number;
   chunks_in_batch?: number;
   total_chunks_in_batch?: number;
+  
   // Legacy fields
   totalJobs?: number;
   parallelWorkers?: number;
+  
   // Camel case aliases for convenience
   completedBatches?: number;
   totalBatches?: number;
@@ -227,6 +253,59 @@ class CrawlProgressService {
         }
       });
 
+      // Enhanced event handlers for improved progress visibility
+      this.wsService.addMessageHandler('crawl_heartbeat', (message) => {
+        const data = message.data || message;
+        if (data.progressId === progressId) {
+          console.log(`💓 [${progressId}] Heartbeat received:`, data);
+          onMessage({
+            ...data,
+            type: 'heartbeat',
+            log: `System active - ${data.stage || 'processing'}${data.substage ? `.${data.substage}` : ''}`
+          });
+        }
+      });
+
+      this.wsService.addMessageHandler('crawl_performance', (message) => {
+        const data = message.data || message;
+        if (data.progressId === progressId) {
+          console.log(`📊 [${progressId}] Performance metrics:`, data);
+          onMessage({
+            ...data,
+            type: 'performance',
+            log: data.processing_rate 
+              ? `Processing rate: ${data.processing_rate}/s`
+              : 'Performance metrics updated'
+          });
+        }
+      });
+
+      this.wsService.addMessageHandler('crawl_stall_detected', (message) => {
+        const data = message.data || message;
+        if (data.progressId === progressId) {
+          console.warn(`⚠️ [${progressId}] Stall detected:`, data);
+          onMessage({
+            ...data,
+            type: 'stall_detection',
+            status: 'stalled',
+            log: data.message || 'Processing appears stalled - checking system resources...'
+          });
+        }
+      });
+
+      this.wsService.addMessageHandler('crawl_recovery', (message) => {
+        const data = message.data || message;
+        if (data.progressId === progressId) {
+          console.log(`🔄 [${progressId}] Recovery detected:`, data);
+          onMessage({
+            ...data,
+            type: 'recovery',
+            status: 'processing',
+            log: data.message || 'Processing resumed after stall'
+          });
+        }
+      });
+
       // Subscribe to the crawl progress with retry logic
       console.log(`📤 Sending crawl_subscribe for ${progressId}`);
       const subscribeMessage = {
@@ -291,8 +370,13 @@ class CrawlProgressService {
     // Remove the specific handler for this progressId
     const handler = this.messageHandlers.get(progressId);
     if (handler) {
+      // Remove all event handlers
       this.wsService.removeMessageHandler('crawl_progress', handler);
       this.wsService.removeMessageHandler('progress_update', handler);
+      this.wsService.removeMessageHandler('crawl_heartbeat', handler);
+      this.wsService.removeMessageHandler('crawl_performance', handler);
+      this.wsService.removeMessageHandler('crawl_stall_detected', handler);
+      this.wsService.removeMessageHandler('crawl_recovery', handler);
       this.messageHandlers.delete(progressId);
     }
     

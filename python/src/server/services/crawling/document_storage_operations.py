@@ -139,6 +139,88 @@ class DocumentStorageOperations:
         # Log chunking results
         safe_logfire_info(f"Document storage | documents={len(crawl_results)} | chunks={len(all_contents)} | avg_chunks_per_doc={len(all_contents)/len(crawl_results):.1f}")
         
+        # ENHANCED DIAGNOSTIC: Pre-storage parameter validation and logging
+        safe_logfire_info("=" * 80)
+        safe_logfire_info("📊 DOCUMENT PREPARATION PHASE - COMPREHENSIVE DIAGNOSTIC")
+        safe_logfire_info("=" * 80)
+        
+        # Check parameter lengths and consistency
+        url_count = len(all_urls)
+        chunk_count = len(all_chunk_numbers)
+        content_count = len(all_contents)
+        metadata_count = len(all_metadatas)
+        full_doc_count = len(url_to_full_document)
+        
+        safe_logfire_info(f"📋 PARAMETER LENGTH ANALYSIS:")
+        safe_logfire_info(f"  • all_urls length: {url_count}")
+        safe_logfire_info(f"  • all_chunk_numbers length: {chunk_count}")
+        safe_logfire_info(f"  • all_contents length: {content_count}")
+        safe_logfire_info(f"  • all_metadatas length: {metadata_count}")
+        safe_logfire_info(f"  • url_to_full_document length: {full_doc_count}")
+        
+        # Check for length mismatches
+        lengths = [url_count, chunk_count, content_count, metadata_count]
+        if len(set(lengths)) > 1:
+            safe_logfire_error(f"❌ CRITICAL: Parameter length mismatch detected!")
+            safe_logfire_error(f"   URLs: {url_count}, Chunks: {chunk_count}, Contents: {content_count}, Metadata: {metadata_count}")
+            safe_logfire_error(f"   This will cause the processing stage to fail instantly!")
+            
+        # Check for empty data
+        if content_count == 0:
+            safe_logfire_error(f"❌ CRITICAL: Empty contents list - no data to process!")
+            safe_logfire_error(f"   This explains the instant failure with high processing rate")
+            
+        # Sample data inspection
+        safe_logfire_info(f"📝 SAMPLE DATA INSPECTION:")
+        if all_contents:
+            sample_content_length = len(all_contents[0]) if all_contents[0] else 0
+            safe_logfire_info(f"  • First content chunk length: {sample_content_length} chars")
+            safe_logfire_info(f"  • First content preview: '{all_contents[0][:100]}...' " if sample_content_length > 0 else "  • First content is EMPTY!")
+        else:
+            safe_logfire_info(f"  • No content chunks to inspect")
+            
+        if all_urls:
+            safe_logfire_info(f"  • First URL: {all_urls[0]}")
+        else:
+            safe_logfire_info(f"  • No URLs to inspect")
+            
+        if all_metadatas:
+            sample_metadata_keys = list(all_metadatas[0].keys()) if all_metadatas[0] else []
+            safe_logfire_info(f"  • First metadata keys: {sample_metadata_keys}")
+            safe_logfire_info(f"  • First metadata source_id: {all_metadatas[0].get('source_id', 'MISSING')}")
+        else:
+            safe_logfire_info(f"  • No metadata to inspect")
+            
+        # Check crawl_results processing
+        safe_logfire_info(f"🔍 CRAWL RESULTS ANALYSIS:")
+        safe_logfire_info(f"  • Total crawl_results: {len(crawl_results)}")
+        if crawl_results:
+            first_result = crawl_results[0]
+            result_keys = list(first_result.keys()) if first_result else []
+            safe_logfire_info(f"  • First result keys: {result_keys}")
+            
+            # Check markdown content
+            markdown_content = first_result.get('markdown', '') if first_result else ''
+            markdown_length = len(markdown_content)
+            safe_logfire_info(f"  • First markdown content length: {markdown_length} chars")
+            if markdown_length == 0:
+                safe_logfire_error(f"❌ CRITICAL: First crawl result has empty markdown content!")
+                safe_logfire_error(f"   URL: {first_result.get('url', 'unknown')}")
+                safe_logfire_error(f"   This could cause chunking to produce empty results")
+        else:
+            safe_logfire_error(f"❌ CRITICAL: No crawl_results to process!")
+            
+        # Validate source_id consistency
+        if all_metadatas:
+            unique_source_ids = set(meta.get('source_id', 'MISSING') for meta in all_metadatas)
+            safe_logfire_info(f"  • Unique source_ids found: {list(unique_source_ids)}")
+            if 'MISSING' in unique_source_ids:
+                safe_logfire_error(f"❌ CRITICAL: Some metadata missing source_id!")
+                
+        safe_logfire_info("=" * 80)
+        safe_logfire_info("📤 ABOUT TO CALL add_documents_to_supabase")
+        safe_logfire_info("=" * 80)
+        
         # Call add_documents_to_supabase with the correct parameters
         await add_documents_to_supabase(
             client=self.supabase_client,

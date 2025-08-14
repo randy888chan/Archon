@@ -86,6 +86,10 @@ async def add_documents_to_supabase(
         progress_callback: Optional async callback function for progress reporting
         provider: Optional provider override for embeddings
     """
+    # ENHANCED LOGGING: Log function entry
+    search_logger.info("🚀 ENTERING add_documents_to_supabase function")
+    search_logger.info(f"  • parameters: urls={len(urls) if urls else 'None'}, contents={len(contents) if contents else 'None'}, batch_size={batch_size}")
+    
     with safe_span(
         "add_documents_to_supabase", total_documents=len(contents), batch_size=batch_size
     ) as span:

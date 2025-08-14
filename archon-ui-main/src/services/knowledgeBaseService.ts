@@ -203,10 +203,10 @@ class KnowledgeBaseService {
     console.log('🔄 [KnowledgeBase] Refreshing knowledge item:', sourceId);
     
     // Base64 encode the source_id to handle special characters like forward slashes
-    const encodedSourceId = btoa(sourceId)
+    const encodedSourceId = btoa(sourceId);
     return apiRequest(`/knowledge-items/${encodedSourceId}/refresh`, {
       method: 'POST'
-    })
+    });
   }
 
   /**

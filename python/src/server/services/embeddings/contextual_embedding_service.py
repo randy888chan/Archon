@@ -2,16 +2,64 @@
 Contextual Embedding Service
 
 Handles generation of contextual embeddings for improved RAG retrieval.
-Includes proper rate limiting for OpenAI API calls.
+Includes proper rate limiting for OpenAI API calls and retry logic.
 """
 
+import asyncio
 import os
+import random
 
 import openai
 
 from ...config.logfire_config import search_logger
 from ..llm_provider_service import get_llm_client
 from ..threading_service import get_threading_service
+
+
+async def exponential_backoff_retry(
+    operation, max_retries: int = 3, base_delay: float = 1.0, max_delay: float = 30.0
+):
+    """
+    Retry an async operation with exponential backoff.
+    
+    Args:
+        operation: Async callable to retry
+        max_retries: Maximum number of retry attempts
+        base_delay: Initial delay in seconds
+        max_delay: Maximum delay in seconds
+        
+    Returns:
+        Result of the operation
+        
+    Raises:
+        The last exception if all retries fail
+    """
+    last_exception = None
+    
+    for attempt in range(max_retries + 1):
+        try:
+            return await operation()
+        except Exception as e:
+            last_exception = e
+            
+            # Don't retry on the last attempt
+            if attempt == max_retries:
+                break
+                
+            # Calculate delay with exponential backoff and jitter
+            delay = min(base_delay * (2 ** attempt), max_delay)
+            jitter = random.uniform(0, delay * 0.1)  # Add up to 10% jitter
+            total_delay = delay + jitter
+            
+            search_logger.warning(
+                f"Operation failed (attempt {attempt + 1}/{max_retries + 1}): {e}. "
+                f"Retrying in {total_delay:.2f}s..."
+            )
+            await asyncio.sleep(total_delay)
+    
+    # All retries failed
+    search_logger.error(f"Operation failed after {max_retries + 1} attempts")
+    raise last_exception
 
 
 async def generate_contextual_embedding(
@@ -127,10 +175,10 @@ async def generate_contextual_embeddings_batch(
     full_documents: list[str], chunks: list[str], provider: str = None
 ) -> list[tuple[str, bool]]:
     """
-    Generate contextual information for multiple chunks in a single API call to avoid rate limiting.
-
-    This processes ALL chunks passed to it in a single API call.
-    The caller should batch appropriately (e.g., 10 chunks at a time).
+    Generate contextual information for multiple chunks with retry logic and smaller batch sizes.
+    
+    This function now processes chunks in optimal smaller batches (5-8 items) and includes
+    exponential backoff retry for improved reliability with Ollama.
 
     Args:
         full_documents: List of complete document texts
@@ -142,26 +190,55 @@ async def generate_contextual_embeddings_batch(
         - The contextual text that situates the chunk within the document
         - Boolean indicating if contextual embedding was performed
     """
-    try:
+    # Optimize batch size for Ollama performance
+    optimal_batch_size = 5  # Reduced from 25-50 to 5 for better Ollama handling
+    
+    # If batch is small enough, process directly
+    if len(chunks) <= optimal_batch_size:
+        return await _process_contextual_batch_with_retry(full_documents, chunks, provider)
+    
+    # Split large batches into smaller ones
+    all_results = []
+    for i in range(0, len(chunks), optimal_batch_size):
+        batch_docs = full_documents[i:i + optimal_batch_size]
+        batch_chunks = chunks[i:i + optimal_batch_size]
+        
+        batch_results = await _process_contextual_batch_with_retry(batch_docs, batch_chunks, provider)
+        all_results.extend(batch_results)
+        
+        # Small delay between batches to avoid overwhelming Ollama
+        if i + optimal_batch_size < len(chunks):
+            await asyncio.sleep(0.1)
+    
+    return all_results
+
+
+async def _process_contextual_batch_with_retry(
+    full_documents: list[str], chunks: list[str], provider: str = None
+) -> list[tuple[str, bool]]:
+    """
+    Process a single small batch with retry logic and fallback to basic embeddings.
+    """
+    async def _perform_batch_operation():
         async with get_llm_client(provider=provider) as client:
             # Get model choice from credential service (RAG setting)
             model_choice = await _get_model_choice(provider)
 
-            # Build batch prompt for ALL chunks at once
+            # Build batch prompt for chunks
             batch_prompt = (
                 "Process the following chunks and provide contextual information for each:\\n\\n"
             )
 
             for i, (doc, chunk) in enumerate(zip(full_documents, chunks, strict=False)):
-                # Use only 2000 chars of document context to save tokens
-                doc_preview = doc[:2000] if len(doc) > 2000 else doc
+                # Use only 1500 chars of document context to save tokens (reduced from 2000)
+                doc_preview = doc[:1500] if len(doc) > 1500 else doc
                 batch_prompt += f"CHUNK {i + 1}:\\n"
                 batch_prompt += f"<document_preview>\\n{doc_preview}\\n</document_preview>\\n"
-                batch_prompt += f"<chunk>\\n{chunk[:500]}\\n</chunk>\\n\\n"  # Limit chunk preview
+                batch_prompt += f"<chunk>\\n{chunk[:400]}\\n</chunk>\\n\\n"  # Reduced from 500
 
             batch_prompt += "For each chunk, provide a short succinct context to situate it within the overall document for improving search retrieval. Format your response as:\\nCHUNK 1: [context]\\nCHUNK 2: [context]\\netc."
 
-            # Make single API call for ALL chunks
+            # Make API call with shorter timeout-friendly settings
             response = await client.chat.completions.create(
                 model=model_choice,
                 messages=[
@@ -172,7 +249,7 @@ async def generate_contextual_embeddings_batch(
                     {"role": "user", "content": batch_prompt},
                 ],
                 temperature=0,
-                max_tokens=100 * len(chunks),  # Limit response size
+                max_tokens=80 * len(chunks),  # Reduced token limit for faster processing
             )
 
             # Parse response
@@ -186,9 +263,12 @@ async def generate_contextual_embeddings_batch(
                 if line.strip().startswith("CHUNK"):
                     parts = line.split(":", 1)
                     if len(parts) == 2:
-                        chunk_num = int(parts[0].strip().split()[1]) - 1
-                        context = parts[1].strip()
-                        chunk_contexts[chunk_num] = context
+                        try:
+                            chunk_num = int(parts[0].strip().split()[1]) - 1
+                            context = parts[1].strip()
+                            chunk_contexts[chunk_num] = context
+                        except (ValueError, IndexError):
+                            continue  # Skip malformed lines
 
             # Build results
             results = []
@@ -202,6 +282,15 @@ async def generate_contextual_embeddings_batch(
 
             return results
 
+    try:
+        # Use exponential backoff retry for the batch operation
+        return await exponential_backoff_retry(
+            _perform_batch_operation,
+            max_retries=2,  # Reduced retries for faster failure
+            base_delay=1.0,
+            max_delay=15.0
+        )
+
     except openai.RateLimitError as e:
         if "insufficient_quota" in str(e):
             search_logger.warning(f"⚠️ QUOTA EXHAUSTED in contextual embeddings: {e}")
@@ -213,10 +302,10 @@ async def generate_contextual_embeddings_batch(
             search_logger.warning(
                 "Rate limit hit - proceeding without contextual embeddings for this batch"
             )
-        # Return non-contextual for all chunks
+        # Return non-contextual for all chunks (fallback mode)
         return [(chunk, False) for chunk in chunks]
 
     except Exception as e:
-        search_logger.error(f"Error in contextual embedding batch: {e}")
-        # Return non-contextual for all chunks
+        search_logger.error(f"Error in contextual embedding batch after retries: {e}")
+        # Return non-contextual for all chunks (fallback mode)
         return [(chunk, False) for chunk in chunks]
