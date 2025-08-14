@@ -80,6 +80,9 @@ from .helpers.site_config import SiteConfig
 from .document_storage_operations import DocumentStorageOperations
 from .progress_mapper import ProgressMapper
 
+# Import keep-alive manager
+from ..model_keepalive_service import get_keep_alive_manager
+
 logger = get_logger(__name__)
 
 # Global registry to track active orchestration services for cancellation support
@@ -299,6 +302,23 @@ class CrawlingService:
         last_heartbeat = asyncio.get_event_loop().time()
         heartbeat_interval = 30.0  # Send heartbeat every 30 seconds
         
+        # Register crawl for model keep-alive monitoring
+        keep_alive_manager = get_keep_alive_manager()
+        crawl_id = self.progress_id or task_id
+        
+        # Determine required models based on request
+        required_models = ["chat", "embedding"]  # Default to both models
+        if not request.get('extract_code_examples', True):
+            # If not extracting code examples, we might only need embedding model
+            # But keep both for safety during crawling
+            pass
+        
+        keep_alive_registered = keep_alive_manager.register_crawl(crawl_id, required_models)
+        if keep_alive_registered:
+            safe_logfire_info(f"Registered crawl {crawl_id} for model keep-alive monitoring")
+        else:
+            safe_logfire_error(f"Failed to register crawl {crawl_id} for keep-alive monitoring")
+        
         async def send_heartbeat_if_needed():
             """Send heartbeat to keep Socket.IO connection alive"""
             nonlocal last_heartbeat
@@ -447,6 +467,14 @@ class CrawlingService:
                 'log': 'Crawl completed successfully!'
             })
             
+            # Unregister from keep-alive monitoring
+            if keep_alive_registered:
+                deregistered = keep_alive_manager.deregister_crawl(crawl_id)
+                if deregistered:
+                    safe_logfire_info(f"Deregistered crawl {crawl_id} from keep-alive monitoring")
+                else:
+                    safe_logfire_error(f"Failed to deregister crawl {crawl_id} from keep-alive monitoring")
+            
             # Unregister after successful completion
             if self.progress_id:
                 unregister_orchestration(self.progress_id)
@@ -459,6 +487,11 @@ class CrawlingService:
                 'percentage': -1,
                 'log': 'Crawl operation was cancelled by user'
             })
+            # Unregister from keep-alive monitoring
+            if keep_alive_registered:
+                keep_alive_manager.deregister_crawl(crawl_id)
+                safe_logfire_info(f"Deregistered crawl {crawl_id} from keep-alive on cancellation")
+            
             # Unregister on cancellation
             if self.progress_id:
                 unregister_orchestration(self.progress_id)
@@ -470,6 +503,11 @@ class CrawlingService:
                 'percentage': -1,
                 'log': f'Crawl failed: {str(e)}'
             })
+            # Unregister from keep-alive monitoring
+            if keep_alive_registered:
+                keep_alive_manager.deregister_crawl(crawl_id)
+                safe_logfire_info(f"Deregistered crawl {crawl_id} from keep-alive on error")
+            
             # Unregister on error
             if self.progress_id:
                 unregister_orchestration(self.progress_id)

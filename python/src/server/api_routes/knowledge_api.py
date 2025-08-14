@@ -240,31 +240,42 @@ async def delete_knowledge_item(source_id: str):
 async def get_knowledge_item_code_examples(source_id: str):
     """Get all code examples for a specific knowledge item."""
     try:
-        safe_logfire_info(f"Fetching code examples for source_id: {source_id}")
+        # Decode Base64 encoded source_id to handle special characters
+        import base64
+        try:
+            decoded_source_id = base64.b64decode(source_id.encode()).decode()
+            logger.debug(f"Decoded source_id from {source_id} to {decoded_source_id}")
+        except Exception as decode_error:
+            logger.warning(f"Failed to decode source_id {source_id}, using as-is: {decode_error}")
+            decoded_source_id = source_id
+        
+        safe_logfire_info(f"Fetching code examples for source_id: {decoded_source_id}")
 
         # Query code examples with full content for this specific source
         supabase = get_supabase_client()
         result = (
             supabase.from_("archon_code_examples")
             .select("id, source_id, content, summary, metadata")
-            .eq("source_id", source_id)
+            .eq("source_id", decoded_source_id)
             .execute()
         )
 
         code_examples = result.data if result.data else []
 
-        safe_logfire_info(f"Found {len(code_examples)} code examples for {source_id}")
+        safe_logfire_info(f"Found {len(code_examples)} code examples for {decoded_source_id}")
 
         return {
             "success": True,
-            "source_id": source_id,
+            "source_id": decoded_source_id,
             "code_examples": code_examples,
             "count": len(code_examples),
         }
 
     except Exception as e:
+        # Use decoded_source_id if available, otherwise fallback to source_id
+        error_source_id = locals().get('decoded_source_id', source_id)
         safe_logfire_error(
-            f"Failed to fetch code examples | error={str(e)} | source_id={source_id}"
+            f"Failed to fetch code examples | error={str(e)} | source_id={error_source_id}"
         )
         raise HTTPException(status_code=500, detail={"error": str(e)})
 

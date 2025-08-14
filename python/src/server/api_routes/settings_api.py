@@ -339,3 +339,142 @@ async def settings_health():
     result = {"status": "healthy", "service": "settings"}
 
     return result
+
+
+# Model Keep-Alive Management Endpoints
+@router.get("/model-health/status")
+async def get_model_health_status():
+    """Get current model keep-alive system status."""
+    try:
+        from ..services.model_keepalive_service import get_keep_alive_manager
+        
+        manager = get_keep_alive_manager()
+        status = manager.get_status()
+        
+        logfire.info(f"Model health status requested | active_crawls={status['active_crawls']} | is_running={status['is_running']}")
+        
+        return {
+            "success": True,
+            "status": status,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logfire.error(f"Error getting model health status | error={str(e)}")
+        raise HTTPException(status_code=500, detail={"error": str(e)})
+
+
+@router.post("/model-health/test-heartbeat")
+async def test_model_heartbeat(model_type: str = "both"):
+    """Test model heartbeat manually."""
+    try:
+        from ..services.model_keepalive_service import get_keep_alive_manager
+        import time
+        
+        manager = get_keep_alive_manager()
+        
+        # Validate model_type
+        if model_type not in ["chat", "embedding", "both"]:
+            raise HTTPException(status_code=400, detail={"error": "model_type must be 'chat', 'embedding', or 'both'"})
+        
+        # Start monitoring temporarily if not running
+        was_running = manager.is_running
+        if not was_running:
+            await manager.start_monitoring()
+        
+        # Register a temporary test crawl
+        test_crawl_id = f"test_{int(time.time())}"
+        if model_type == "both":
+            required_models = ["chat", "embedding"]
+        else:
+            required_models = [model_type]
+        
+        success = manager.register_crawl(test_crawl_id, required_models)
+        
+        if success:
+            # Wait a moment for heartbeat to occur
+            import asyncio
+            await asyncio.sleep(3)
+            
+            # Get status after heartbeat
+            status = manager.get_status()
+            
+            # Clean up test crawl
+            manager.deregister_crawl(test_crawl_id)
+            
+            # Stop monitoring if it wasn't running before
+            if not was_running and not manager.active_crawls:
+                await manager.stop_monitoring()
+            
+            logfire.info(f"Test heartbeat completed | model_type={model_type} | test_crawl_id={test_crawl_id}")
+            
+            return {
+                "success": True,
+                "test_crawl_id": test_crawl_id,
+                "model_type": model_type,
+                "status": status,
+                "timestamp": datetime.now().isoformat()
+            }
+        else:
+            logfire.error(f"Failed to register test crawl for heartbeat test | model_type={model_type}")
+            raise HTTPException(status_code=500, detail={"error": "Failed to register test crawl"})
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logfire.error(f"Error in test heartbeat | model_type={model_type} | error={str(e)}")
+        raise HTTPException(status_code=500, detail={"error": str(e)})
+
+
+@router.post("/model-health/start-monitoring")
+async def start_model_monitoring():
+    """Manually start model keep-alive monitoring."""
+    try:
+        from ..services.model_keepalive_service import get_keep_alive_manager
+        
+        manager = get_keep_alive_manager()
+        success = await manager.start_monitoring()
+        
+        if success:
+            logfire.info("Model keep-alive monitoring started manually")
+            return {
+                "success": True,
+                "message": "Model keep-alive monitoring started",
+                "timestamp": datetime.now().isoformat()
+            }
+        else:
+            logfire.error("Failed to start model keep-alive monitoring")
+            raise HTTPException(status_code=500, detail={"error": "Failed to start monitoring"})
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logfire.error(f"Error starting model monitoring | error={str(e)}")
+        raise HTTPException(status_code=500, detail={"error": str(e)})
+
+
+@router.post("/model-health/stop-monitoring")
+async def stop_model_monitoring():
+    """Manually stop model keep-alive monitoring."""
+    try:
+        from ..services.model_keepalive_service import get_keep_alive_manager
+        
+        manager = get_keep_alive_manager()
+        success = await manager.stop_monitoring()
+        
+        if success:
+            logfire.info("Model keep-alive monitoring stopped manually")
+            return {
+                "success": True,
+                "message": "Model keep-alive monitoring stopped",
+                "timestamp": datetime.now().isoformat()
+            }
+        else:
+            logfire.error("Failed to stop model keep-alive monitoring")
+            raise HTTPException(status_code=500, detail={"error": "Failed to stop monitoring"})
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logfire.error(f"Error stopping model monitoring | error={str(e)}")
+        raise HTTPException(status_code=500, detail={"error": str(e)})

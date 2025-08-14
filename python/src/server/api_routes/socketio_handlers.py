@@ -1080,3 +1080,132 @@ async def start_document_sync_cleanup():
 
 # Initialize cleanup task on module load
 logger.info("📄 [DOCUMENT SYNC] Document synchronization handlers initialized")
+
+
+# Model Keep-Alive Socket.IO Event Handlers
+@sio.event
+async def subscribe_model_health(sid, data=None):
+    """Subscribe to model health status updates."""
+    await sio.enter_room(sid, "model_health")
+    logger.info(f"🔍 [MODEL HEALTH] Client {sid} subscribed to model health updates")
+    
+    # Send current model status
+    try:
+        from ..services.model_keepalive_service import get_keep_alive_manager
+        
+        manager = get_keep_alive_manager()
+        current_status = manager.get_status()
+        
+        await sio.emit("model_health_dashboard", {
+            "event": "initial_status",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "status": current_status
+        }, to=sid)
+        
+        logger.info(f"📤 [MODEL HEALTH] Sent current status to {sid}")
+        
+    except Exception as e:
+        logger.error(f"📤 [MODEL HEALTH] Error sending current status: {e}")
+        await sio.emit("error", {"message": f"Failed to get model health status: {str(e)}"}, to=sid)
+
+
+@sio.event
+async def unsubscribe_model_health(sid, data=None):
+    """Unsubscribe from model health status updates."""
+    await sio.leave_room(sid, "model_health")
+    logger.info(f"🔍 [MODEL HEALTH] Client {sid} unsubscribed from model health updates")
+
+
+@sio.event 
+async def get_keepalive_status(sid, data=None):
+    """Get current keep-alive system status."""
+    try:
+        from ..services.model_keepalive_service import get_keep_alive_manager
+        
+        manager = get_keep_alive_manager()
+        status = manager.get_status()
+        
+        await sio.emit("keepalive_status_response", {
+            "success": True,
+            "status": status,
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }, to=sid)
+        
+    except Exception as e:
+        logger.error(f"📤 [MODEL HEALTH] Error getting keep-alive status: {e}")
+        await sio.emit("keepalive_status_response", {
+            "success": False,
+            "error": str(e),
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }, to=sid)
+
+
+@sio.event
+async def manual_model_heartbeat(sid, data):
+    """Manually trigger a model heartbeat for testing."""
+    try:
+        from ..services.model_keepalive_service import get_keep_alive_manager
+        
+        manager = get_keep_alive_manager()
+        model_type = data.get("model_type", "both")  # "chat", "embedding", or "both"
+        
+        # Start monitoring temporarily if not running
+        was_running = manager.is_running
+        if not was_running:
+            await manager.start_monitoring()
+        
+        # Register a temporary test crawl
+        test_crawl_id = f"manual_test_{int(time.time())}"
+        if model_type == "both":
+            required_models = ["chat", "embedding"]
+        else:
+            required_models = [model_type]
+        
+        success = manager.register_crawl(test_crawl_id, required_models)
+        
+        if success:
+            # Wait a moment for heartbeat to occur
+            await asyncio.sleep(2)
+            
+            # Get status after heartbeat
+            status = manager.get_status()
+            
+            # Clean up test crawl
+            manager.deregister_crawl(test_crawl_id)
+            
+            # Stop monitoring if it wasn't running before
+            if not was_running and not manager.active_crawls:
+                await manager.stop_monitoring()
+            
+            await sio.emit("manual_heartbeat_response", {
+                "success": True,
+                "test_crawl_id": test_crawl_id,
+                "status": status,
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }, to=sid)
+        else:
+            await sio.emit("manual_heartbeat_response", {
+                "success": False,
+                "error": "Failed to register test crawl",
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }, to=sid)
+            
+    except Exception as e:
+        logger.error(f"📤 [MODEL HEALTH] Error in manual heartbeat: {e}")
+        await sio.emit("manual_heartbeat_response", {
+            "success": False,
+            "error": str(e),
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }, to=sid)
+
+
+# Broadcast model health updates to subscribers
+async def broadcast_model_health_update(event_type: str, data: dict):
+    """Broadcast model health updates to all subscribers."""
+    await sio.emit(event_type, data, room="model_health")
+    logger.debug(f"🔍 [MODEL HEALTH] Broadcasted {event_type} to model_health room")
+
+
+# Add missing imports for the new handlers
+import time
+from datetime import datetime, timezone

@@ -292,12 +292,14 @@ class KnowledgeBaseService {
   async getCodeExamples(sourceId: string) {
     console.log('📚 [KnowledgeBase] Fetching code examples for:', sourceId);
     
+    // Base64 encode the source_id to handle special characters like forward slashes
+    const encodedSourceId = btoa(sourceId)
     return apiRequest<{
       success: boolean
       source_id: string
       code_examples: any[]
       count: number
-    }>(`/knowledge-items/${sourceId}/code-examples`);
+    }>(`/knowledge-items/${encodedSourceId}/code-examples`);
   }
 }
 
