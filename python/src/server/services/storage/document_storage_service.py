@@ -153,7 +153,6 @@ async def add_documents_to_supabase(
 
         # Check if contextual embeddings are enabled
         # Fix: Get from credential service instead of environment
-        from ..credential_service import credential_service
 
         try:
             use_contextual_embeddings = await credential_service.get_credential(
@@ -198,18 +197,23 @@ async def add_documents_to_supabase(
             else:
                 max_workers = 1
 
-            # Report batch start with simplified progress
+            # Report batch start with detailed progress information
             if progress_callback and asyncio.iscoroutinefunction(progress_callback):
                 await progress_callback(
-                    f"Processing batch {batch_num}/{total_batches} ({len(batch_contents)} chunks)",
+                    "detailed_batch_processing", 
                     current_percentage,
-                    {
-                        "current_batch": batch_num,
-                        "total_batches": total_batches,
-                        "completed_batches": completed_batches,
-                        "chunks_in_batch": len(batch_contents),
-                        "max_workers": max_workers if use_contextual_embeddings else 0,
-                    },
+                    f"Processing batch {batch_num}/{total_batches}: Preparing {len(batch_contents)} chunks",
+                    currentOperation="batch_preparation",
+                    stageName="document_storage",
+                    stageProgress=0,
+                    batchDetails={
+                        "currentBatch": batch_num,
+                        "totalBatches": total_batches,
+                        "operation": "preparation",
+                        "chunksInBatch": len(batch_contents),
+                        "maxWorkers": max_workers if use_contextual_embeddings else 0,
+                        "useContextualEmbeddings": use_contextual_embeddings
+                    }
                 )
 
             # Skip batch start progress to reduce Socket.IO traffic
@@ -237,7 +241,9 @@ async def add_documents_to_supabase(
                     contextual_contents = []
                     successful_count = 0
 
-                    for ctx_i in range(0, len(batch_contents), contextual_batch_size):
+                    total_sub_batches = (len(batch_contents) + contextual_batch_size - 1) // contextual_batch_size
+                    
+                    for sub_batch_idx, ctx_i in enumerate(range(0, len(batch_contents), contextual_batch_size), 1):
                         # Check for cancellation before each contextual sub-batch
                         if cancellation_check:
                             cancellation_check()
@@ -246,6 +252,26 @@ async def add_documents_to_supabase(
 
                         sub_batch_contents = batch_contents[ctx_i:ctx_end]
                         sub_batch_docs = full_documents[ctx_i:ctx_end]
+
+                        # Report contextual embedding progress
+                        if progress_callback and asyncio.iscoroutinefunction(progress_callback):
+                            contextual_progress = int((sub_batch_idx / total_sub_batches) * 50)  # 50% of batch progress
+                            await progress_callback(
+                                "detailed_batch_processing",
+                                current_percentage,
+                                f"Batch {batch_num}/{total_batches}: Generating contextual embeddings {sub_batch_idx}/{total_sub_batches}",
+                                currentOperation="contextual_embedding_generation",
+                                stageName="document_storage",
+                                stageProgress=contextual_progress,
+                                batchDetails={
+                                    "currentBatch": batch_num,
+                                    "totalBatches": total_batches,
+                                    "operation": "contextual_embeddings",
+                                    "subBatch": sub_batch_idx,
+                                    "totalSubBatches": total_sub_batches,
+                                    "chunksInSubBatch": len(sub_batch_contents)
+                                }
+                            )
 
                         # Process sub-batch with a single API call
                         sub_results = await generate_contextual_embeddings_batch(
@@ -275,8 +301,25 @@ async def add_documents_to_supabase(
                 # If not using contextual embeddings, use original contents
                 contextual_contents = batch_contents
 
-            # Create embeddings for the batch - no progress reporting
-            # Don't pass websocket to avoid Socket.IO issues
+            # Report embedding creation start
+            if progress_callback and asyncio.iscoroutinefunction(progress_callback):
+                await progress_callback(
+                    "detailed_batch_processing",
+                    current_percentage,
+                    f"Batch {batch_num}/{total_batches}: Creating embeddings for {len(contextual_contents)} chunks",
+                    currentOperation="embedding_creation",
+                    stageName="document_storage",
+                    stageProgress=60,
+                    batchDetails={
+                        "currentBatch": batch_num,
+                        "totalBatches": total_batches,
+                        "operation": "embedding_creation",
+                        "chunksToEmbed": len(contextual_contents),
+                        "provider": provider or "default"
+                    }
+                )
+
+            # Create embeddings for the batch
             result = await create_embeddings_batch(contextual_contents, provider=provider)
 
             # Log any failures
@@ -360,7 +403,24 @@ async def add_documents_to_supabase(
                 }
                 batch_data.append(data)
 
-            # Insert batch with retry logic - no progress reporting
+            # Report database insertion start
+            if progress_callback and asyncio.iscoroutinefunction(progress_callback):
+                await progress_callback(
+                    "detailed_batch_processing",
+                    current_percentage,
+                    f"Batch {batch_num}/{total_batches}: Inserting {len(batch_data)} chunks into database",
+                    currentOperation="database_insertion",
+                    stageName="document_storage",
+                    stageProgress=80,
+                    batchDetails={
+                        "currentBatch": batch_num,
+                        "totalBatches": total_batches,
+                        "operation": "database_insertion",
+                        "chunksToInsert": len(batch_data),
+                        "retryAttempt": 1,
+                        "maxRetries": 3
+                    }
+                )
 
             max_retries = 3
             retry_delay = 1.0
@@ -370,10 +430,28 @@ async def add_documents_to_supabase(
                 if cancellation_check:
                     cancellation_check()
 
+                # Report retry attempts if needed
+                if retry > 0 and progress_callback and asyncio.iscoroutinefunction(progress_callback):
+                    await progress_callback(
+                        "detailed_batch_processing",
+                        current_percentage,
+                        f"Batch {batch_num}/{total_batches}: Retrying database insertion (attempt {retry + 1}/{max_retries})",
+                        currentOperation="database_insertion_retry",
+                        stageName="document_storage",
+                        stageProgress=80,
+                        batchDetails={
+                            "currentBatch": batch_num,
+                            "totalBatches": total_batches,
+                            "operation": "database_insertion_retry",
+                            "retryAttempt": retry + 1,
+                            "maxRetries": max_retries
+                        }
+                    )
+
                 try:
                     client.table("archon_crawled_pages").insert(batch_data).execute()
 
-                    # Increment completed batches and report simple progress
+                    # Increment completed batches and report detailed completion
                     completed_batches += 1
                     # Ensure last batch reaches 100%
                     if completed_batches == total_batches:
@@ -382,18 +460,40 @@ async def add_documents_to_supabase(
                         new_percentage = int((completed_batches / total_batches) * 100)
 
                     complete_msg = (
-                        f"Completed batch {batch_num}/{total_batches} ({len(batch_data)} chunks)"
+                        f"Batch {batch_num}/{total_batches} completed: {len(batch_data)} chunks stored successfully"
                     )
 
-                    # Simple batch completion info
-                    batch_info = {
-                        "completed_batches": completed_batches,
-                        "total_batches": total_batches,
-                        "current_batch": batch_num,
-                        "chunks_processed": len(batch_data),
-                        "max_workers": max_workers if use_contextual_embeddings else 0,
-                    }
-                    await report_progress(complete_msg, new_percentage, batch_info)
+                    # Enhanced batch completion reporting
+                    if progress_callback and asyncio.iscoroutinefunction(progress_callback):
+                        await progress_callback(
+                            "detailed_batch_processing",
+                            new_percentage,
+                            complete_msg,
+                            currentOperation="batch_completed",
+                            stageName="document_storage",
+                            stageProgress=100,
+                            batchDetails={
+                                "currentBatch": batch_num,
+                                "totalBatches": total_batches,
+                                "operation": "batch_completed",
+                                "chunksStored": len(batch_data),
+                                "completedBatches": completed_batches,
+                                "useContextualEmbeddings": use_contextual_embeddings,
+                                "provider": provider or "default"
+                            },
+                            itemsProcessed=completed_batches * batch_size,
+                            totalItems=total_batches * batch_size
+                        )
+                    else:
+                        # Fallback for old progress callback format
+                        batch_info = {
+                            "completed_batches": completed_batches,
+                            "total_batches": total_batches,
+                            "current_batch": batch_num,
+                            "chunks_processed": len(batch_data),
+                            "max_workers": max_workers if use_contextual_embeddings else 0,
+                        }
+                        await report_progress(complete_msg, new_percentage, batch_info)
                     break
 
                 except Exception as e:

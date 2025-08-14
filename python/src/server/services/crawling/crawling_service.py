@@ -62,7 +62,7 @@ def _ensure_socketio_imports():
     """Ensure socket.IO handlers are imported."""
     global update_crawl_progress, complete_crawl_progress
     if update_crawl_progress is None:
-        from ...api_routes.socketio_handlers import update_crawl_progress as _update, complete_crawl_progress as _complete
+        from ....api_routes.socketio_handlers import update_crawl_progress as _update, complete_crawl_progress as _complete
         update_crawl_progress = _update
         complete_crawl_progress = _complete
 
@@ -166,7 +166,7 @@ class CrawlingService:
             raise asyncio.CancelledError("Crawl operation was cancelled by user")
     
     async def _create_crawl_progress_callback(self, base_status: str) -> Callable[[str, int, str], Awaitable[None]]:
-        """Create a progress callback for crawling operations.
+        """Create an enhanced progress callback for crawling operations.
         
         Args:
             base_status: The base status to use for progress updates
@@ -178,20 +178,36 @@ class CrawlingService:
         
         async def callback(status: str, percentage: int, message: str, **kwargs):
             if self.progress_id:
-                # Update and preserve progress state
+                # Use enhanced progress mapping
+                enhanced_progress = self.progress_mapper.map_progress(
+                    base_status, percentage,
+                    items_processed=kwargs.get('items_processed', 0),
+                    total_items=kwargs.get('total_items', 0),
+                    current_url=kwargs.get('current_url', ''),
+                    current_batch=kwargs.get('current_batch', 0),
+                    total_batches=kwargs.get('total_batches', 0)
+                )
+                
+                # Update and preserve progress state with enhanced data
+                self.progress_state.update(enhanced_progress)
                 self.progress_state.update({
                     'status': base_status,
-                    'percentage': percentage,
                     'log': message,
                     **kwargs
                 })
-                safe_logfire_info(f"Emitting crawl progress | progress_id={self.progress_id} | status={base_status} | percentage={percentage}")
+                
+                safe_logfire_info(
+                    f"Emitting enhanced crawl progress | progress_id={self.progress_id} | "
+                    f"status={base_status} | percentage={enhanced_progress['percentage']} | "
+                    f"stage={enhanced_progress.get('stage')} | substage={enhanced_progress.get('substage')}"
+                )
+                
                 await update_crawl_progress(self.progress_id, self.progress_state)
         return callback
     
     async def _handle_progress_update(self, task_id: str, update: Dict[str, Any]) -> None:
         """
-        Handle progress updates from background task.
+        Enhanced progress update handler with heartbeat and stall detection.
         
         Args:
             task_id: The task ID for the progress update
@@ -199,15 +215,59 @@ class CrawlingService:
         """
         _ensure_socketio_imports()
         
-        if self.progress_id:
-            # Update and preserve progress state
-            self.progress_state.update(update)
-            # Ensure progressId is always included
-            if self.progress_id and 'progressId' not in self.progress_state:
-                self.progress_state['progressId'] = self.progress_id
+        if not self.progress_id:
+            return
             
-            # Always emit progress updates for real-time feedback
-            await update_crawl_progress(self.progress_id, self.progress_state)
+        # Extract stage information
+        stage = update.get('stage', self.progress_mapper.get_current_stage())
+        stage_progress = update.get('stage_progress', 0)
+        
+        # Use enhanced progress mapping
+        enhanced_progress = self.progress_mapper.map_progress(
+            stage, stage_progress,
+            items_processed=update.get('items_processed', 0),
+            total_items=update.get('total_items', 0),
+            current_url=update.get('current_url', ''),
+            current_batch=update.get('current_batch', 0),
+            total_batches=update.get('total_batches', 0)
+        )
+        
+        # Merge with original update data
+        self.progress_state.update(enhanced_progress)
+        self.progress_state.update(update)  # Override with specific update data
+        self.progress_state['progressId'] = self.progress_id
+        
+        # Check if we should send a heartbeat
+        if self.progress_mapper.should_send_heartbeat():
+            heartbeat_data = self.progress_mapper.generate_heartbeat()
+            heartbeat_data['progressId'] = self.progress_id
+            from ..api_routes.socketio_handlers import broadcast_crawl_heartbeat
+            await broadcast_crawl_heartbeat(self.progress_id, heartbeat_data)
+        
+        # Check for stalls and broadcast stall detection
+        if self.progress_mapper.detect_stall():
+            stall_data = {
+                'progressId': self.progress_id,
+                'message': f'Processing appears stalled - no progress for {self.progress_mapper.STALL_DETECTION_TIMEOUT} seconds',
+                'stage': stage,
+                'substage': enhanced_progress.get('substage'),
+                'last_update': enhanced_progress.get('last_update'),
+                'suggested_action': 'Please check system resources or consider restarting the operation'
+            }
+            from ..api_routes.socketio_handlers import broadcast_stall_detection
+            await broadcast_stall_detection(self.progress_id, stall_data)
+        
+        # Broadcast performance metrics if available
+        if enhanced_progress.get('processing_rate', 0) > 0:
+            performance_data = {
+                'progressId': self.progress_id,
+                **self.progress_mapper.get_performance_metrics()
+            }
+            from ....api_routes.socketio_handlers import broadcast_crawl_performance
+            await broadcast_crawl_performance(self.progress_id, performance_data)
+        
+        # Always emit enhanced progress updates for real-time feedback
+        await update_crawl_progress(self.progress_id, self.progress_state)
     
     # Simple delegation methods for backward compatibility
     async def crawl_single_page(self, url: str, retry_count: int = 3) -> Dict[str, Any]:
