@@ -180,8 +180,17 @@ async def update_knowledge_item(source_id: str, updates: dict):
 async def delete_knowledge_item(source_id: str):
     """Delete a knowledge item from the database."""
     try:
-        logger.debug(f"Starting delete_knowledge_item for source_id: {source_id}")
-        safe_logfire_info(f"Deleting knowledge item | source_id={source_id}")
+        # Decode Base64 encoded source_id to handle special characters
+        import base64
+        try:
+            decoded_source_id = base64.b64decode(source_id.encode()).decode()
+            logger.debug(f"Decoded source_id from {source_id} to {decoded_source_id}")
+        except Exception as decode_error:
+            logger.warning(f"Failed to decode source_id {source_id}, using as-is: {decode_error}")
+            decoded_source_id = source_id
+        
+        logger.debug(f"Starting delete_knowledge_item for source_id: {decoded_source_id}")
+        safe_logfire_info(f"Deleting knowledge item | source_id={decoded_source_id}")
 
         # Use SourceManagementService directly instead of going through MCP
         logger.debug("Creating SourceManagementService...")
@@ -191,7 +200,7 @@ async def delete_knowledge_item(source_id: str):
         logger.debug("Successfully created SourceManagementService")
 
         logger.debug("Calling delete_source function...")
-        success, result_data = source_service.delete_source(source_id)
+        success, result_data = source_service.delete_source(decoded_source_id)
         logger.debug(f"delete_source returned: success={success}, data={result_data}")
 
         # Convert to expected format
@@ -202,25 +211,27 @@ async def delete_knowledge_item(source_id: str):
         }
 
         if result.get("success"):
-            safe_logfire_info(f"Knowledge item deleted successfully | source_id={source_id}")
+            safe_logfire_info(f"Knowledge item deleted successfully | source_id={decoded_source_id}")
 
-            return {"success": True, "message": f"Successfully deleted knowledge item {source_id}"}
+            return {"success": True, "message": f"Successfully deleted knowledge item {decoded_source_id}"}
         else:
             safe_logfire_error(
-                f"Knowledge item deletion failed | source_id={source_id} | error={result.get('error')}"
+                f"Knowledge item deletion failed | source_id={decoded_source_id} | error={result.get('error')}"
             )
             raise HTTPException(
                 status_code=500, detail={"error": result.get("error", "Deletion failed")}
             )
 
     except Exception as e:
+        # Use decoded_source_id if available, otherwise fallback to source_id
+        error_source_id = locals().get('decoded_source_id', source_id)
         logger.error(f"Exception in delete_knowledge_item: {e}")
         logger.error(f"Exception type: {type(e)}")
         import traceback
 
         logger.error(f"Traceback: {traceback.format_exc()}")
         safe_logfire_error(
-            f"Failed to delete knowledge item | error={str(e)} | source_id={source_id}"
+            f"Failed to delete knowledge item | error={str(e)} | source_id={error_source_id}"
         )
         raise HTTPException(status_code=500, detail={"error": str(e)})
 
@@ -817,26 +828,35 @@ async def get_available_sources():
 async def delete_source(source_id: str):
     """Delete a source and all its associated data."""
     try:
-        safe_logfire_info(f"Deleting source | source_id={source_id}")
+        # Decode Base64 encoded source_id to handle special characters
+        import base64
+        try:
+            decoded_source_id = base64.b64decode(source_id.encode()).decode()
+            logger.debug(f"Decoded source_id from {source_id} to {decoded_source_id}")
+        except Exception as decode_error:
+            logger.warning(f"Failed to decode source_id {source_id}, using as-is: {decode_error}")
+            decoded_source_id = source_id
+        
+        safe_logfire_info(f"Deleting source | source_id={decoded_source_id}")
 
         # Use SourceManagementService directly
         from ..services.source_management_service import SourceManagementService
 
         source_service = SourceManagementService(get_supabase_client())
 
-        success, result_data = source_service.delete_source(source_id)
+        success, result_data = source_service.delete_source(decoded_source_id)
 
         if success:
-            safe_logfire_info(f"Source deleted successfully | source_id={source_id}")
+            safe_logfire_info(f"Source deleted successfully | source_id={decoded_source_id}")
 
             return {
                 "success": True,
-                "message": f"Successfully deleted source {source_id}",
+                "message": f"Successfully deleted source {decoded_source_id}",
                 **result_data,
             }
         else:
             safe_logfire_error(
-                f"Source deletion failed | source_id={source_id} | error={result_data.get('error')}"
+                f"Source deletion failed | source_id={decoded_source_id} | error={result_data.get('error')}"
             )
             raise HTTPException(
                 status_code=500, detail={"error": result_data.get("error", "Deletion failed")}
@@ -844,7 +864,9 @@ async def delete_source(source_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        safe_logfire_error(f"Failed to delete source | error={str(e)} | source_id={source_id}")
+        # Use decoded_source_id if available, otherwise fallback to source_id
+        error_source_id = locals().get('decoded_source_id', source_id)
+        safe_logfire_error(f"Failed to delete source | error={str(e)} | source_id={error_source_id}")
         raise HTTPException(status_code=500, detail={"error": str(e)})
 
 

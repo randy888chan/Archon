@@ -25,7 +25,7 @@ def extract_source_id_from_url(url: str) -> str:
     """
     Extract a meaningful source_id from a URL.
     
-    For GitHub URLs, includes the repository path (e.g., github.com/user/repo).
+    For GitHub URLs, includes the repository path (e.g., github.com/user/repo.git).
     For other URLs, uses the domain.
     
     Args:
@@ -42,8 +42,19 @@ def extract_source_id_from_url(url: str) -> str:
         # Extract user/repo from path like /user/repo/blob/main/file.py
         path_parts = [part for part in parsed_url.path.split('/') if part]
         if len(path_parts) >= 2:
-            # Include github.com/user/repo
-            return f"github.com/{path_parts[0]}/{path_parts[1]}"
+            # Check if the second part ends with .git
+            repo_part = path_parts[1]
+            if repo_part.endswith('.git'):
+                # Include github.com/user/repo.git (preserve .git suffix)
+                return f"github.com/{path_parts[0]}/{repo_part}"
+            else:
+                # Check if this might be from a git clone URL by looking for .git in original URL
+                if '.git' in url:
+                    # Add .git suffix to match source records created during crawl
+                    return f"github.com/{path_parts[0]}/{repo_part}.git"
+                else:
+                    # Standard GitHub URL without .git
+                    return f"github.com/{path_parts[0]}/{repo_part}"
     
     return domain
 
