@@ -567,8 +567,8 @@ export const KnowledgeBasePage = () => {
     
     // Show success toast
     const message = data.uploadType === 'document' 
-      ? `Document "${data.fileName}" uploaded successfully! ${data.chunksStored || 0} chunks stored.`
-      : `Crawling completed for ${data.currentUrl}! ${data.chunksStored || 0} chunks stored.`;
+      ? `Document "${data.fileName}" uploaded successfully!`
+      : `Crawling completed for ${data.currentUrl}!`;
     showToast(message, 'success');
     
     // Remove from progress items after a brief delay to show completion

@@ -4,11 +4,11 @@ import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { useToast } from '../../contexts/ToastContext';
 
-type IDE = 'claude' | 'windsurf' | 'cursor';
+type RuleType = 'claude' | 'universal';
 
 export const IDEGlobalRules = () => {
   const [copied, setCopied] = useState(false);
-  const [selectedIDE, setSelectedIDE] = useState<IDE>('claude');
+  const [selectedRuleType, setSelectedRuleType] = useState<RuleType>('claude');
   const { showToast } = useToast();
   
   const claudeRules = `# CRITICAL: ARCHON-FIRST RULE - READ THIS FIRST
@@ -355,7 +355,7 @@ archon:manage_task(
 - [ ] Basic functionality tested
 - [ ] Documentation updated if needed`;
 
-  const genericRules = `# Archon Integration & Workflow
+  const universalRules = `# Archon Integration & Workflow
 
 **CRITICAL: This project uses Archon for knowledge management, task tracking, and project organization.**
 
@@ -378,13 +378,7 @@ archon:manage_task(
 - Maintain task descriptions and add implementation notes
 - DO NOT MAKE ASSUMPTIONS - check project documentation for questions`;
 
-  const ideRules = {
-    claude: claudeRules,
-    windsurf: genericRules,
-    cursor: genericRules
-  };
-
-  const currentRules = ideRules[selectedIDE];
+  const currentRules = selectedRuleType === 'claude' ? claudeRules : universalRules;
 
   // Simple markdown parser for display
   const renderMarkdown = (text: string) => {
@@ -481,7 +475,7 @@ archon:manage_task(
     try {
       await navigator.clipboard.writeText(currentRules);
       setCopied(true);
-      showToast(`${selectedIDE.charAt(0).toUpperCase() + selectedIDE.slice(1)} rules copied to clipboard!`, 'success');
+      showToast(`${selectedRuleType === 'claude' ? 'Claude Code' : 'Universal'} rules copied to clipboard!`, 'success');
       
       // Reset copy icon after 2 seconds
       setTimeout(() => {
@@ -494,94 +488,57 @@ archon:manage_task(
   };
 
   return (
-    <Card accentColor="pink" className="p-8">
+    <Card accentColor="blue" className="p-8">
       <div className="space-y-6">
         <div className="flex justify-between items-start">
           <p className="text-sm text-gray-600 dark:text-zinc-400 w-4/5">
-            Add Global rules to your IDE to increase the consistency of the workflow.
+            Add global rules to your AI assistant to ensure consistent Archon workflow integration.
           </p>
           <Button 
             variant="outline" 
-            accentColor="pink" 
+            accentColor="blue" 
             icon={copied ? <Check className="w-4 h-4 mr-1" /> : <Copy className="w-4 h-4 mr-1" />}
             className="ml-auto whitespace-nowrap px-4 py-2"
             size="md"
             onClick={handleCopyToClipboard}
           >
-            {copied ? 'Copied!' : `Copy ${selectedIDE.charAt(0).toUpperCase() + selectedIDE.slice(1)} Rules`}
+            {copied ? 'Copied!' : `Copy ${selectedRuleType === 'claude' ? 'Claude Code' : 'Universal'} Rules`}
           </Button>
         </div>
 
-        {/* IDE Cards Section */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* Cursor Card */}
-          <div 
-            onClick={() => setSelectedIDE('cursor')}
-            className={`relative p-4 rounded-xl cursor-pointer transition-all duration-200 ${
-              selectedIDE === 'cursor' 
-                ? 'bg-gradient-to-br from-gray-800/50 to-gray-900/40 dark:from-white/50 dark:to-gray-200/40 border-2 border-gray-500/50 shadow-[0_0_20px_rgba(107,114,128,0.3)]' 
-                : 'bg-gradient-to-br from-gray-800/30 to-gray-900/20 dark:from-white/30 dark:to-gray-200/20 border border-gray-500/30 shadow-lg hover:shadow-[0_0_15px_rgba(107,114,128,0.2)]'
-            }`}
-          >
-            <div className="flex items-center gap-2 mb-2">
-              <img src="/img/cursor.svg" alt="Cursor" className="w-5 h-5 filter invert dark:invert-0" />
-              <h3 className="text-sm font-semibold text-gray-800 dark:text-white">Cursor</h3>
-              {selectedIDE === 'cursor' && (
-                <Check className="w-4 h-4 ml-auto text-gray-600 dark:text-gray-300" />
-              )}
-            </div>
-            <p className="text-xs text-gray-600 dark:text-gray-400">
-              Create .cursorrules file in project root or use Settings → Rules
-            </p>
-          </div>
+        {/* Rule Type Selector */}
+        <fieldset className="flex items-center space-x-6">
+          <legend className="sr-only">Select rule type</legend>
+          <label className="flex items-center cursor-pointer">
+            <input
+              type="radio"
+              name="ruleType"
+              value="claude"
+              checked={selectedRuleType === 'claude'}
+              onChange={() => setSelectedRuleType('claude')}
+              className="mr-2 text-blue-500 focus:ring-blue-500"
+              aria-label="Claude Code Rules - Comprehensive Archon workflow instructions for Claude"
+            />
+            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Claude Code Rules</span>
+          </label>
+          <label className="flex items-center cursor-pointer">
+            <input
+              type="radio"
+              name="ruleType"
+              value="universal"
+              checked={selectedRuleType === 'universal'}
+              onChange={() => setSelectedRuleType('universal')}
+              className="mr-2 text-blue-500 focus:ring-blue-500"
+              aria-label="Universal Agent Rules - Simplified workflow for all other AI agents"
+            />
+            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Universal Agent Rules</span>
+          </label>
+        </fieldset>
 
-          {/* Windsurf Card */}
-          <div 
-            onClick={() => setSelectedIDE('windsurf')}
-            className={`relative p-4 rounded-xl cursor-pointer transition-all duration-200 ${
-              selectedIDE === 'windsurf' 
-                ? 'bg-gradient-to-br from-emerald-500/50 to-green-600/40 border-2 border-emerald-500/50 shadow-[0_0_20px_rgba(16,185,129,0.3)]' 
-                : 'bg-gradient-to-br from-emerald-500/30 to-green-600/20 border border-emerald-500/30 shadow-lg hover:shadow-[0_0_15px_rgba(16,185,129,0.2)]'
-            }`}
-          >
-            <div className="flex items-center gap-2 mb-2">
-              <img src="/img/windsurf-white-symbol.svg" alt="Windsurf" className="w-5 h-5" />
-              <h3 className="text-sm font-semibold text-gray-800 dark:text-white">Windsurf</h3>
-              {selectedIDE === 'windsurf' && (
-                <Check className="w-4 h-4 ml-auto text-emerald-600 dark:text-emerald-300" />
-              )}
-            </div>
-            <p className="text-xs text-gray-600 dark:text-gray-400">
-              Create .windsurfrules file in project root or use IDE settings
-            </p>
-          </div>
-
-          {/* Claude Card */}
-          <div 
-            onClick={() => setSelectedIDE('claude')}
-            className={`relative p-4 rounded-xl cursor-pointer transition-all duration-200 ${
-              selectedIDE === 'claude' 
-                ? 'bg-gradient-to-br from-orange-500/50 to-orange-600/40 border-2 border-orange-500/50 shadow-[0_0_20px_rgba(251,146,60,0.3)]' 
-                : 'bg-gradient-to-br from-orange-500/30 to-orange-600/20 border border-orange-500/30 shadow-lg hover:shadow-[0_0_15px_rgba(251,146,60,0.2)]'
-            }`}
-          >
-            <div className="flex items-center gap-2 mb-2">
-              <img src="/img/claude-logo.svg" alt="Claude" className="w-5 h-5" />
-              <h3 className="text-sm font-semibold text-gray-800 dark:text-white">Claude Code</h3>
-              {selectedIDE === 'claude' && (
-                <Check className="w-4 h-4 ml-auto text-orange-600 dark:text-orange-300" />
-              )}
-            </div>
-            <p className="text-xs text-gray-600 dark:text-gray-400">
-              Create CLAUDE.md file in project root for Claude Code integration
-            </p>
-          </div>
-        </div>
-
-        <div className="border border-blue-200 dark:border-blue-800/30 bg-gradient-to-br from-blue-500/10 to-blue-600/10 backdrop-blur-sm rounded-md h-[570px] flex flex-col">
+        <div className="border border-blue-200 dark:border-blue-800/30 bg-gradient-to-br from-blue-500/10 to-blue-600/10 backdrop-blur-sm rounded-md h-[400px] flex flex-col">
           <div className="p-4 pb-2 border-b border-blue-200/50 dark:border-blue-800/30">
             <h3 className="text-base font-semibold text-gray-800 dark:text-white">
-              {selectedIDE.charAt(0).toUpperCase() + selectedIDE.slice(1)} Rules
+              {selectedRuleType === 'claude' ? 'Claude Code' : 'Universal Agent'} Rules
             </h3>
           </div>
           <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
@@ -591,16 +548,17 @@ archon:manage_task(
           </div>
         </div>
 
-        {/* Security Note */}
-        <div className="p-3 bg-gray-50 dark:bg-black/40 rounded-md flex items-start gap-3">
-          <div className="w-5 h-5 text-blue-500 mt-0.5 flex-shrink-0">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3" />
-            </svg>
-          </div>
+        {/* Info Note */}
+        <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-md">
           <p className="text-sm text-gray-600 dark:text-gray-400">
-            Adding global rules to your IDE helps maintain consistency across your project and ensures all team members follow the same workflow.
+            <strong>Where to place these rules:</strong>
           </p>
+          <ul className="text-sm text-gray-600 dark:text-gray-400 mt-2 ml-4 list-disc">
+            <li><strong>Claude Code:</strong> Create a CLAUDE.md file in your project root</li>
+            <li><strong>Cursor:</strong> Create .cursorrules file or add to Settings → Rules</li>
+            <li><strong>Windsurf:</strong> Create .windsurfrules file in project root</li>
+            <li><strong>Other IDEs:</strong> Add to your IDE's AI assistant configuration</li>
+          </ul>
         </div>
       </div>
     </Card>

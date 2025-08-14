@@ -1,7 +1,7 @@
 # Server Service - Web crawling and document processing microservice
 
 # Build stage
-FROM python:3.11 AS builder
+FROM python:3.12 AS builder
 
 WORKDIR /build
 
@@ -15,7 +15,7 @@ COPY requirements.server.txt .
 RUN pip install --user --no-cache-dir -r requirements.server.txt
 
 # Runtime stage
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 WORKDIR /app
 
@@ -58,7 +58,7 @@ COPY src/__init__.py src/
 COPY tests/ tests/
 
 # Set environment variables
-ENV PYTHONPATH="/app:/root/.local/lib/python3.11/site-packages:$PYTHONPATH"
+ENV PYTHONPATH="/app:/root/.local/lib/python3.12/site-packages:$PYTHONPATH"
 ENV PYTHONUNBUFFERED=1
 
 # Expose Server port
