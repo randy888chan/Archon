@@ -273,15 +273,24 @@ async def get_knowledge_item_code_examples(source_id: str):
 async def refresh_knowledge_item(source_id: str):
     """Refresh a knowledge item by re-crawling its URL with the same metadata."""
     try:
-        safe_logfire_info(f"Starting knowledge item refresh | source_id={source_id}")
+        # Decode Base64 encoded source_id to handle special characters
+        import base64
+        try:
+            decoded_source_id = base64.b64decode(source_id.encode()).decode()
+            logger.debug(f"Decoded source_id from {source_id} to {decoded_source_id}")
+        except Exception as decode_error:
+            logger.warning(f"Failed to decode source_id {source_id}, using as-is: {decode_error}")
+            decoded_source_id = source_id
+        
+        safe_logfire_info(f"Starting knowledge item refresh | source_id={decoded_source_id}")
 
         # Get the existing knowledge item
         service = KnowledgeItemService(get_supabase_client())
-        existing_item = await service.get_item(source_id)
+        existing_item = await service.get_item(decoded_source_id)
 
         if not existing_item:
             raise HTTPException(
-                status_code=404, detail={"error": f"Knowledge item {source_id} not found"}
+                status_code=404, detail={"error": f"Knowledge item {decoded_source_id} not found"}
             )
 
         # Extract metadata
@@ -352,7 +361,7 @@ async def refresh_knowledge_item(source_id: str):
 
                 async with crawl_semaphore:
                     safe_logfire_info(
-                        f"Acquired crawl semaphore for refresh | source_id={source_id}"
+                        f"Acquired crawl semaphore for refresh | source_id={decoded_source_id}"
                     )
                     await crawl_service.orchestrate_crawl(request_dict)
             finally:
@@ -372,8 +381,10 @@ async def refresh_knowledge_item(source_id: str):
     except HTTPException:
         raise
     except Exception as e:
+        # Use decoded_source_id if available, otherwise fallback to original source_id
+        error_source_id = locals().get('decoded_source_id', source_id)
         safe_logfire_error(
-            f"Failed to refresh knowledge item | error={str(e)} | source_id={source_id}"
+            f"Failed to refresh knowledge item | error={str(e)} | source_id={error_source_id}"
         )
         raise HTTPException(status_code=500, detail={"error": str(e)})
 

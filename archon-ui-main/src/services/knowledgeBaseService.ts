@@ -202,7 +202,9 @@ class KnowledgeBaseService {
   async refreshKnowledgeItem(sourceId: string) {
     console.log('🔄 [KnowledgeBase] Refreshing knowledge item:', sourceId);
     
-    return apiRequest(`/knowledge-items/${sourceId}/refresh`, {
+    // Base64 encode the source_id to handle special characters like forward slashes
+    const encodedSourceId = btoa(sourceId)
+    return apiRequest(`/knowledge-items/${encodedSourceId}/refresh`, {
       method: 'POST'
     })
   }

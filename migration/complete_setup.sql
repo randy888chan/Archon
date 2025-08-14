@@ -199,6 +199,8 @@ CREATE TABLE IF NOT EXISTS archon_crawled_pages (
     embedding_1024 VECTOR(1024), -- For custom models requiring 1024 dimensions
     embedding_1536 VECTOR(1536), -- For text-embedding-3-small (default) and text-embedding-ada-002
     embedding_3072 VECTOR(3072), -- For text-embedding-3-large high-dimension embeddings
+    embedding_model TEXT,        -- The embedding model used (e.g., text-embedding-3-small)
+    embedding_dimensions INTEGER, -- The number of dimensions in the stored embedding vector
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
     
     -- Add a unique constraint to prevent duplicate chunks for the same URL
@@ -207,6 +209,10 @@ CREATE TABLE IF NOT EXISTS archon_crawled_pages (
     -- Add foreign key constraint to sources table
     FOREIGN KEY (source_id) REFERENCES archon_sources(source_id)
 );
+
+-- Add comments for new embedding tracking columns
+COMMENT ON COLUMN archon_crawled_pages.embedding_model IS 'The embedding model used to generate the embedding (e.g., text-embedding-3-small, all-mpnet-base-v2)';
+COMMENT ON COLUMN archon_crawled_pages.embedding_dimensions IS 'The number of dimensions in the stored embedding vector';
 
 -- Create indexes for better performance
 CREATE INDEX idx_archon_crawled_pages_metadata ON archon_crawled_pages USING GIN (metadata);
@@ -232,6 +238,16 @@ WITH (lists = 1000);
 -- ON archon_crawled_pages USING ivfflat (embedding_3072 vector_cosine_ops)
 -- WITH (lists = 1000);
 
+-- Indexes for embedding tracking columns
+CREATE INDEX IF NOT EXISTS idx_archon_crawled_pages_embedding_model 
+ON archon_crawled_pages (embedding_model);
+
+CREATE INDEX IF NOT EXISTS idx_archon_crawled_pages_embedding_dimensions 
+ON archon_crawled_pages (embedding_dimensions);
+
+CREATE INDEX IF NOT EXISTS idx_archon_crawled_pages_model_dimensions 
+ON archon_crawled_pages (embedding_model, embedding_dimensions);
+
 -- Create the code_examples table
 CREATE TABLE IF NOT EXISTS archon_code_examples (
     id BIGSERIAL PRIMARY KEY,
@@ -245,6 +261,8 @@ CREATE TABLE IF NOT EXISTS archon_code_examples (
     embedding_1024 VECTOR(1024), -- For custom models requiring 1024 dimensions
     embedding_1536 VECTOR(1536), -- For text-embedding-3-small (default) and text-embedding-ada-002
     embedding_3072 VECTOR(3072), -- For text-embedding-3-large high-dimension embeddings
+    embedding_model TEXT,        -- The embedding model used (e.g., text-embedding-3-small)
+    embedding_dimensions INTEGER, -- The number of dimensions in the stored embedding vector
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
     
     -- Add a unique constraint to prevent duplicate chunks for the same URL
@@ -253,6 +271,10 @@ CREATE TABLE IF NOT EXISTS archon_code_examples (
     -- Add foreign key constraint to sources table
     FOREIGN KEY (source_id) REFERENCES archon_sources(source_id)
 );
+
+-- Add comments for new embedding tracking columns
+COMMENT ON COLUMN archon_code_examples.embedding_model IS 'The embedding model used to generate the embedding (e.g., text-embedding-3-small, all-mpnet-base-v2)';
+COMMENT ON COLUMN archon_code_examples.embedding_dimensions IS 'The number of dimensions in the stored embedding vector';
 
 -- Create indexes for better performance
 CREATE INDEX idx_archon_code_examples_metadata ON archon_code_examples USING GIN (metadata);
@@ -277,6 +299,16 @@ WITH (lists = 1000);
 -- CREATE INDEX IF NOT EXISTS idx_archon_code_examples_embedding_3072
 -- ON archon_code_examples USING ivfflat (embedding_3072 vector_cosine_ops)
 -- WITH (lists = 1000);
+
+-- Indexes for embedding tracking columns
+CREATE INDEX IF NOT EXISTS idx_archon_code_examples_embedding_model 
+ON archon_code_examples (embedding_model);
+
+CREATE INDEX IF NOT EXISTS idx_archon_code_examples_embedding_dimensions 
+ON archon_code_examples (embedding_dimensions);
+
+CREATE INDEX IF NOT EXISTS idx_archon_code_examples_model_dimensions 
+ON archon_code_examples (embedding_model, embedding_dimensions);
 
 -- =====================================================
 -- SECTION 5: SEARCH FUNCTIONS

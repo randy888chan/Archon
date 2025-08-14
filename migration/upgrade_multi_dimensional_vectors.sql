@@ -66,6 +66,31 @@ BEGIN
     
     RAISE NOTICE 'Multi-dimensional embedding columns added successfully.';
     
+    -- Add embedding tracking columns for model migration workflows
+    RAISE NOTICE 'Adding embedding model and dimensions tracking columns...';
+    
+    -- Add embedding_model column to track which model was used
+    ALTER TABLE archon_code_examples 
+    ADD COLUMN IF NOT EXISTS embedding_model TEXT;
+    
+    ALTER TABLE archon_crawled_pages 
+    ADD COLUMN IF NOT EXISTS embedding_model TEXT;
+    
+    -- Add embedding_dimensions column to track dimension size
+    ALTER TABLE archon_code_examples 
+    ADD COLUMN IF NOT EXISTS embedding_dimensions INTEGER;
+    
+    ALTER TABLE archon_crawled_pages 
+    ADD COLUMN IF NOT EXISTS embedding_dimensions INTEGER;
+    
+    -- Add comments for the new tracking columns
+    COMMENT ON COLUMN archon_code_examples.embedding_model IS 'The embedding model used to generate the embedding (e.g., text-embedding-3-small, all-mpnet-base-v2)';
+    COMMENT ON COLUMN archon_code_examples.embedding_dimensions IS 'The number of dimensions in the stored embedding vector';
+    COMMENT ON COLUMN archon_crawled_pages.embedding_model IS 'The embedding model used to generate the embedding (e.g., text-embedding-3-small, all-mpnet-base-v2)';
+    COMMENT ON COLUMN archon_crawled_pages.embedding_dimensions IS 'The number of dimensions in the stored embedding vector';
+    
+    RAISE NOTICE 'Embedding tracking columns added successfully.';
+    
 EXCEPTION WHEN OTHERS THEN
     RAISE NOTICE 'Error adding embedding columns: %', SQLERRM;
     ROLLBACK;
@@ -98,6 +123,133 @@ EXCEPTION WHEN OTHERS THEN
     RAISE NOTICE 'Error during embedding data migration: %', SQLERRM;
     ROLLBACK;
     RETURN;
+END $$;
+
+-- =====================================================
+-- SECTION 2B: POPULATE EMBEDDING TRACKING COLUMNS
+-- =====================================================
+
+DO $$ 
+DECLARE
+    current_model TEXT;
+    detected_dimensions INTEGER;
+    total_code_records INTEGER;
+    total_page_records INTEGER;
+    updated_code_records INTEGER := 0;
+    updated_page_records INTEGER := 0;
+BEGIN
+    RAISE NOTICE 'Populating embedding tracking columns for existing records...';
+    
+    -- Get the current embedding model from settings
+    SELECT value INTO current_model 
+    FROM archon_settings 
+    WHERE key = 'EMBEDDING_MODEL' 
+    LIMIT 1;
+    
+    -- Default to text-embedding-3-small if not found
+    IF current_model IS NULL THEN
+        current_model := 'text-embedding-3-small';
+        RAISE NOTICE 'No EMBEDDING_MODEL found in settings, defaulting to: %', current_model;
+    ELSE
+        RAISE NOTICE 'Found current embedding model in settings: %', current_model;
+    END IF;
+    
+    -- Determine dimensions based on current model
+    CASE 
+        WHEN current_model LIKE '%text-embedding-3-large%' THEN 
+            detected_dimensions := 3072;
+        WHEN current_model LIKE '%text-embedding-3-small%' OR current_model LIKE '%text-embedding-ada-002%' THEN 
+            detected_dimensions := 1536;
+        WHEN current_model LIKE '%all-mpnet-base-v2%' THEN 
+            detected_dimensions := 768;
+        WHEN current_model LIKE '%snowflake-arctic-embed%' THEN 
+            detected_dimensions := 1024;
+        WHEN current_model LIKE '%all-MiniLM%' THEN 
+            detected_dimensions := 384;
+        ELSE 
+            detected_dimensions := 1536; -- Default fallback
+    END CASE;
+    
+    RAISE NOTICE 'Detected dimensions for model %: %', current_model, detected_dimensions;
+    
+    -- Count existing records
+    SELECT COUNT(*) INTO total_code_records FROM archon_code_examples;
+    SELECT COUNT(*) INTO total_page_records FROM archon_crawled_pages;
+    
+    RAISE NOTICE 'Found % code examples and % crawled pages to update', total_code_records, total_page_records;
+    
+    -- Update archon_code_examples records that have embeddings but no model tracking
+    UPDATE archon_code_examples 
+    SET 
+        embedding_model = current_model,
+        embedding_dimensions = detected_dimensions
+    WHERE 
+        embedding_model IS NULL 
+        AND (
+            embedding_768 IS NOT NULL 
+            OR embedding_1024 IS NOT NULL 
+            OR embedding_1536 IS NOT NULL 
+            OR embedding_3072 IS NOT NULL
+        );
+        
+    GET DIAGNOSTICS updated_code_records = ROW_COUNT;
+    
+    -- Update archon_crawled_pages records that have embeddings but no model tracking
+    UPDATE archon_crawled_pages 
+    SET 
+        embedding_model = current_model,
+        embedding_dimensions = detected_dimensions
+    WHERE 
+        embedding_model IS NULL 
+        AND (
+            embedding_768 IS NOT NULL 
+            OR embedding_1024 IS NOT NULL 
+            OR embedding_1536 IS NOT NULL 
+            OR embedding_3072 IS NOT NULL
+        );
+        
+    GET DIAGNOSTICS updated_page_records = ROW_COUNT;
+    
+    RAISE NOTICE 'Updated % code examples and % crawled pages with embedding model: %', 
+                 updated_code_records, updated_page_records, current_model;
+                 
+    -- Additional validation: report on embedding distribution
+    DECLARE 
+        embedding_768_count INTEGER;
+        embedding_1024_count INTEGER; 
+        embedding_1536_count INTEGER;
+        embedding_3072_count INTEGER;
+    BEGIN
+        -- Check which embedding columns actually have data in crawled_pages
+        SELECT 
+            COUNT(*) FILTER (WHERE embedding_768 IS NOT NULL),
+            COUNT(*) FILTER (WHERE embedding_1024 IS NOT NULL),
+            COUNT(*) FILTER (WHERE embedding_1536 IS NOT NULL),
+            COUNT(*) FILTER (WHERE embedding_3072 IS NOT NULL)
+        INTO embedding_768_count, embedding_1024_count, embedding_1536_count, embedding_3072_count
+        FROM archon_crawled_pages;
+        
+        RAISE NOTICE 'Embedding distribution in crawled_pages - 768D: %, 1024D: %, 1536D: %, 3072D: %',
+                     embedding_768_count, embedding_1024_count, embedding_1536_count, embedding_3072_count;
+                     
+        -- Check code examples too
+        SELECT 
+            COUNT(*) FILTER (WHERE embedding_768 IS NOT NULL),
+            COUNT(*) FILTER (WHERE embedding_1024 IS NOT NULL),
+            COUNT(*) FILTER (WHERE embedding_1536 IS NOT NULL),
+            COUNT(*) FILTER (WHERE embedding_3072 IS NOT NULL)
+        INTO embedding_768_count, embedding_1024_count, embedding_1536_count, embedding_3072_count
+        FROM archon_code_examples;
+        
+        RAISE NOTICE 'Embedding distribution in code_examples - 768D: %, 1024D: %, 1536D: %, 3072D: %',
+                     embedding_768_count, embedding_1024_count, embedding_1536_count, embedding_3072_count;
+    END;
+    
+    RAISE NOTICE 'Embedding tracking data population completed.';
+    
+EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'Error during embedding tracking data population: %', SQLERRM;
+    -- Don't rollback - this is not critical if it fails
 END $$;
 
 -- =====================================================
@@ -176,6 +328,30 @@ BEGIN
     -- WITH (lists = 1000);
     
     RAISE NOTICE 'Vector indexes created successfully.';
+    
+    -- Create indexes for embedding tracking columns
+    RAISE NOTICE 'Creating indexes for embedding tracking columns...';
+    
+    CREATE INDEX IF NOT EXISTS idx_archon_code_examples_embedding_model 
+    ON archon_code_examples (embedding_model);
+    
+    CREATE INDEX IF NOT EXISTS idx_archon_code_examples_embedding_dimensions 
+    ON archon_code_examples (embedding_dimensions);
+    
+    CREATE INDEX IF NOT EXISTS idx_archon_crawled_pages_embedding_model 
+    ON archon_crawled_pages (embedding_model);
+    
+    CREATE INDEX IF NOT EXISTS idx_archon_crawled_pages_embedding_dimensions 
+    ON archon_crawled_pages (embedding_dimensions);
+    
+    -- Create composite indexes for model migration workflows
+    CREATE INDEX IF NOT EXISTS idx_archon_code_examples_model_dimensions 
+    ON archon_code_examples (embedding_model, embedding_dimensions);
+    
+    CREATE INDEX IF NOT EXISTS idx_archon_crawled_pages_model_dimensions 
+    ON archon_crawled_pages (embedding_model, embedding_dimensions);
+    
+    RAISE NOTICE 'Embedding tracking indexes created successfully.';
     
 EXCEPTION WHEN OTHERS THEN
     RAISE NOTICE 'Error creating indexes: %', SQLERRM;

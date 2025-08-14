@@ -354,7 +354,9 @@ async def add_documents_to_supabase(
                     "content": text,  # Use the successful text
                     "metadata": {"chunk_size": len(text), **batch_metadatas[j]},
                     "source_id": source_id,
-                    column_name: embedding  # Use the successful embedding with the appropriate column name
+                    column_name: embedding,  # Use the successful embedding with the appropriate column name
+                    "embedding_model": result.embedding_model,  # Track which model was used
+                    "embedding_dimensions": result.embedding_dimensions  # Track dimension size
                 }
                 batch_data.append(data)
 

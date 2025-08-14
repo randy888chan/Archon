@@ -40,6 +40,8 @@ class EmbeddingBatchResult:
     success_count: int = 0
     failure_count: int = 0
     texts_processed: list[str] = field(default_factory=list)  # Successfully processed texts
+    embedding_model: str | None = None  # The embedding model used
+    embedding_dimensions: int | None = None  # The dimension size of the embeddings
 
     def add_success(self, embedding: list[float], text: str):
         """Add a successful embedding."""
@@ -311,6 +313,11 @@ async def create_embeddings_batch(
                                         log_dimension_operation("embedding_creation", embedding_model_dims, False, consistency_msg)
                                     else:
                                         log_dimension_operation("embedding_creation", embedding_model_dims, True)
+                                    
+                                    # Set model info on first successful batch (all batches use same model)
+                                    if result.embedding_model is None:
+                                        result.embedding_model = embedding_model
+                                        result.embedding_dimensions = embedding_model_dims
                                     
                                     # Add successful embeddings
                                     for text, embedding in zip(batch, batch_embeddings):
