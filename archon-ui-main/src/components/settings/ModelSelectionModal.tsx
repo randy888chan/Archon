@@ -238,9 +238,24 @@ export const ModelSelectionModal: React.FC<ModelSelectionModalProps> = ({
     setLoadingModels(true);
     try {
       if (provider === 'ollama') {
-        // For Ollama, use the discovery endpoint to get models from all hosts
-        // First get the configured hosts (for now, use default)
-        const hosts = ['http://localhost:11434']; // This should come from settings
+        // For Ollama, get the configured hosts from localStorage
+        const getConfiguredOllamaHosts = () => {
+          try {
+            const saved = localStorage.getItem('ollama-instances');
+            if (saved) {
+              const instances = JSON.parse(saved);
+              return instances
+                .filter((inst: any) => inst.isEnabled)
+                .map((inst: any) => inst.baseUrl);
+            }
+          } catch (error) {
+            console.error('Failed to load Ollama instances from localStorage:', error);
+          }
+          // Fallback to default host
+          return ['http://localhost:11434'];
+        };
+        
+        const hosts = getConfiguredOllamaHosts();
         
         const discovery = await fetch('/api/providers/ollama/models', {
           method: 'POST',
@@ -257,49 +272,60 @@ export const ModelSelectionModal: React.FC<ModelSelectionModalProps> = ({
           const discoveryData = await discovery.json();
           setOllamaDiscovery(discoveryData);
           
-          // Convert Ollama models to ModelSpec format
+          // Convert Ollama models to ModelSpec format with enhanced details
           const allOllamaModels = [
             ...discoveryData.chat_models.map((model: any) => ({
               id: `${model.name}@${model.host}`,
               name: model.name,
-              displayName: model.name,
+              displayName: `${model.name} (${new URL(model.host).hostname})`,
               provider: 'ollama' as Provider,
               type: 'chat' as const,
               contextWindow: model.context_window,
               toolSupport: model.supports_tools,
               performance: { speed: 'medium', quality: 'high' },
-              capabilities: ['Text Generation', ...(model.supports_tools ? ['Function Calling'] : [])],
-              useCase: ['Local AI', 'Privacy'],
+              capabilities: [
+                'Text Generation', 
+                'Local Processing',
+                ...(model.supports_tools ? ['Function Calling'] : []),
+                ...(model.supports_thinking ? ['Thinking'] : [])
+              ],
+              useCase: ['Local AI', 'Privacy', 'Offline Processing'],
               status: 'available' as const,
-              description: `${model.family || 'Ollama'} model on ${model.host}${model.size_gb ? ` (${model.size_gb}GB)` : ''}`,
+              description: `${model.family || 'Ollama'} model running on ${new URL(model.host).hostname}`,
               size_gb: model.size_gb,
               family: model.family,
               hostInfo: {
                 host: model.host,
                 family: model.family,
                 size_gb: model.size_gb,
+                context_window: model.context_window,
+                supports_tools: model.supports_tools,
+                supports_thinking: model.supports_thinking,
               },
             })),
             ...discoveryData.embedding_models.map((model: any) => ({
               id: `${model.name}@${model.host}`,
               name: model.name,
-              displayName: model.name,
+              displayName: `${model.name} (${new URL(model.host).hostname})`,
               provider: 'ollama' as Provider,
               type: 'embedding' as const,
               contextWindow: model.context_window,
               dimensions: model.embedding_dimensions,
               toolSupport: false,
               performance: { speed: 'fast', quality: 'medium' },
-              capabilities: ['Text Embeddings', 'Local Processing'],
-              useCase: ['Private Search', 'Local RAG'],
+              capabilities: ['Text Embeddings', 'Local Processing', 'Semantic Search'],
+              useCase: ['Private Search', 'Local RAG', 'Offline Embeddings'],
               status: 'available' as const,
-              description: `${model.family || 'Embedding'} model on ${model.host}${model.size_gb ? ` (${model.size_gb}GB)` : ''}`,
+              description: `${model.family || 'Embedding'} model (${model.embedding_dimensions}D) on ${new URL(model.host).hostname}`,
               size_gb: model.size_gb,
               family: model.family,
+              dimensions: model.embedding_dimensions,
               hostInfo: {
                 host: model.host,
                 family: model.family,
                 size_gb: model.size_gb,
+                context_window: model.context_window,
+                embedding_dimensions: model.embedding_dimensions,
               },
             })),
           ];
@@ -319,7 +345,7 @@ export const ModelSelectionModal: React.FC<ModelSelectionModalProps> = ({
     } finally {
       setLoadingModels(false);
     }
-  };
+  };;
 
   const handleRefresh = () => {
     setRefreshKey(prev => prev + 1);
