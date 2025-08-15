@@ -37,33 +37,59 @@ const OllamaConfigurationPanel: React.FC<OllamaConfigurationPanelProps> = ({
   onConfigChange,
   className = ''
 }) => {
-  const [instances, setInstances] = useState<OllamaInstance[]>([
-    {
-      id: 'primary',
-      name: 'Primary Ollama Instance',
-      baseUrl: 'http://localhost:11434',
-      isEnabled: true,
-      isPrimary: true,
-      loadBalancingWeight: 100
+  // Load instances from localStorage or use default
+  const loadInstances = (): OllamaInstance[] => {
+    try {
+      const saved = localStorage.getItem('ollama-instances');
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch (error) {
+      console.error('Failed to load Ollama instances from localStorage:', error);
     }
-  ]);
+    
+    // Default instances
+    return [
+      {
+        id: 'primary',
+        name: 'Primary Ollama Instance',
+        baseUrl: 'http://localhost:11434',
+        isEnabled: true,
+        isPrimary: true,
+        loadBalancingWeight: 100
+      }
+    ];
+  };
+
+  const [instances, setInstances] = useState<OllamaInstance[]>(loadInstances());
   const [testingConnections, setTestingConnections] = useState<Set<string>>(new Set());
   const [newInstanceUrl, setNewInstanceUrl] = useState('');
   const [newInstanceName, setNewInstanceName] = useState('');
   const [showAddInstance, setShowAddInstance] = useState(false);
   const { showToast } = useToast();
 
+  // Save instances to localStorage
+  const saveInstances = (newInstances: OllamaInstance[]) => {
+    try {
+      localStorage.setItem('ollama-instances', JSON.stringify(newInstances));
+      setInstances(newInstances);
+    } catch (error) {
+      console.error('Failed to save Ollama instances to localStorage:', error);
+      showToast('Failed to save Ollama configuration', 'error');
+    }
+  };
+
   // Test connection to an Ollama instance
   const testConnection = async (baseUrl: string): Promise<ConnectionTestResult> => {
     try {
-      const response = await fetch('/api/providers/health', {
+      const response = await fetch('/api/providers/validate', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           provider: 'ollama',
-          config: { base_url: baseUrl }
+          base_url: baseUrl
         })
       });
 
@@ -98,7 +124,7 @@ const OllamaConfigurationPanel: React.FC<OllamaConfigurationPanelProps> = ({
       const result = await testConnection(instance.baseUrl);
       
       // Update instance with test results
-      setInstances(prev => prev.map(inst => 
+      const updatedInstances = instances.map(inst => 
         inst.id === instanceId 
           ? {
               ...inst,
@@ -108,27 +134,16 @@ const OllamaConfigurationPanel: React.FC<OllamaConfigurationPanelProps> = ({
               lastHealthCheck: new Date().toISOString()
             }
           : inst
-      ));
+      );
+      saveInstances(updatedInstances);
 
       if (result.isHealthy) {
-        showToast({
-          title: 'Connection Successful',
-          description: `Connected to ${instance.name} (${result.responseTimeMs?.toFixed(0)}ms, ${result.modelsAvailable} models)`,
-          variant: 'success'
-        });
+        showToast(`Connected to ${instance.name} (${result.responseTimeMs?.toFixed(0)}ms, ${result.modelsAvailable} models)`, 'success');
       } else {
-        showToast({
-          title: 'Connection Failed',
-          description: result.error || 'Unable to connect to Ollama instance',
-          variant: 'destructive'
-        });
+        showToast(result.error || 'Unable to connect to Ollama instance', 'error');
       }
     } catch (error) {
-      showToast({
-        title: 'Connection Test Failed',
-        description: error instanceof Error ? error.message : 'Unknown error',
-        variant: 'destructive'
-      });
+      showToast(`Connection test failed: ${error instanceof Error ? error.message : 'Unknown error'}`, 'error');
     } finally {
       setTestingConnections(prev => {
         const newSet = new Set(prev);
@@ -141,11 +156,7 @@ const OllamaConfigurationPanel: React.FC<OllamaConfigurationPanelProps> = ({
   // Add new instance
   const handleAddInstance = () => {
     if (!newInstanceUrl.trim() || !newInstanceName.trim()) {
-      showToast({
-        title: 'Validation Error',
-        description: 'Please provide both URL and name for the new instance',
-        variant: 'destructive'
-      });
+      showToast('Please provide both URL and name for the new instance', 'error');
       return;
     }
 
@@ -156,22 +167,14 @@ const OllamaConfigurationPanel: React.FC<OllamaConfigurationPanelProps> = ({
         throw new Error('URL must use HTTP or HTTPS protocol');
       }
     } catch (error) {
-      showToast({
-        title: 'Invalid URL',
-        description: 'Please provide a valid HTTP/HTTPS URL',
-        variant: 'destructive'
-      });
+      showToast('Please provide a valid HTTP/HTTPS URL', 'error');
       return;
     }
 
     // Check for duplicate URLs
     const isDuplicate = instances.some(inst => inst.baseUrl === newInstanceUrl.trim());
     if (isDuplicate) {
-      showToast({
-        title: 'Duplicate Instance',
-        description: 'An instance with this URL already exists',
-        variant: 'destructive'
-      });
+      showToast('An instance with this URL already exists', 'error');
       return;
     }
 
@@ -184,16 +187,12 @@ const OllamaConfigurationPanel: React.FC<OllamaConfigurationPanelProps> = ({
       loadBalancingWeight: 100
     };
 
-    setInstances(prev => [...prev, newInstance]);
+    saveInstances([...instances, newInstance]);
     setNewInstanceUrl('');
     setNewInstanceName('');
     setShowAddInstance(false);
     
-    showToast({
-      title: 'Instance Added',
-      description: `Added new Ollama instance: ${newInstance.name}`,
-      variant: 'success'
-    });
+    showToast(`Added new Ollama instance: ${newInstance.name}`, 'success');
   };
 
   // Remove instance
@@ -203,56 +202,49 @@ const OllamaConfigurationPanel: React.FC<OllamaConfigurationPanelProps> = ({
 
     // Don't allow removing the last instance
     if (instances.length <= 1) {
-      showToast({
-        title: 'Cannot Remove',
-        description: 'At least one Ollama instance must be configured',
-        variant: 'destructive'
-      });
+      showToast('At least one Ollama instance must be configured', 'error');
       return;
     }
 
-    setInstances(prev => {
-      const filtered = prev.filter(inst => inst.id !== instanceId);
-      
-      // If we're removing the primary instance, make the first remaining one primary
-      if (instance.isPrimary && filtered.length > 0) {
-        filtered[0] = { ...filtered[0], isPrimary: true };
-      }
-      
-      return filtered;
-    });
+    const filtered = instances.filter(inst => inst.id !== instanceId);
+    
+    // If we're removing the primary instance, make the first remaining one primary
+    if (instance.isPrimary && filtered.length > 0) {
+      filtered[0] = { ...filtered[0], isPrimary: true };
+    }
+    
+    saveInstances(filtered);
 
-    showToast({
-      title: 'Instance Removed',
-      description: `Removed Ollama instance: ${instance.name}`,
-      variant: 'success'
-    });
+    showToast(`Removed Ollama instance: ${instance.name}`, 'success');
   };
 
   // Update instance URL
   const handleUpdateInstanceUrl = (instanceId: string, newUrl: string) => {
-    setInstances(prev => prev.map(inst =>
+    const updatedInstances = instances.map(inst =>
       inst.id === instanceId 
         ? { ...inst, baseUrl: newUrl, isHealthy: undefined, lastHealthCheck: undefined }
         : inst
-    ));
+    );
+    saveInstances(updatedInstances);
   };
 
   // Toggle instance enabled state
   const handleToggleInstance = (instanceId: string) => {
-    setInstances(prev => prev.map(inst =>
+    const updatedInstances = instances.map(inst =>
       inst.id === instanceId 
         ? { ...inst, isEnabled: !inst.isEnabled }
         : inst
-    ));
+    );
+    saveInstances(updatedInstances);
   };
 
   // Set instance as primary
   const handleSetPrimary = (instanceId: string) => {
-    setInstances(prev => prev.map(inst => ({
+    const updatedInstances = instances.map(inst => ({
       ...inst,
       isPrimary: inst.id === instanceId
-    })));
+    }));
+    saveInstances(updatedInstances);
   };
 
   // Notify parent of configuration changes

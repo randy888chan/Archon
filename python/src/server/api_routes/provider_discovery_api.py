@@ -8,9 +8,13 @@ Handles:
 - Real-time status monitoring
 """
 
+import asyncio
+import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlparse
 
+import aiohttp
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 
@@ -65,6 +69,34 @@ class AllProvidersStatusResponse(BaseModel):
     """Response for all providers status."""
     providers: Dict[str, ProviderHealthResponse]
     timestamp: datetime
+
+class OllamaHostsRequest(BaseModel):
+    """Request for Ollama model discovery with multiple hosts."""
+    hosts: List[str]
+    timeout_seconds: Optional[int] = 10
+
+class OllamaModelResponse(BaseModel):
+    """Response for Ollama model with host information."""
+    name: str
+    host: str
+    context_window: int
+    supports_tools: bool = False
+    supports_vision: bool = False
+    supports_embeddings: bool = False
+    embedding_dimensions: Optional[int] = None
+    description: str = ""
+    aliases: List[str] = []
+    model_type: str  # "chat" or "embedding"
+    size_gb: Optional[float] = None
+    family: Optional[str] = None
+
+class OllamaModelsDiscoveryResponse(BaseModel):
+    """Response for Ollama models discovery."""
+    chat_models: List[OllamaModelResponse] = []
+    embedding_models: List[OllamaModelResponse] = []
+    host_status: Dict[str, Dict[str, Any]] = {}
+    total_models: int = 0
+    discovery_errors: List[str] = []
 
 # Core endpoints for provider discovery and health checking
 
@@ -315,6 +347,148 @@ async def get_all_available_models() -> Dict[str, List[ModelSpecResponse]]:
         logger.error(f"Error getting all available models: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.post("/ollama/models")
+async def discover_ollama_models_endpoint(request: OllamaHostsRequest) -> OllamaModelsDiscoveryResponse:
+    """
+    Discover available models from all configured Ollama hosts.
+    
+    This endpoint queries the /api/tags endpoint for each enabled host to get available models,
+    categorizes them into chat models and embedding models based on model names/capabilities,
+    and returns structured data with model details including source host, model size, and capabilities.
+    
+    Connection failures are handled gracefully and return partial results.
+    """
+    try:
+        logger.info(f"Discovering models from {len(request.hosts)} Ollama hosts")
+        
+        chat_models = []
+        embedding_models = []
+        host_status = {}
+        discovery_errors = []
+        
+        # Process each host with timeout handling
+        async def process_host(host_url: str) -> None:
+            try:
+                # Clean up URL - remove /v1 suffix if present for raw Ollama API
+                parsed = urlparse(host_url)
+                if parsed.path.endswith('/v1'):
+                    api_url = host_url.replace('/v1', '')
+                else:
+                    api_url = host_url
+                
+                # Ensure proper format
+                if not api_url.startswith(('http://', 'https://')):
+                    api_url = f"http://{api_url}"
+                
+                session = await provider_discovery_service._get_session()
+                
+                # Test connectivity and get models
+                start_time = time.time()
+                timeout = aiohttp.ClientTimeout(total=request.timeout_seconds)
+                
+                async with session.get(f"{api_url}/api/tags", timeout=timeout) as response:
+                    response_time = (time.time() - start_time) * 1000
+                    
+                    if response.status == 200:
+                        data = await response.json()
+                        models_data = data.get("models", [])
+                        
+                        host_status[host_url] = {
+                            "status": "online",
+                            "response_time_ms": response_time,
+                            "models_count": len(models_data),
+                            "api_url": api_url
+                        }
+                        
+                        for model_info in models_data:
+                            model_name = model_info.get("name", "")
+                            base_name = model_name.split(':')[0]  # Remove tag
+                            
+                            # Determine model family and capabilities
+                            family = _get_model_family(base_name)
+                            supports_tools = _supports_tools(base_name)
+                            supports_vision = _supports_vision(base_name)
+                            supports_embeddings = _supports_embeddings(base_name)
+                            
+                            # Estimate context window based on model family
+                            context_window = _get_context_window(base_name)
+                            
+                            # Set embedding dimensions for known embedding models
+                            embedding_dims = _get_embedding_dimensions(base_name)
+                            
+                            # Estimate model size (this could be enhanced with actual /api/show calls)
+                            size_gb = _estimate_model_size(model_info)
+                            
+                            # Create model response
+                            ollama_model = OllamaModelResponse(
+                                name=model_name,
+                                host=host_url,
+                                context_window=context_window,
+                                supports_tools=supports_tools,
+                                supports_vision=supports_vision,
+                                supports_embeddings=supports_embeddings,
+                                embedding_dimensions=embedding_dims,
+                                description=f"{family} model on {host_url}",
+                                aliases=[base_name] if ':' in model_name else [],
+                                model_type="embedding" if supports_embeddings else "chat",
+                                size_gb=size_gb,
+                                family=family
+                            )
+                            
+                            # Categorize models
+                            if supports_embeddings:
+                                embedding_models.append(ollama_model)
+                            else:
+                                chat_models.append(ollama_model)
+                    else:
+                        error_msg = f"Host {host_url} returned HTTP {response.status}"
+                        host_status[host_url] = {
+                            "status": "error",
+                            "response_time_ms": response_time,
+                            "error": error_msg,
+                            "api_url": api_url
+                        }
+                        discovery_errors.append(error_msg)
+                        
+            except asyncio.TimeoutError:
+                error_msg = f"Timeout connecting to {host_url} after {request.timeout_seconds}s"
+                host_status[host_url] = {
+                    "status": "timeout",
+                    "error": error_msg,
+                    "api_url": api_url if 'api_url' in locals() else host_url
+                }
+                discovery_errors.append(error_msg)
+                logger.warning(error_msg)
+                
+            except Exception as e:
+                error_msg = f"Error connecting to {host_url}: {str(e)}"
+                host_status[host_url] = {
+                    "status": "error",
+                    "error": error_msg,
+                    "api_url": api_url if 'api_url' in locals() else host_url
+                }
+                discovery_errors.append(error_msg)
+                logger.error(error_msg)
+        
+        # Process all hosts concurrently with individual error handling
+        await asyncio.gather(*[process_host(host) for host in request.hosts], return_exceptions=True)
+        
+        total_models = len(chat_models) + len(embedding_models)
+        
+        logger.info(f"Discovery complete: {len(chat_models)} chat models, {len(embedding_models)} embedding models from {len(request.hosts)} hosts")
+        
+        return OllamaModelsDiscoveryResponse(
+            chat_models=chat_models,
+            embedding_models=embedding_models,
+            host_status=host_status,
+            total_models=total_models,
+            discovery_errors=discovery_errors
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in Ollama models discovery: {e}")
+        raise HTTPException(status_code=500, detail=f"Discovery failed: {str(e)}")
+
 # Helper functions
 
 async def _get_provider_config(provider: str) -> Dict[str, Any]:
@@ -367,3 +541,132 @@ def _convert_model_spec(spec: ModelSpec) -> ModelSpecResponse:
         description=spec.description,
         aliases=spec.aliases
     )
+
+# Helper functions for Ollama model categorization and capability detection
+
+def _get_model_family(model_name: str) -> str:
+    """Determine model family from name."""
+    name_lower = model_name.lower()
+    
+    if "llama" in name_lower:
+        if "code" in name_lower:
+            return "CodeLlama"
+        elif "llama3" in name_lower or "llama-3" in name_lower:
+            return "Llama 3"
+        else:
+            return "Llama"
+    elif "mistral" in name_lower:
+        return "Mistral"
+    elif "qwen" in name_lower:
+        return "Qwen"
+    elif "gemma" in name_lower:
+        return "Gemma"
+    elif "phi" in name_lower:
+        return "Phi"
+    elif "nomic" in name_lower:
+        return "Nomic Embed"
+    elif "mxbai" in name_lower:
+        return "MxBai Embed"
+    elif "embed" in name_lower:
+        return "Embedding Model"
+    else:
+        return "Unknown"
+
+def _supports_tools(model_name: str) -> bool:
+    """Check if model supports function calling/tools."""
+    name_lower = model_name.lower()
+    tool_patterns = ["llama3", "qwen", "mistral", "gemma", "phi3"]
+    return any(pattern in name_lower for pattern in tool_patterns)
+
+def _supports_vision(model_name: str) -> bool:
+    """Check if model supports vision/image processing."""
+    name_lower = model_name.lower()
+    vision_patterns = ["vision", "llava", "moondream", "bakllava"]
+    return any(pattern in name_lower for pattern in vision_patterns)
+
+def _supports_embeddings(model_name: str) -> bool:
+    """Check if model is an embedding model."""
+    name_lower = model_name.lower()
+    embedding_patterns = ["embed", "embedding", "nomic-embed", "mxbai-embed", "bge-", "e5-"]
+    return any(pattern in name_lower for pattern in embedding_patterns)
+
+def _get_context_window(model_name: str) -> int:
+    """Estimate context window based on model family."""
+    name_lower = model_name.lower()
+    
+    if "llama3" in name_lower or "llama-3" in name_lower:
+        return 8192
+    elif "qwen" in name_lower:
+        if "72b" in name_lower or "110b" in name_lower:
+            return 32768
+        else:
+            return 8192
+    elif "mistral" in name_lower:
+        if "large" in name_lower:
+            return 32768
+        else:
+            return 32768
+    elif "gemma" in name_lower:
+        return 8192
+    elif "phi" in name_lower:
+        return 4096
+    elif "embed" in name_lower:
+        return 512  # Embedding models typically have smaller context
+    else:
+        return 4096  # Default fallback
+
+def _get_embedding_dimensions(model_name: str) -> Optional[int]:
+    """Get embedding dimensions for known embedding models."""
+    name_lower = model_name.lower()
+    
+    if "nomic-embed" in name_lower:
+        return 768
+    elif "mxbai-embed" in name_lower:
+        if "large" in name_lower:
+            return 1024
+        else:
+            return 384
+    elif "bge-small" in name_lower:
+        return 384
+    elif "bge-base" in name_lower:
+        return 768
+    elif "bge-large" in name_lower:
+        return 1024
+    elif "e5-small" in name_lower:
+        return 384
+    elif "e5-base" in name_lower:
+        return 768
+    elif "e5-large" in name_lower:
+        return 1024
+    elif "embed" in name_lower:
+        return 768  # Default for generic embedding models
+    else:
+        return None
+
+def _estimate_model_size(model_info: Dict[str, Any]) -> Optional[float]:
+    """Estimate model size in GB from model info."""
+    # This is a rough estimation - for accurate sizes, would need to call /api/show
+    # Size information might be in the model info if available
+    size = model_info.get("size")
+    if size:
+        # Convert bytes to GB if size is provided
+        if isinstance(size, (int, float)):
+            return round(size / (1024**3), 1)
+    
+    # Fallback estimation based on model name patterns
+    name = model_info.get("name", "").lower()
+    
+    if "7b" in name:
+        return 4.1
+    elif "13b" in name:
+        return 7.3
+    elif "30b" in name or "33b" in name:
+        return 19.0
+    elif "65b" in name or "70b" in name:
+        return 39.0
+    elif "180b" in name:
+        return 101.0
+    elif "embed" in name:
+        return 0.5  # Embedding models are typically smaller
+    else:
+        return None

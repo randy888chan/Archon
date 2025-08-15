@@ -57,23 +57,73 @@ export const SettingsPage = () => {
     loadSettings();
   }, []);
 
+  // Helper function to create timeout promises
+  const createTimeoutPromise = (name: string, ms: number) => 
+    new Promise<never>((_, reject) => 
+      setTimeout(() => reject(new Error(`${name} timeout after ${ms}ms`)), ms)
+    );
+
   const loadSettings = async () => {
     try {
       setLoading(true);
       setError(null);
       
-      // Load RAG settings
-      const ragSettingsData = await credentialsService.getRagSettings();
-      setRagSettings(ragSettingsData);
+      // Parallel API calls with robust error handling
+      const settingsPromises = await Promise.allSettled([
+        Promise.race([
+          credentialsService.getRagSettings(),
+          createTimeoutPromise('RAG settings', 5000)
+        ]).then(data => ({ type: 'rag', data, success: true }))
+          .catch(err => ({ type: 'rag', error: err, success: false })),
+        
+        Promise.race([
+          credentialsService.getCodeExtractionSettings(),
+          createTimeoutPromise('Code extraction settings', 5000)
+        ]).then(data => ({ type: 'codeExtraction', data, success: true }))
+          .catch(err => ({ type: 'codeExtraction', error: err, success: false }))
+      ]);
+
+      // Process results with graceful degradation
+      let hasErrors = false;
+      const errorMessages: string[] = [];
+
+      for (const result of settingsPromises) {
+        if (result.status === 'fulfilled') {
+          const { type, data, success, error } = result.value;
+          
+          if (success) {
+            if (type === 'rag') {
+              setRagSettings(data);
+            } else if (type === 'codeExtraction') {
+              setCodeExtractionSettings(data);
+            }
+          } else {
+            hasErrors = true;
+            errorMessages.push(`${type} settings: ${error?.message || 'Unknown error'}`);
+            console.error(`Failed to load ${type} settings:`, error);
+          }
+        } else {
+          hasErrors = true;
+          errorMessages.push(`Promise rejected: ${result.reason?.message || 'Unknown error'}`);
+          console.error('Settings promise rejected:', result.reason);
+        }
+      }
+
+      // Show error toast only if there are errors, but don't block UI
+      if (hasErrors) {
+        const errorMessage = `Some settings failed to load: ${errorMessages.join(', ')}`;
+        setError(errorMessage);
+        showToast('Some settings failed to load', 'error');
+      }
       
-      // Load Code Extraction settings
-      const codeExtractionSettingsData = await credentialsService.getCodeExtractionSettings();
-      setCodeExtractionSettings(codeExtractionSettingsData);
     } catch (err) {
-      setError('Failed to load settings');
-      console.error(err);
-      showToast('Failed to load settings', 'error');
+      // This should rarely happen with Promise.allSettled, but handle it gracefully
+      const errorMessage = 'Unexpected error loading settings';
+      setError(errorMessage);
+      console.error('Unexpected error in loadSettings:', err);
+      showToast(errorMessage, 'error');
     } finally {
+      // Always exit loading state
       setLoading(false);
     }
   };
