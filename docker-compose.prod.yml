@@ -12,6 +12,7 @@ services:
       - VITE_API_URL=https://${DOMAIN:-localhost}/api
       - ARCHON_SERVER_PORT=${ARCHON_SERVER_PORT:-8181}
       - HOST=${HOST:-localhost}
+      - DOMAIN=${DOMAIN:-localhost}
 
   # HTTPS Reverse Proxy with automatic Let's Encrypt certificates
   caddy:
