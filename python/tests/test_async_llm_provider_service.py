@@ -188,17 +188,16 @@ class TestAsyncLLMProviderService:
                     )
 
     @pytest.mark.asyncio
-    async def test_get_llm_client_openrouter_embedding_fallback(
+    async def test_get_llm_client_openrouter_for_chat_only(
         self, mock_credential_service, openrouter_provider_config
     ):
-        """Test OpenRouter client creation for embeddings falls back to OpenAI
+        """Test that OpenRouter should only be used for chat, not embeddings
 
-        When use_embedding_provider=True with OpenRouter, the system should
-        attempt to use OpenAI's API since OpenRouter doesn't provide embeddings.
+        OpenRouter doesn't provide embedding models, so it should only be used
+        for chat completions. For embeddings, users should configure a separate
+        embedding provider (OpenAI, Google, or Ollama).
         """
         mock_credential_service.get_active_provider.return_value = openrouter_provider_config
-        # Mock the _get_provider_api_key method to return an OpenAI key
-        mock_credential_service._get_provider_api_key.return_value = "test-openai-key"
 
         with patch(
             "src.server.services.llm_provider_service.credential_service", mock_credential_service
@@ -209,10 +208,14 @@ class TestAsyncLLMProviderService:
                 mock_client = MagicMock()
                 mock_openai.return_value = mock_client
 
-                async with get_llm_client(use_embedding_provider=True) as client:
+                # OpenRouter works fine for chat completions
+                async with get_llm_client(use_embedding_provider=False) as client:
                     assert client == mock_client
-                    # Should use OpenAI API with OpenAI key, not OpenRouter
-                    mock_openai.assert_called_once_with(api_key="test-openai-key")
+                    # Uses OpenRouter API for chat
+                    mock_openai.assert_called_once_with(
+                        api_key="test-openrouter-key",
+                        base_url="https://openrouter.ai/api/v1",
+                    )
 
     @pytest.mark.asyncio
     async def test_get_llm_client_with_provider_override(self, mock_credential_service):
