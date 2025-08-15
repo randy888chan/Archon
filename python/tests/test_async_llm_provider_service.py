@@ -85,6 +85,17 @@ class TestAsyncLLMProviderService:
             "embedding_model": "text-embedding-004",
         }
 
+    @pytest.fixture
+    def openrouter_provider_config(self):
+        """Standard OpenRouter provider config"""
+        return {
+            "provider": "openrouter",
+            "api_key": "test-openrouter-key",
+            "base_url": "https://openrouter.ai/api/v1",
+            "chat_model": "anthropic/claude-3.5-sonnet",
+            "embedding_model": "text-embedding-3-small",
+        }
+
     @pytest.mark.asyncio
     async def test_get_llm_client_openai_success(
         self, mock_credential_service, openai_provider_config
@@ -152,6 +163,56 @@ class TestAsyncLLMProviderService:
                         api_key="test-google-key",
                         base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
                     )
+
+    @pytest.mark.asyncio
+    async def test_get_llm_client_openrouter_success(
+        self, mock_credential_service, openrouter_provider_config
+    ):
+        """Test successful OpenRouter client creation"""
+        mock_credential_service.get_active_provider.return_value = openrouter_provider_config
+
+        with patch(
+            "src.server.services.llm_provider_service.credential_service", mock_credential_service
+        ):
+            with patch(
+                "src.server.services.llm_provider_service.openai.AsyncOpenAI"
+            ) as mock_openai:
+                mock_client = MagicMock()
+                mock_openai.return_value = mock_client
+
+                async with get_llm_client() as client:
+                    assert client == mock_client
+                    mock_openai.assert_called_once_with(
+                        api_key="test-openrouter-key",
+                        base_url="https://openrouter.ai/api/v1",
+                    )
+
+    @pytest.mark.asyncio
+    async def test_get_llm_client_openrouter_embedding_fallback(
+        self, mock_credential_service, openrouter_provider_config
+    ):
+        """Test OpenRouter client creation for embeddings falls back to OpenAI
+
+        When use_embedding_provider=True with OpenRouter, the system should
+        attempt to use OpenAI's API since OpenRouter doesn't provide embeddings.
+        """
+        mock_credential_service.get_active_provider.return_value = openrouter_provider_config
+        # Mock the _get_provider_api_key method to return an OpenAI key
+        mock_credential_service._get_provider_api_key.return_value = "test-openai-key"
+
+        with patch(
+            "src.server.services.llm_provider_service.credential_service", mock_credential_service
+        ):
+            with patch(
+                "src.server.services.llm_provider_service.openai.AsyncOpenAI"
+            ) as mock_openai:
+                mock_client = MagicMock()
+                mock_openai.return_value = mock_client
+
+                async with get_llm_client(use_embedding_provider=True) as client:
+                    assert client == mock_client
+                    # Should use OpenAI API with OpenAI key, not OpenRouter
+                    mock_openai.assert_called_once_with(api_key="test-openai-key")
 
     @pytest.mark.asyncio
     async def test_get_llm_client_with_provider_override(self, mock_credential_service):
@@ -243,6 +304,25 @@ class TestAsyncLLMProviderService:
                     pass
 
     @pytest.mark.asyncio
+    async def test_get_llm_client_missing_openrouter_key(self, mock_credential_service):
+        """Test error handling when OpenRouter API key is missing"""
+        config_without_key = {
+            "provider": "openrouter",
+            "api_key": None,
+            "base_url": "https://openrouter.ai/api/v1",
+            "chat_model": "anthropic/claude-3.5-sonnet",
+            "embedding_model": "text-embedding-3-small",
+        }
+        mock_credential_service.get_active_provider.return_value = config_without_key
+
+        with patch(
+            "src.server.services.llm_provider_service.credential_service", mock_credential_service
+        ):
+            with pytest.raises(ValueError, match="OpenRouter API key not found"):
+                async with get_llm_client():
+                    pass
+
+    @pytest.mark.asyncio
     async def test_get_llm_client_unsupported_provider_error(self, mock_credential_service):
         """Test error when unsupported provider is configured"""
         unsupported_config = {
@@ -315,6 +395,24 @@ class TestAsyncLLMProviderService:
         ):
             model = await get_embedding_model()
             assert model == "text-embedding-004"
+
+    @pytest.mark.asyncio
+    async def test_get_embedding_model_openrouter_fallback(
+        self, mock_credential_service, openrouter_provider_config
+    ):
+        """Test that OpenRouter provider falls back to OpenAI embedding model
+
+        OpenRouter doesn't provide embedding models, so the system should
+        return OpenAI's text-embedding-3-small as the default fallback.
+        """
+        mock_credential_service.get_active_provider.return_value = openrouter_provider_config
+
+        with patch(
+            "src.server.services.llm_provider_service.credential_service", mock_credential_service
+        ):
+            model = await get_embedding_model()
+            # OpenRouter doesn't provide embeddings, so we fallback to OpenAI's model
+            assert model == "text-embedding-3-small"
 
     @pytest.mark.asyncio
     async def test_get_embedding_model_with_provider_override(self, mock_credential_service):
