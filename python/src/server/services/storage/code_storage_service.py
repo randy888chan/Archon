@@ -19,6 +19,7 @@ from ...config.logfire_config import search_logger
 from ..embeddings.embedding_service import create_embeddings_batch, create_embedding, get_dimension_column_name
 from ..embeddings.contextual_embedding_service import generate_contextual_embeddings_batch
 from ..llm_provider_service import get_llm_client
+# Removed import: from ..source_management_service import update_source_info
 
 
 def extract_source_id_from_url(url: str) -> str:
@@ -918,6 +919,16 @@ async def add_code_examples_to_supabase(
                 "embedding_dimensions": result.embedding_dimensions  # Track dimension size
             })
 
+        # FOREIGN KEY FIX: Ensure all source records exist before inserting code examples
+        unique_source_ids = set()
+        for record in batch_data:
+            if record.get("source_id"):
+                unique_source_ids.add(record["source_id"])
+        
+        if unique_source_ids:
+            search_logger.info(f"Ensuring {len(unique_source_ids)} source records exist: {list(unique_source_ids)}")
+            await _ensure_source_records_exist(client, unique_source_ids)
+
         # Insert batch into Supabase with retry logic
         max_retries = 3
         retry_delay = 1.0
@@ -982,3 +993,68 @@ async def add_code_examples_to_supabase(
             "log": f"Code storage completed. Stored {total_items} code examples.",
             "total_items": total_items,
         })
+
+
+async def _ensure_source_records_exist(client: Client, source_ids: set[str]) -> None:
+    """
+    Ensure all source records exist in the database before inserting code examples.
+    
+    This prevents foreign key constraint violations when storing code examples
+    that reference source_ids extracted from individual URLs.
+    
+    Args:
+        client: Supabase client
+        source_ids: Set of source_id values that need to exist
+    """
+    if not source_ids:
+        return
+        
+    try:
+        # Check which source_ids already exist
+        existing_result = client.table("archon_sources").select("source_id").in_("source_id", list(source_ids)).execute()
+        existing_source_ids = {row["source_id"] for row in existing_result.data} if existing_result.data else set()
+        
+        # Find missing source_ids
+        missing_source_ids = source_ids - existing_source_ids
+        
+        if missing_source_ids:
+            search_logger.info(f"Creating {len(missing_source_ids)} missing source records: {list(missing_source_ids)}")
+            
+            # Create missing source records using direct table insert (simpler and more reliable)
+            for source_id in missing_source_ids:
+                try:
+                    # Generate a simple summary based on source_id
+                    if "github.com" in source_id:
+                        title = f"GitHub Repository: {source_id}"
+                        summary = f"Code examples extracted from GitHub repository {source_id}"
+                    else:
+                        title = f"Code Examples from {source_id}"
+                        summary = f"Code examples extracted from {source_id}"
+                    
+                    # Create the source record with minimal required data using direct insert
+                    # This avoids any issues with the update_source_info function
+                    client.table('archon_sources').upsert({
+                        'source_id': source_id,
+                        'title': title,
+                        'summary': summary,
+                        'total_word_count': 0,  # Will be updated when documents are processed
+                        'metadata': {
+                            'knowledge_type': 'technical',
+                            'tags': [],
+                            'auto_generated': True,
+                            'created_for_code_examples': True,
+                            'original_url': f"https://{source_id}" if not source_id.startswith("http") else source_id
+                        }
+                    }).execute()
+                    search_logger.info(f"✅ Created missing source record for '{source_id}'")
+                    
+                except Exception as e:
+                    search_logger.error(f"❌ Failed to create source record for '{source_id}': {e}")
+                    # Continue with other source_ids even if one fails
+                    
+        else:
+            search_logger.info(f"All {len(source_ids)} source records already exist")
+            
+    except Exception as e:
+        search_logger.error(f"Error checking/creating source records: {e}")
+        # Don't raise - let the code examples insert attempt and handle foreign key errors gracefully
