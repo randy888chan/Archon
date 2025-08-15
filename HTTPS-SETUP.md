@@ -62,17 +62,26 @@ sudo ufw status
 
 ## Deployment
 
-### Start with HTTPS
+### Development (HTTP only)
+
+```bash
+# Start services for local development (HTTP only)
+docker compose up -d
+
+# Access at: http://localhost:3737
+```
+
+### Production (HTTPS with Caddy)
 
 ```bash
 # Stop any existing services
 docker compose down
 
-# Start all services with HTTPS
-docker compose up -d
+# Start all services with HTTPS support
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 
 # Check Caddy logs for certificate acquisition
-docker compose logs caddy -f
+docker compose -f docker-compose.yml -f docker-compose.prod.yml logs caddy -f
 ```
 
 ### Certificate Acquisition Process
@@ -145,10 +154,10 @@ Internet → Caddy (Port 80/443) → Internal Services
 2. **Domain not accessible**:
    ```bash
    # Check if Caddy is running
-   docker compose ps caddy
+   docker compose -f docker-compose.yml -f docker-compose.prod.yml ps caddy
    
    # Verify Caddy configuration
-   docker compose exec caddy caddy validate --config /etc/caddy/Caddyfile
+   docker compose -f docker-compose.yml -f docker-compose.prod.yml exec caddy caddy validate --config /etc/caddy/Caddyfile
    ```
 
 3. **Mixed content warnings**:
@@ -158,24 +167,24 @@ Internet → Caddy (Port 80/443) → Internal Services
 ### Logs and Monitoring
 
 ```bash
-# View all service logs
-docker compose logs -f
+# View all service logs (production)
+docker compose -f docker-compose.yml -f docker-compose.prod.yml logs -f
 
 # Caddy-specific logs
-docker compose logs caddy -f
+docker compose -f docker-compose.yml -f docker-compose.prod.yml logs caddy -f
 
 # Access logs location
-docker compose exec caddy tail -f /var/log/caddy/access.log
+docker compose -f docker-compose.yml -f docker-compose.prod.yml exec caddy tail -f /var/log/caddy/access.log
 
 # Check certificate status
-docker compose exec caddy caddy list-certificates
+docker compose -f docker-compose.yml -f docker-compose.prod.yml exec caddy caddy list-certificates
 ```
 
 ### Manual Certificate Management
 
 ```bash
 # Force certificate renewal (if needed)
-docker compose exec caddy caddy reload --config /etc/caddy/Caddyfile
+docker compose -f docker-compose.yml -f docker-compose.prod.yml exec caddy caddy reload --config /etc/caddy/Caddyfile
 
 # Check certificate expiry
 echo | openssl s_client -servername your-domain.com -connect your-domain.com:443 2>/dev/null | openssl x509 -noout -dates
@@ -191,26 +200,35 @@ Located at `./Caddyfile`, contains:
 - Security headers
 - Logging configuration
 
-### Docker Compose Changes
+### Docker Compose Structure
 
-Key changes made to `docker-compose.yml`:
+The HTTPS setup uses Docker Compose override files:
+
+- **docker-compose.yml**: Base configuration for development (HTTP only)
+- **docker-compose.prod.yml**: Production overrides with HTTPS support
+
+Key production changes:
 - Added Caddy service with ports 80/443
 - Removed external port mapping from frontend
-- Added persistent volumes for certificates
+- Added persistent volumes for certificates  
 - Updated environment variables for HTTPS URLs
 
 ## Development vs Production
 
 ### Development (HTTP)
 ```bash
-# Use without Caddy for local development
-docker compose up frontend archon-server -d
+# Local development with direct port access
+docker compose up -d
+
+# Access at: http://localhost:3737
 ```
 
 ### Production (HTTPS)
 ```bash
-# Full stack with HTTPS
-docker compose up -d
+# Full stack with HTTPS via Caddy reverse proxy
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+# Access at: https://your-domain.com
 ```
 
 ## Backup and Recovery
@@ -288,10 +306,10 @@ Consider adding monitoring:
 ## Support
 
 For issues:
-1. Check logs: `docker compose logs caddy -f`
+1. Check logs: `docker compose -f docker-compose.yml -f docker-compose.prod.yml logs caddy -f`
 2. Verify DNS: `nslookup your-domain.com`
 3. Test ports: `nc -zv your-domain.com 80 443`
-4. Validate config: `docker compose exec caddy caddy validate --config /etc/caddy/Caddyfile`
+4. Validate config: `docker compose -f docker-compose.yml -f docker-compose.prod.yml exec caddy caddy validate --config /etc/caddy/Caddyfile`
 
 ---
 
