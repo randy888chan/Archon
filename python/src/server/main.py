@@ -31,6 +31,8 @@ from .api_routes.projects_api import router as projects_router
 from .api_routes.settings_api import router as settings_router
 from .api_routes.tests_api import router as tests_router
 from .api_routes.embedding_model_api import router as embedding_model_router
+from .api_routes.provider_discovery_api import router as provider_discovery_router
+from .api_routes.provider_config_api import router as provider_config_router
 
 # Import Logfire configuration
 from .config.logfire_config import api_logger, setup_logfire
@@ -158,6 +160,14 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             api_logger.warning("Could not cleanup background task manager", error=str(e))
 
+        # Cleanup provider discovery service
+        try:
+            from .services.provider_discovery_service import provider_discovery_service
+            await provider_discovery_service.close()
+            api_logger.info("Provider discovery service cleaned up")
+        except Exception as e:
+            api_logger.warning("Could not cleanup provider discovery service", error=str(e))
+
         api_logger.info("✅ Cleanup completed")
 
     except Exception as e:
@@ -211,6 +221,8 @@ app.include_router(internal_router)
 app.include_router(coverage_router)
 app.include_router(bug_report_router)
 app.include_router(embedding_model_router)
+app.include_router(provider_discovery_router)
+app.include_router(provider_config_router)
 
 
 # Root endpoint
