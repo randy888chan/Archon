@@ -53,6 +53,19 @@ export interface CodeExtractionSettings {
   ENABLE_CODE_SUMMARIES: boolean;
 }
 
+export interface OllamaInstance {
+  id: string;
+  name: string;
+  baseUrl: string;
+  isEnabled: boolean;
+  isPrimary: boolean;
+  loadBalancingWeight: number;
+  isHealthy?: boolean;
+  responseTimeMs?: number;
+  modelsAvailable?: number;
+  lastHealthCheck?: string;
+}
+
 import { getApiUrl } from '../config/api';
 
 class CredentialsService {
@@ -290,6 +303,191 @@ class CredentialsService {
     }
     
     await Promise.all(promises);
+  }
+
+  // Ollama Instance Management Methods
+  async getOllamaInstances(): Promise<OllamaInstance[]> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/provider-config/current`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch Ollama instances from database');
+      }
+      
+      const data = await response.json();
+      
+      // Convert API format to frontend format
+      const instances: OllamaInstance[] = data.ollama_instances?.map((inst: any) => ({
+        id: inst.id,
+        name: inst.name,
+        baseUrl: inst.base_url,
+        isEnabled: inst.is_enabled,
+        isPrimary: inst.is_primary,
+        loadBalancingWeight: inst.load_balancing_weight,
+        isHealthy: inst.is_healthy,
+        responseTimeMs: inst.response_time_ms,
+        modelsAvailable: inst.models_available,
+        lastHealthCheck: inst.last_health_check
+      })) || [];
+      
+      return instances;
+    } catch (error) {
+      console.error('Error fetching Ollama instances from database:', error);
+      throw error;
+    }
+  }
+
+  async setOllamaInstances(instances: OllamaInstance[]): Promise<void> {
+    try {
+      // Convert frontend format to API format
+      const apiInstances = instances.map(inst => ({
+        id: inst.id,
+        name: inst.name,
+        base_url: inst.baseUrl,
+        is_enabled: inst.isEnabled,
+        is_primary: inst.isPrimary,
+        load_balancing_weight: inst.loadBalancingWeight,
+        health_check_enabled: true
+      }));
+
+      const response = await fetch(`${this.baseUrl}/api/provider-config/update`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          llm_provider: 'ollama', // Assuming ollama provider
+          embedding_provider: 'ollama',
+          ollama_instances: apiInstances,
+          provider_preferences: {}
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.text();
+        throw new Error(`Failed to save Ollama instances to database: ${errorData}`);
+      }
+    } catch (error) {
+      console.error('Error saving Ollama instances to database:', error);
+      throw error;
+    }
+  }
+
+  async addOllamaInstance(instance: OllamaInstance): Promise<void> {
+    try {
+      // Convert frontend format to API format
+      const apiInstance = {
+        id: instance.id,
+        name: instance.name,
+        base_url: instance.baseUrl,
+        is_enabled: instance.isEnabled,
+        is_primary: instance.isPrimary,
+        load_balancing_weight: instance.loadBalancingWeight,
+        health_check_enabled: true
+      };
+
+      const response = await fetch(`${this.baseUrl}/api/provider-config/ollama/add-instance`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(apiInstance),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.text();
+        throw new Error(`Failed to add Ollama instance to database: ${errorData}`);
+      }
+    } catch (error) {
+      console.error('Error adding Ollama instance to database:', error);
+      throw error;
+    }
+  }
+
+  async removeOllamaInstance(instanceId: string): Promise<void> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/provider-config/ollama/remove-instance/${instanceId}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.text();
+        throw new Error(`Failed to remove Ollama instance from database: ${errorData}`);
+      }
+    } catch (error) {
+      console.error('Error removing Ollama instance from database:', error);
+      throw error;
+    }
+  }
+
+  async updateOllamaInstance(instanceId: string, updates: Partial<OllamaInstance>): Promise<void> {
+    try {
+      // Get current instances, update the specific one, then save all
+      const instances = await this.getOllamaInstances();
+      const instanceIndex = instances.findIndex(inst => inst.id === instanceId);
+      
+      if (instanceIndex === -1) {
+        throw new Error(`Ollama instance with ID ${instanceId} not found`);
+      }
+
+      // Apply updates
+      instances[instanceIndex] = { ...instances[instanceIndex], ...updates };
+
+      // Save updated instances
+      await this.setOllamaInstances(instances);
+    } catch (error) {
+      console.error('Error updating Ollama instance in database:', error);
+      throw error;
+    }
+  }
+
+  async migrateOllamaFromLocalStorage(): Promise<{ migrated: boolean; instanceCount: number }> {
+    try {
+      // Check if localStorage has Ollama instances
+      const localStorageData = localStorage.getItem('ollama-instances');
+      if (!localStorageData) {
+        return { migrated: false, instanceCount: 0 };
+      }
+
+      const localInstances = JSON.parse(localStorageData);
+      if (!Array.isArray(localInstances) || localInstances.length === 0) {
+        return { migrated: false, instanceCount: 0 };
+      }
+
+      // Check if database already has instances
+      const existingInstances = await this.getOllamaInstances();
+      if (existingInstances.length > 0) {
+        // Database already has instances, don't migrate
+        return { migrated: false, instanceCount: existingInstances.length };
+      }
+
+      // Migrate localStorage instances to database
+      const instancesToMigrate: OllamaInstance[] = localInstances.map((inst: any) => ({
+        id: inst.id || `migrated-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        name: inst.name || 'Migrated Instance',
+        baseUrl: inst.baseUrl || inst.url || 'http://localhost:11434',
+        isEnabled: inst.isEnabled !== false, // Default to true
+        isPrimary: inst.isPrimary || false,
+        loadBalancingWeight: inst.loadBalancingWeight || 100,
+        isHealthy: inst.isHealthy,
+        responseTimeMs: inst.responseTimeMs,
+        modelsAvailable: inst.modelsAvailable,
+        lastHealthCheck: inst.lastHealthCheck
+      }));
+
+      // Ensure at least one instance is marked as primary
+      if (!instancesToMigrate.some(inst => inst.isPrimary)) {
+        instancesToMigrate[0].isPrimary = true;
+      }
+
+      await this.setOllamaInstances(instancesToMigrate);
+
+      console.log(`Successfully migrated ${instancesToMigrate.length} Ollama instances from localStorage to database`);
+      
+      return { migrated: true, instanceCount: instancesToMigrate.length };
+    } catch (error) {
+      console.error('Error migrating Ollama instances from localStorage:', error);
+      throw error;
+    }
   }
 }
 
