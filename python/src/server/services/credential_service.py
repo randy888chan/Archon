@@ -476,6 +476,412 @@ class CredentialService:
             logger.error(f"Error setting active provider {provider} for {service_type}: {e}")
             return False
 
+    # Ollama Instance Management Methods
+    async def get_ollama_instances(self) -> list[dict]:
+        """
+        Get all Ollama instances from database.
+        
+        Returns:
+            List of OllamaInstance dictionaries with structure:
+            {
+                "id": str,
+                "name": str,
+                "baseUrl": str,
+                "isEnabled": bool,
+                "isPrimary": bool,
+                "loadBalancingWeight": int,
+                "isHealthy": bool (optional),
+                "responseTimeMs": int (optional),
+                "modelsAvailable": int (optional),
+                "lastHealthCheck": str (optional)
+            }
+        """
+        try:
+            import json
+            
+            # Get OLLAMA_INSTANCES from rag_strategy category
+            instances_raw = await self.get_credential("OLLAMA_INSTANCES", default=None)
+            
+            if instances_raw:
+                # Parse JSON string to list of instances
+                if isinstance(instances_raw, str):
+                    instances = json.loads(instances_raw)
+                else:
+                    instances = instances_raw
+                    
+                # Validate structure
+                if not isinstance(instances, list):
+                    logger.warning("OLLAMA_INSTANCES is not a list, creating default instance")
+                    return await self._create_default_ollama_instances()
+                    
+                # Validate each instance has required fields
+                validated_instances = []
+                for instance in instances:
+                    if not isinstance(instance, dict):
+                        continue
+                        
+                    # Ensure required fields exist
+                    required_fields = ["id", "name", "baseUrl", "isEnabled", "isPrimary", "loadBalancingWeight"]
+                    if all(field in instance for field in required_fields):
+                        validated_instances.append(instance)
+                    else:
+                        logger.warning(f"Ollama instance missing required fields: {instance}")
+                
+                if validated_instances:
+                    logger.debug(f"Retrieved {len(validated_instances)} Ollama instances from database")
+                    return validated_instances
+                else:
+                    logger.info("No valid Ollama instances found, creating default")
+                    return await self._create_default_ollama_instances()
+            else:
+                # No instances stored yet, create default based on LLM_BASE_URL
+                logger.info("No OLLAMA_INSTANCES found, creating default from LLM_BASE_URL")
+                return await self._create_default_ollama_instances()
+                
+        except json.JSONDecodeError as e:
+            logger.error(f"Error parsing OLLAMA_INSTANCES JSON: {e}")
+            return await self._create_default_ollama_instances()
+        except Exception as e:
+            logger.error(f"Error getting Ollama instances: {e}")
+            return await self._create_default_ollama_instances()
+
+    async def _create_default_ollama_instances(self) -> list[dict]:
+        """Create default Ollama instance based on existing LLM_BASE_URL."""
+        import uuid
+        
+        # Get existing LLM_BASE_URL or use default
+        base_url = await self.get_credential("LLM_BASE_URL", default="http://localhost:11434")
+        
+        # Clean up base URL (remove /v1 suffix if present)
+        if base_url.endswith("/v1"):
+            base_url = base_url[:-3]
+            
+        default_instance = {
+            "id": str(uuid.uuid4()),
+            "name": "Primary Ollama Instance",
+            "baseUrl": base_url,
+            "isEnabled": True,
+            "isPrimary": True,
+            "loadBalancingWeight": 100
+        }
+        
+        # Save default instance to database
+        await self.set_ollama_instances([default_instance])
+        
+        logger.info(f"Created default Ollama instance: {base_url}")
+        return [default_instance]
+
+    async def set_ollama_instances(self, instances: list[dict]) -> bool:
+        """
+        Store Ollama instances to database.
+        
+        Args:
+            instances: List of OllamaInstance dictionaries
+            
+        Returns:
+            bool: Success status
+        """
+        try:
+            import json
+            
+            # Validate instances structure
+            if not isinstance(instances, list):
+                raise ValueError("Instances must be a list")
+                
+            # Validate each instance
+            validated_instances = []
+            primary_count = 0
+            
+            for instance in instances:
+                if not isinstance(instance, dict):
+                    raise ValueError(f"Instance must be a dict: {instance}")
+                    
+                # Check required fields
+                required_fields = ["id", "name", "baseUrl", "isEnabled", "isPrimary", "loadBalancingWeight"]
+                missing_fields = [field for field in required_fields if field not in instance]
+                if missing_fields:
+                    raise ValueError(f"Instance missing required fields {missing_fields}: {instance}")
+                
+                # Validate field types
+                if not isinstance(instance["id"], str) or not instance["id"]:
+                    raise ValueError(f"Instance id must be non-empty string: {instance['id']}")
+                    
+                if not isinstance(instance["name"], str) or not instance["name"]:
+                    raise ValueError(f"Instance name must be non-empty string: {instance['name']}")
+                    
+                if not isinstance(instance["baseUrl"], str) or not instance["baseUrl"]:
+                    raise ValueError(f"Instance baseUrl must be non-empty string: {instance['baseUrl']}")
+                    
+                if not isinstance(instance["isEnabled"], bool):
+                    raise ValueError(f"Instance isEnabled must be boolean: {instance['isEnabled']}")
+                    
+                if not isinstance(instance["isPrimary"], bool):
+                    raise ValueError(f"Instance isPrimary must be boolean: {instance['isPrimary']}")
+                    
+                if not isinstance(instance["loadBalancingWeight"], int) or instance["loadBalancingWeight"] < 1 or instance["loadBalancingWeight"] > 100:
+                    raise ValueError(f"Instance loadBalancingWeight must be int 1-100: {instance['loadBalancingWeight']}")
+                
+                # Count primary instances
+                if instance["isPrimary"]:
+                    primary_count += 1
+                    
+                validated_instances.append(instance)
+            
+            # Ensure exactly one primary instance
+            if primary_count == 0 and validated_instances:
+                # Make first instance primary if none specified
+                validated_instances[0]["isPrimary"] = True
+                primary_count = 1
+                logger.info("No primary instance specified, made first instance primary")
+            elif primary_count > 1:
+                # Make only the first primary instance primary
+                primary_found = False
+                for instance in validated_instances:
+                    if instance["isPrimary"] and not primary_found:
+                        primary_found = True
+                    elif instance["isPrimary"]:
+                        instance["isPrimary"] = False
+                logger.warning(f"Multiple primary instances found, kept only the first")
+            
+            # Serialize to JSON
+            instances_json = json.dumps(validated_instances, separators=(',', ':'))
+            
+            # Store in database
+            success = await self.set_credential(
+                "OLLAMA_INSTANCES",
+                instances_json,
+                is_encrypted=False,
+                category="rag_strategy",
+                description="Ollama instances configuration for load balancing"
+            )
+            
+            if success:
+                # Update LLM_BASE_URL to primary instance for backward compatibility
+                primary_instance = next((inst for inst in validated_instances if inst["isPrimary"]), None)
+                if primary_instance:
+                    primary_url = primary_instance["baseUrl"]
+                    if not primary_url.endswith("/v1"):
+                        primary_url += "/v1"
+                    await self.set_credential(
+                        "LLM_BASE_URL",
+                        primary_url,
+                        is_encrypted=False,
+                        category="rag_strategy",
+                        description="Primary Ollama base URL (auto-updated from instances)"
+                    )
+                
+                logger.info(f"Successfully stored {len(validated_instances)} Ollama instances")
+                return True
+            else:
+                logger.error("Failed to store Ollama instances to database")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error setting Ollama instances: {e}")
+            return False
+
+    async def add_ollama_instance(self, instance: dict) -> bool:
+        """
+        Add a new Ollama instance.
+        
+        Args:
+            instance: OllamaInstance dictionary
+            
+        Returns:
+            bool: Success status
+        """
+        try:
+            # Get existing instances
+            existing_instances = await self.get_ollama_instances()
+            
+            # Check for duplicate ID or URL
+            instance_id = instance.get("id")
+            instance_url = instance.get("baseUrl")
+            
+            for existing in existing_instances:
+                if existing.get("id") == instance_id:
+                    raise ValueError(f"Instance with ID {instance_id} already exists")
+                if existing.get("baseUrl") == instance_url:
+                    raise ValueError(f"Instance with URL {instance_url} already exists")
+            
+            # If this is marked as primary, unmark existing primary
+            if instance.get("isPrimary", False):
+                for existing in existing_instances:
+                    existing["isPrimary"] = False
+            
+            # Add new instance
+            existing_instances.append(instance)
+            
+            # Save updated list
+            return await self.set_ollama_instances(existing_instances)
+            
+        except Exception as e:
+            logger.error(f"Error adding Ollama instance: {e}")
+            return False
+
+    async def remove_ollama_instance(self, instance_id: str) -> bool:
+        """
+        Remove an Ollama instance by ID.
+        
+        Args:
+            instance_id: ID of instance to remove
+            
+        Returns:
+            bool: Success status
+        """
+        try:
+            # Get existing instances
+            existing_instances = await self.get_ollama_instances()
+            
+            # Find instance to remove
+            instance_to_remove = None
+            remaining_instances = []
+            
+            for instance in existing_instances:
+                if instance.get("id") == instance_id:
+                    instance_to_remove = instance
+                else:
+                    remaining_instances.append(instance)
+            
+            if not instance_to_remove:
+                raise ValueError(f"Instance with ID {instance_id} not found")
+            
+            # Don't allow removing the last instance
+            if len(remaining_instances) == 0:
+                raise ValueError("Cannot remove the last Ollama instance")
+            
+            # If removing primary instance, make first remaining instance primary
+            if instance_to_remove.get("isPrimary", False) and remaining_instances:
+                remaining_instances[0]["isPrimary"] = True
+                logger.info(f"Made instance {remaining_instances[0]['id']} primary after removing primary instance")
+            
+            # Save updated list
+            success = await self.set_ollama_instances(remaining_instances)
+            
+            if success:
+                logger.info(f"Successfully removed Ollama instance: {instance_id}")
+            
+            return success
+            
+        except Exception as e:
+            logger.error(f"Error removing Ollama instance {instance_id}: {e}")
+            return False
+
+    async def update_ollama_instance(self, instance_id: str, updates: dict) -> bool:
+        """
+        Update an Ollama instance with new data.
+        
+        Args:
+            instance_id: ID of instance to update
+            updates: Dictionary of fields to update
+            
+        Returns:
+            bool: Success status
+        """
+        try:
+            # Get existing instances
+            existing_instances = await self.get_ollama_instances()
+            
+            # Find instance to update
+            instance_found = False
+            
+            for i, instance in enumerate(existing_instances):
+                if instance.get("id") == instance_id:
+                    # Apply updates
+                    for key, value in updates.items():
+                        if key in ["id", "name", "baseUrl", "isEnabled", "isPrimary", "loadBalancingWeight", 
+                                 "isHealthy", "responseTimeMs", "modelsAvailable", "lastHealthCheck"]:
+                            instance[key] = value
+                    
+                    # If this instance is being set as primary, unmark others
+                    if updates.get("isPrimary", False):
+                        for j, other_instance in enumerate(existing_instances):
+                            if j != i:
+                                other_instance["isPrimary"] = False
+                    
+                    instance_found = True
+                    break
+            
+            if not instance_found:
+                raise ValueError(f"Instance with ID {instance_id} not found")
+            
+            # Save updated list
+            success = await self.set_ollama_instances(existing_instances)
+            
+            if success:
+                logger.debug(f"Successfully updated Ollama instance {instance_id} with {updates}")
+            
+            return success
+            
+        except Exception as e:
+            logger.error(f"Error updating Ollama instance {instance_id}: {e}")
+            return False
+
+    async def get_primary_ollama_instance(self) -> dict | None:
+        """
+        Get the primary Ollama instance.
+        
+        Returns:
+            Primary instance dict or None if not found
+        """
+        try:
+            instances = await self.get_ollama_instances()
+            
+            for instance in instances:
+                if instance.get("isPrimary", False) and instance.get("isEnabled", True):
+                    return instance
+            
+            # Fallback to first enabled instance
+            for instance in instances:
+                if instance.get("isEnabled", True):
+                    return instance
+            
+            # Fallback to first instance regardless of enabled status
+            if instances:
+                return instances[0]
+                
+            return None
+            
+        except Exception as e:
+            logger.error(f"Error getting primary Ollama instance: {e}")
+            return None
+
+    async def get_healthy_ollama_instances(self) -> list[dict]:
+        """
+        Get all healthy and enabled Ollama instances for load balancing.
+        
+        Returns:
+            List of healthy instance dicts
+        """
+        try:
+            instances = await self.get_ollama_instances()
+            
+            healthy_instances = []
+            for instance in instances:
+                if (instance.get("isEnabled", True) and 
+                    instance.get("isHealthy", True)):  # Default to healthy if not specified
+                    healthy_instances.append(instance)
+            
+            # If no healthy instances, return enabled instances
+            if not healthy_instances:
+                enabled_instances = [inst for inst in instances if inst.get("isEnabled", True)]
+                if enabled_instances:
+                    logger.warning("No healthy Ollama instances found, returning enabled instances")
+                    return enabled_instances
+            
+            # If no enabled instances, return primary instance as fallback
+            if not healthy_instances:
+                primary = await self.get_primary_ollama_instance()
+                if primary:
+                    logger.warning("No enabled Ollama instances found, returning primary as fallback")
+                    return [primary]
+            
+            return healthy_instances
+            
+        except Exception as e:
+            logger.error(f"Error getting healthy Ollama instances: {e}")
+            return []
+
 
 # Global instance
 credential_service = CredentialService()

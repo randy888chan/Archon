@@ -21,6 +21,81 @@ _settings_cache: dict[str, tuple[Any, float]] = {}
 _CACHE_TTL_SECONDS = 300  # 5 minutes
 
 
+async def get_best_ollama_instance(model_name: str = None) -> dict | None:
+    """
+    Select the best Ollama instance for load balancing.
+    
+    Args:
+        model_name: Optional model name for model-specific routing
+        
+    Returns:
+        Best instance dict or None if no healthy instances available
+    """
+    try:
+        # Get healthy instances from database
+        healthy_instances = await credential_service.get_healthy_ollama_instances()
+        
+        if not healthy_instances:
+            logger.warning("No healthy Ollama instances available, falling back to primary")
+            primary_instance = await credential_service.get_primary_ollama_instance()
+            return primary_instance
+        
+        if len(healthy_instances) == 1:
+            # Only one healthy instance, use it
+            return healthy_instances[0]
+        
+        # Load balancing logic: weighted random selection
+        import random
+        
+        total_weight = 0
+        weighted_instances = []
+        
+        for instance in healthy_instances:
+            # Base weight from configuration
+            base_weight = instance.get("loadBalancingWeight", 100)
+            
+            # Health factor (prefer faster instances)
+            response_time = instance.get("responseTimeMs", 1000)
+            health_factor = 1.0 if response_time < 1000 else 0.5
+            
+            # Model availability factor (prefer instances with the required model)
+            model_factor = 1.0
+            if model_name:
+                available_models = instance.get("modelsAvailable", 0)
+                # Simple heuristic: prefer instances with more models
+                model_factor = 1.2 if available_models > 5 else 1.0
+            
+            # Calculate final weight
+            final_weight = base_weight * health_factor * model_factor
+            total_weight += final_weight
+            weighted_instances.append((instance, final_weight))
+        
+        # Weighted random selection
+        if total_weight > 0:
+            random_value = random.uniform(0, total_weight)
+            cumulative_weight = 0
+            
+            for instance, weight in weighted_instances:
+                cumulative_weight += weight
+                if random_value <= cumulative_weight:
+                    logger.debug(f"Selected Ollama instance {instance['id']} ({instance['name']}) with weight {weight:.2f}")
+                    return instance
+        
+        # Fallback: return first healthy instance
+        logger.debug("Weighted selection failed, using first healthy instance")
+        return healthy_instances[0]
+        
+    except Exception as e:
+        logger.error(f"Error selecting best Ollama instance: {e}")
+        # Fallback to primary instance
+        try:
+            primary_instance = await credential_service.get_primary_ollama_instance()
+            return primary_instance
+        except Exception as fallback_error:
+            logger.error(f"Error getting primary Ollama instance: {fallback_error}")
+            return None
+
+
 def _get_cached_settings(key: str) -> Any | None:
     """Get cached settings if not expired."""
     if key in _settings_cache:
@@ -101,9 +176,20 @@ async def get_llm_client(provider: str | None = None, use_embedding_provider: bo
             logger.info("OpenAI client created successfully")
 
         elif provider_name == "ollama":
-            # Ensure base_url doesn't have double /v1 paths
-            # Database stores http://localhost:11434/v1, OpenAI client will add /chat/completions
-            clean_base_url = base_url or "http://localhost:11434/v1"
+            # Use load balancing to select the best Ollama instance
+            best_instance = await get_best_ollama_instance()
+            
+            if not best_instance:
+                raise ValueError("No Ollama instances available")
+            
+            # Get the base URL from the selected instance
+            instance_base_url = best_instance.get("baseUrl", "http://localhost:11434")
+            
+            # Ensure base_url has /v1 suffix for OpenAI client compatibility
+            if not instance_base_url.endswith("/v1"):
+                clean_base_url = f"{instance_base_url}/v1"
+            else:
+                clean_base_url = instance_base_url
             
             # Ollama requires an API key in the client but doesn't actually use it
             # Add timeout and disable retries for fast failure detection
@@ -113,7 +199,7 @@ async def get_llm_client(provider: str | None = None, use_embedding_provider: bo
                 timeout=60.0,  # 1-minute timeout to fail fast on overload
                 max_retries=0  # Disable internal retries - handle retries at batch level
             )
-            logger.info(f"Ollama client created successfully with base URL: {clean_base_url}")
+            logger.info(f"Ollama client created with load-balanced instance: {best_instance.get('name')} ({clean_base_url})")
 
         elif provider_name == "google":
             if not api_key:

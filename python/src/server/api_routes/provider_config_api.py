@@ -78,18 +78,22 @@ async def get_current_provider_config() -> MultiProviderConfig:
         llm_provider = rag_settings.get("LLM_PROVIDER", "openai")
         embedding_provider = rag_settings.get("LLM_PROVIDER", "openai")  # For now, use same provider
         
-        # Get Ollama instances - for now, create from single URL
-        ollama_base_url = rag_settings.get("LLM_BASE_URL", "http://localhost:11434")
-        ollama_instances = [
-            OllamaInstanceConfig(
-                id="default",
-                name="Default Ollama",
-                base_url=ollama_base_url,
-                is_primary=True,
-                is_enabled=True,
-                load_balancing_weight=1
+        # Get Ollama instances from database
+        ollama_instances_data = await credential_service.get_ollama_instances()
+        
+        # Convert database format to API format
+        ollama_instances = []
+        for instance_data in ollama_instances_data:
+            ollama_instance = OllamaInstanceConfig(
+                id=instance_data.get("id"),
+                name=instance_data.get("name"),
+                base_url=instance_data.get("baseUrl"),
+                is_primary=instance_data.get("isPrimary", False),
+                is_enabled=instance_data.get("isEnabled", True),
+                load_balancing_weight=instance_data.get("loadBalancingWeight", 1),
+                health_check_enabled=True
             )
-        ]
+            ollama_instances.append(ollama_instance)
         
         config = MultiProviderConfig(
             llm_provider=llm_provider,
@@ -98,7 +102,7 @@ async def get_current_provider_config() -> MultiProviderConfig:
             provider_preferences=rag_settings
         )
         
-        logger.info(f"Retrieved multi-provider config with {len(ollama_instances)} Ollama instances")
+        logger.info(f"Retrieved multi-provider config with {len(ollama_instances)} Ollama instances from database")
         return config
         
     except Exception as e:
@@ -124,28 +128,23 @@ async def update_provider_config(
         
         # Update Ollama instances configuration
         if request.ollama_instances:
-            primary_instance = next(
-                (inst for inst in request.ollama_instances if inst.is_primary), 
-                request.ollama_instances[0]
-            )
+            # Convert API format to database format
+            ollama_instances_data = []
+            for inst in request.ollama_instances:
+                instance_data = {
+                    "id": inst.id,
+                    "name": inst.name,
+                    "baseUrl": inst.base_url,
+                    "isEnabled": inst.is_enabled,
+                    "isPrimary": inst.is_primary,
+                    "loadBalancingWeight": inst.load_balancing_weight
+                }
+                ollama_instances_data.append(instance_data)
             
-            await credential_service.set_credential(
-                "LLM_BASE_URL",
-                primary_instance.base_url,
-                category="rag_strategy",
-                description="Primary Ollama base URL"
-            )
-            
-            # Store multi-instance config for future use
-            # For now, we'll store this as a JSON string in credentials
-            import json
-            ollama_config = [inst.dict() for inst in request.ollama_instances]
-            await credential_service.set_credential(
-                "OLLAMA_INSTANCES",
-                json.dumps(ollama_config),
-                category="rag_strategy",
-                description="Multi-instance Ollama configuration"
-            )
+            # Use the new database persistence method with validation
+            success = await credential_service.set_ollama_instances(ollama_instances_data)
+            if not success:
+                raise HTTPException(status_code=500, detail="Failed to store Ollama instances configuration")
         
         # Update provider preferences
         for key, value in request.provider_preferences.items():
@@ -352,23 +351,20 @@ async def add_ollama_instance(
     try:
         logger.info(f"Adding Ollama instance: {instance.name} at {instance.base_url}")
         
-        # Get current configuration
-        current_config = await get_current_provider_config()
+        # Convert API format to database format
+        instance_data = {
+            "id": instance.id,
+            "name": instance.name,
+            "baseUrl": instance.base_url,
+            "isEnabled": instance.is_enabled,
+            "isPrimary": instance.is_primary,
+            "loadBalancingWeight": instance.load_balancing_weight
+        }
         
-        # Check if instance already exists
-        existing_ids = [inst.id for inst in current_config.ollama_instances]
-        if instance.id in existing_ids:
-            raise HTTPException(status_code=400, detail=f"Instance with ID {instance.id} already exists")
-        
-        existing_urls = [inst.base_url for inst in current_config.ollama_instances]
-        if instance.base_url in existing_urls:
-            raise HTTPException(status_code=400, detail=f"Instance with URL {instance.base_url} already exists")
-        
-        # Add the new instance
-        current_config.ollama_instances.append(instance)
-        
-        # Update configuration
-        await update_provider_config(current_config, background_tasks)
+        # Use the new database method with built-in validation
+        success = await credential_service.add_ollama_instance(instance_data)
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to add Ollama instance to database")
         
         # Test connectivity to new instance
         health_status = await provider_discovery_service.check_provider_health(
@@ -397,37 +393,14 @@ async def remove_ollama_instance(
     try:
         logger.info(f"Removing Ollama instance: {instance_id}")
         
-        # Get current configuration
-        current_config = await get_current_provider_config()
-        
-        # Find and remove the instance
-        instance_to_remove = None
-        for i, inst in enumerate(current_config.ollama_instances):
-            if inst.id == instance_id:
-                instance_to_remove = current_config.ollama_instances.pop(i)
-                break
-        
-        if not instance_to_remove:
-            raise HTTPException(status_code=404, detail=f"Instance with ID {instance_id} not found")
-        
-        # Ensure at least one instance remains if Ollama is the active provider
-        if (current_config.llm_provider == "ollama" or current_config.embedding_provider == "ollama"):
-            if not current_config.ollama_instances:
-                raise HTTPException(
-                    status_code=400, 
-                    detail="Cannot remove the last Ollama instance while Ollama provider is active"
-                )
-        
-        # If removing primary instance, promote another
-        if instance_to_remove.is_primary and current_config.ollama_instances:
-            current_config.ollama_instances[0].is_primary = True
-        
-        # Update configuration
-        await update_provider_config(current_config, background_tasks)
+        # Use the new database method with built-in validation
+        success = await credential_service.remove_ollama_instance(instance_id)
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to remove Ollama instance from database")
         
         return {
             "success": True,
-            "message": f"Ollama instance {instance_to_remove.name} removed successfully",
+            "message": f"Ollama instance with ID {instance_id} removed successfully",
             "removed_instance_id": instance_id
         }
         

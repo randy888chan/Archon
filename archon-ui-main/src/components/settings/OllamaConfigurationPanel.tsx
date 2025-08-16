@@ -5,19 +5,7 @@ import { Input } from '../ui/Input';
 import { Badge } from '../ui/Badge';
 import { useToast } from '../../contexts/ToastContext';
 import { cn } from '../../lib/utils';
-
-interface OllamaInstance {
-  id: string;
-  name: string;
-  baseUrl: string;
-  isEnabled: boolean;
-  isPrimary: boolean;
-  loadBalancingWeight: number;
-  isHealthy?: boolean;
-  responseTimeMs?: number;
-  modelsAvailable?: number;
-  lastHealthCheck?: string;
-}
+import { credentialsService, OllamaInstance } from '../../services/credentialsService';
 
 interface OllamaConfigurationPanelProps {
   isVisible: boolean;
@@ -37,45 +25,69 @@ const OllamaConfigurationPanel: React.FC<OllamaConfigurationPanelProps> = ({
   onConfigChange,
   className = ''
 }) => {
-  // Load instances from localStorage or use default
-  const loadInstances = (): OllamaInstance[] => {
-    try {
-      const saved = localStorage.getItem('ollama-instances');
-      if (saved) {
-        return JSON.parse(saved);
-      }
-    } catch (error) {
-      console.error('Failed to load Ollama instances from localStorage:', error);
-    }
-    
-    // Default instances
-    return [
-      {
-        id: 'primary',
-        name: 'Primary Ollama Instance',
-        baseUrl: 'http://localhost:11434',
-        isEnabled: true,
-        isPrimary: true,
-        loadBalancingWeight: 100
-      }
-    ];
-  };
-
-  const [instances, setInstances] = useState<OllamaInstance[]>(loadInstances());
+  const [instances, setInstances] = useState<OllamaInstance[]>([]);
+  const [loading, setLoading] = useState(true);
   const [testingConnections, setTestingConnections] = useState<Set<string>>(new Set());
   const [newInstanceUrl, setNewInstanceUrl] = useState('');
   const [newInstanceName, setNewInstanceName] = useState('');
   const [showAddInstance, setShowAddInstance] = useState(false);
   const { showToast } = useToast();
 
-  // Save instances to localStorage
-  const saveInstances = (newInstances: OllamaInstance[]) => {
+  // Load instances from database
+  const loadInstances = async () => {
     try {
-      localStorage.setItem('ollama-instances', JSON.stringify(newInstances));
-      setInstances(newInstances);
+      setLoading(true);
+      
+      // First try to migrate from localStorage if needed
+      const migrationResult = await credentialsService.migrateOllamaFromLocalStorage();
+      if (migrationResult.migrated) {
+        showToast(`Migrated ${migrationResult.instanceCount} Ollama instances to database`, 'success');
+      }
+      
+      // Load instances from database
+      const databaseInstances = await credentialsService.getOllamaInstances();
+      setInstances(databaseInstances);
+      onConfigChange(databaseInstances);
     } catch (error) {
-      console.error('Failed to save Ollama instances to localStorage:', error);
-      showToast('Failed to save Ollama configuration', 'error');
+      console.error('Failed to load Ollama instances from database:', error);
+      showToast('Failed to load Ollama configuration from database', 'error');
+      
+      // Fallback to localStorage
+      try {
+        const saved = localStorage.getItem('ollama-instances');
+        if (saved) {
+          const localInstances = JSON.parse(saved);
+          setInstances(localInstances);
+          onConfigChange(localInstances);
+          showToast('Loaded Ollama configuration from local backup', 'warning');
+        }
+      } catch (localError) {
+        console.error('Failed to load from localStorage as fallback:', localError);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Save instances to database
+  const saveInstances = async (newInstances: OllamaInstance[]) => {
+    try {
+      setLoading(true);
+      await credentialsService.setOllamaInstances(newInstances);
+      setInstances(newInstances);
+      onConfigChange(newInstances);
+      
+      // Also backup to localStorage for fallback
+      try {
+        localStorage.setItem('ollama-instances', JSON.stringify(newInstances));
+      } catch (localError) {
+        console.warn('Failed to backup to localStorage:', localError);
+      }
+    } catch (error) {
+      console.error('Failed to save Ollama instances to database:', error);
+      showToast('Failed to save Ollama configuration to database', 'error');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -154,7 +166,7 @@ const OllamaConfigurationPanel: React.FC<OllamaConfigurationPanelProps> = ({
   };
 
   // Add new instance
-  const handleAddInstance = () => {
+  const handleAddInstance = async () => {
     if (!newInstanceUrl.trim() || !newInstanceName.trim()) {
       showToast('Please provide both URL and name for the new instance', 'error');
       return;
@@ -187,16 +199,28 @@ const OllamaConfigurationPanel: React.FC<OllamaConfigurationPanelProps> = ({
       loadBalancingWeight: 100
     };
 
-    saveInstances([...instances, newInstance]);
-    setNewInstanceUrl('');
-    setNewInstanceName('');
-    setShowAddInstance(false);
-    
-    showToast(`Added new Ollama instance: ${newInstance.name}`, 'success');
+    try {
+      setLoading(true);
+      await credentialsService.addOllamaInstance(newInstance);
+      
+      // Reload instances from database to get updated list
+      await loadInstances();
+      
+      setNewInstanceUrl('');
+      setNewInstanceName('');
+      setShowAddInstance(false);
+      
+      showToast(`Added new Ollama instance: ${newInstance.name}`, 'success');
+    } catch (error) {
+      console.error('Failed to add Ollama instance:', error);
+      showToast(`Failed to add Ollama instance: ${error instanceof Error ? error.message : 'Unknown error'}`, 'error');
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Remove instance
-  const handleRemoveInstance = (instanceId: string) => {
+  const handleRemoveInstance = async (instanceId: string) => {
     const instance = instances.find(inst => inst.id === instanceId);
     if (!instance) return;
 
@@ -206,53 +230,78 @@ const OllamaConfigurationPanel: React.FC<OllamaConfigurationPanelProps> = ({
       return;
     }
 
-    const filtered = instances.filter(inst => inst.id !== instanceId);
-    
-    // If we're removing the primary instance, make the first remaining one primary
-    if (instance.isPrimary && filtered.length > 0) {
-      filtered[0] = { ...filtered[0], isPrimary: true };
+    try {
+      setLoading(true);
+      await credentialsService.removeOllamaInstance(instanceId);
+      
+      // Reload instances from database to get updated list
+      await loadInstances();
+      
+      showToast(`Removed Ollama instance: ${instance.name}`, 'success');
+    } catch (error) {
+      console.error('Failed to remove Ollama instance:', error);
+      showToast(`Failed to remove Ollama instance: ${error instanceof Error ? error.message : 'Unknown error'}`, 'error');
+    } finally {
+      setLoading(false);
     }
-    
-    saveInstances(filtered);
-
-    showToast(`Removed Ollama instance: ${instance.name}`, 'success');
   };
 
   // Update instance URL
-  const handleUpdateInstanceUrl = (instanceId: string, newUrl: string) => {
-    const updatedInstances = instances.map(inst =>
-      inst.id === instanceId 
-        ? { ...inst, baseUrl: newUrl, isHealthy: undefined, lastHealthCheck: undefined }
-        : inst
-    );
-    saveInstances(updatedInstances);
+  const handleUpdateInstanceUrl = async (instanceId: string, newUrl: string) => {
+    try {
+      await credentialsService.updateOllamaInstance(instanceId, { 
+        baseUrl: newUrl, 
+        isHealthy: undefined, 
+        lastHealthCheck: undefined 
+      });
+      await loadInstances(); // Reload to get updated data
+    } catch (error) {
+      console.error('Failed to update Ollama instance URL:', error);
+      showToast('Failed to update instance URL', 'error');
+    }
   };
 
   // Toggle instance enabled state
-  const handleToggleInstance = (instanceId: string) => {
-    const updatedInstances = instances.map(inst =>
-      inst.id === instanceId 
-        ? { ...inst, isEnabled: !inst.isEnabled }
-        : inst
-    );
-    saveInstances(updatedInstances);
+  const handleToggleInstance = async (instanceId: string) => {
+    const instance = instances.find(inst => inst.id === instanceId);
+    if (!instance) return;
+
+    try {
+      await credentialsService.updateOllamaInstance(instanceId, { 
+        isEnabled: !instance.isEnabled 
+      });
+      await loadInstances(); // Reload to get updated data
+    } catch (error) {
+      console.error('Failed to toggle Ollama instance:', error);
+      showToast('Failed to toggle instance state', 'error');
+    }
   };
 
   // Set instance as primary
-  const handleSetPrimary = (instanceId: string) => {
-    const updatedInstances = instances.map(inst => ({
-      ...inst,
-      isPrimary: inst.id === instanceId
-    }));
-    saveInstances(updatedInstances);
+  const handleSetPrimary = async (instanceId: string) => {
+    try {
+      // Update all instances - only the specified one should be primary
+      await saveInstances(instances.map(inst => ({
+        ...inst,
+        isPrimary: inst.id === instanceId
+      })));
+    } catch (error) {
+      console.error('Failed to set primary Ollama instance:', error);
+      showToast('Failed to set primary instance', 'error');
+    }
   };
+
+  // Load instances from database on mount
+  useEffect(() => {
+    loadInstances();
+  }, []); // Empty dependency array - load only on mount
 
   // Notify parent of configuration changes
   useEffect(() => {
     onConfigChange(instances);
   }, [instances, onConfigChange]);
 
-  // Auto-test primary instance on mount
+  // Auto-test primary instance when component becomes visible
   useEffect(() => {
     if (isVisible && instances.length > 0) {
       const primaryInstance = instances.find(inst => inst.isPrimary);
@@ -260,7 +309,7 @@ const OllamaConfigurationPanel: React.FC<OllamaConfigurationPanelProps> = ({
         handleTestConnection(primaryInstance.id);
       }
     }
-  }, [isVisible]);
+  }, [isVisible, instances.length]);
 
   if (!isVisible) return null;
 
