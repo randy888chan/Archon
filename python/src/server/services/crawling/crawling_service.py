@@ -322,7 +322,9 @@ class CrawlingService:
             self._check_cancellation()
             
             # Process and store documents using document storage operations
-            async def doc_storage_callback(message: str, percentage: int, batch_info: Optional[dict] = None):
+            async def doc_storage_callback(
+                message: str, percentage: int, batch_info: Optional[dict] = None, **kwargs
+            ):
                 if self.progress_id:
                     _ensure_socketio_imports()
                     # Map percentage to document storage range (20-85%)
@@ -340,6 +342,9 @@ class CrawlingService:
                     if batch_info:
                         self.progress_state.update(batch_info)
                     
+                    # Add any additional kwargs to progress state for compatibility
+                    if kwargs:
+                        self.progress_state.update(kwargs)
                     await update_crawl_progress(self.progress_id, self.progress_state)
             
             storage_results = await self.doc_storage_ops.process_and_store_documents(
