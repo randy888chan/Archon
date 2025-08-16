@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { X, Search, Activity, Cpu, Database, Zap, Clock, Star, Download, Loader } from 'lucide-react';
+import { X, Search, Activity, Cpu, Database, Zap, Clock, Star, Download, Loader, Server } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createPortal } from 'react-dom';
 import { Button } from '../ui/Button';
@@ -14,7 +14,9 @@ export interface ModelSpec {
   provider: Provider;
   type: 'chat' | 'embedding' | 'vision';
   description?: string;
-  contextWindow?: number;
+  contextWindow?: number; // Default/current context window
+  maxContextWindow?: number; // Maximum supported context window
+  minContextWindow?: number; // Minimum context window
   recommended?: boolean;
   dimensions?: number;
   toolSupport?: boolean;
@@ -28,6 +30,12 @@ export interface ModelSpec {
     host: string;
     family?: string;
     size_gb?: number;
+    context_window?: number; // Default context window from API
+    max_context_window?: number; // Maximum context window from API
+    min_context_window?: number; // Minimum context window from API
+    supports_tools?: boolean;
+    supports_thinking?: boolean;
+    embedding_dimensions?: number;
   };
   pricing?: {
     input: number;
@@ -60,6 +68,8 @@ const getMockModels = (provider: Provider): ModelSpec[] => {
         type: 'chat',
         description: 'Most capable GPT-4 model with improved instruction following',
         contextWindow: 128000,
+        maxContextWindow: 128000,
+        minContextWindow: 1024,
         recommended: true,
         toolSupport: true,
         performance: { speed: 'medium', quality: 'high' },
@@ -76,6 +86,8 @@ const getMockModels = (provider: Provider): ModelSpec[] => {
         type: 'chat',
         description: 'High-quality reasoning and complex instruction following',
         contextWindow: 8192,
+        maxContextWindow: 8192,
+        minContextWindow: 1024,
         toolSupport: true,
         performance: { speed: 'slow', quality: 'high' },
         capabilities: ['Text Generation', 'Function Calling'],
@@ -91,6 +103,8 @@ const getMockModels = (provider: Provider): ModelSpec[] => {
         type: 'embedding',
         description: 'Most capable embedding model for semantic search',
         contextWindow: 8191,
+        maxContextWindow: 8191,
+        minContextWindow: 512,
         dimensions: 3072,
         recommended: true,
         performance: { speed: 'fast', quality: 'high' },
@@ -107,6 +121,8 @@ const getMockModels = (provider: Provider): ModelSpec[] => {
         type: 'embedding',
         description: 'Efficient embedding model for most use cases',
         contextWindow: 8191,
+        maxContextWindow: 8191,
+        minContextWindow: 512,
         dimensions: 1536,
         performance: { speed: 'fast', quality: 'medium' },
         capabilities: ['Text Embeddings'],
@@ -123,7 +139,9 @@ const getMockModels = (provider: Provider): ModelSpec[] => {
         provider: 'google',
         type: 'chat',
         description: 'Google\'s most capable multimodal model',
-        contextWindow: 2000000,
+        contextWindow: 1000000,
+        maxContextWindow: 2000000,
+        minContextWindow: 1024,
         recommended: true,
         toolSupport: true,
         performance: { speed: 'medium', quality: 'high' },
@@ -139,6 +157,8 @@ const getMockModels = (provider: Provider): ModelSpec[] => {
         type: 'chat',
         description: 'Fast and efficient with good performance',
         contextWindow: 1000000,
+        maxContextWindow: 1000000,
+        minContextWindow: 1024,
         toolSupport: true,
         performance: { speed: 'fast', quality: 'medium' },
         capabilities: ['Text Generation', 'Function Calling'],
@@ -156,6 +176,8 @@ const getMockModels = (provider: Provider): ModelSpec[] => {
         type: 'chat',
         description: 'Anthropic\'s most intelligent model',
         contextWindow: 200000,
+        maxContextWindow: 200000,
+        minContextWindow: 1024,
         recommended: true,
         toolSupport: true,
         performance: { speed: 'medium', quality: 'high' },
@@ -171,6 +193,8 @@ const getMockModels = (provider: Provider): ModelSpec[] => {
         type: 'chat',
         description: 'Fast and cost-effective for lighter tasks',
         contextWindow: 200000,
+        maxContextWindow: 200000,
+        minContextWindow: 1024,
         toolSupport: true,
         performance: { speed: 'fast', quality: 'medium' },
         capabilities: ['Text Generation', 'Function Calling'],
@@ -274,60 +298,103 @@ export const ModelSelectionModal: React.FC<ModelSelectionModalProps> = ({
           
           // Convert Ollama models to ModelSpec format with enhanced details
           const allOllamaModels = [
-            ...discoveryData.chat_models.map((model: any) => ({
-              id: `${model.name}@${model.host}`,
-              name: model.name,
-              displayName: `${model.name} (${new URL(model.host).hostname})`,
-              provider: 'ollama' as Provider,
-              type: 'chat' as const,
-              contextWindow: model.context_window,
-              toolSupport: model.supports_tools,
-              performance: { speed: 'medium', quality: 'high' },
-              capabilities: [
-                'Text Generation', 
-                'Local Processing',
-                ...(model.supports_tools ? ['Function Calling'] : []),
-                ...(model.supports_thinking ? ['Thinking'] : [])
-              ],
-              useCase: ['Local AI', 'Privacy', 'Offline Processing'],
-              status: 'available' as const,
-              description: `${model.family || 'Ollama'} model running on ${new URL(model.host).hostname}`,
-              size_gb: model.size_gb,
-              family: model.family,
-              hostInfo: {
-                host: model.host,
-                family: model.family,
+            ...discoveryData.chat_models.map((model: any) => {
+              // Enhanced context window calculation
+              const defaultContext = model.context_window || 4096;
+              const getContextWindowLimits = (contextWindow: number, modelName: string) => {
+                const name = modelName.toLowerCase();
+                let minContext = 1024; // Standard minimum
+                let maxContext = contextWindow;
+                
+                // Estimate max context based on model capabilities
+                if (name.includes('llama3') || name.includes('llama-3')) {
+                  maxContext = Math.max(contextWindow, 8192);
+                } else if (name.includes('qwen')) {
+                  maxContext = Math.max(contextWindow, 32768);
+                } else if (name.includes('mistral')) {
+                  maxContext = Math.max(contextWindow, 32768);
+                } else if (name.includes('gemma')) {
+                  maxContext = Math.max(contextWindow, 8192);
+                } else if (name.includes('phi')) {
+                  maxContext = Math.max(contextWindow, 4096);
+                } else {
+                  // For unknown models, assume some expandability
+                  maxContext = Math.max(contextWindow, contextWindow * 2);
+                }
+                
+                return { minContext, maxContext };
+              };
+              
+              const { minContext, maxContext } = getContextWindowLimits(defaultContext, model.name);
+              
+              return {
+                id: `${model.name}@${model.host}`,
+                name: model.name,
+                displayName: model.name,
+                provider: 'ollama' as Provider,
+                type: 'chat' as const,
+                contextWindow: defaultContext,
+                maxContextWindow: maxContext,
+                minContextWindow: minContext,
+                toolSupport: model.supports_tools,
+                performance: { speed: 'medium', quality: 'high' },
+                capabilities: [
+                  'Text Generation', 
+                  'Local Processing',
+                  ...(model.supports_tools ? ['Function Calling'] : []),
+                  ...(model.supports_thinking ? ['Thinking'] : [])
+                ],
+                useCase: ['Local AI', 'Privacy', 'Offline Processing'],
+                status: 'available' as const,
+                description: `${model.family || 'Ollama'} model running on ${new URL(model.host).hostname}`,
                 size_gb: model.size_gb,
-                context_window: model.context_window,
-                supports_tools: model.supports_tools,
-                supports_thinking: model.supports_thinking,
-              },
-            })),
-            ...discoveryData.embedding_models.map((model: any) => ({
-              id: `${model.name}@${model.host}`,
-              name: model.name,
-              displayName: `${model.name} (${new URL(model.host).hostname})`,
-              provider: 'ollama' as Provider,
-              type: 'embedding' as const,
-              contextWindow: model.context_window,
-              dimensions: model.embedding_dimensions,
-              toolSupport: false,
-              performance: { speed: 'fast', quality: 'medium' },
-              capabilities: ['Text Embeddings', 'Local Processing', 'Semantic Search'],
-              useCase: ['Private Search', 'Local RAG', 'Offline Embeddings'],
-              status: 'available' as const,
-              description: `${model.family || 'Embedding'} model (${model.embedding_dimensions}D) on ${new URL(model.host).hostname}`,
-              size_gb: model.size_gb,
-              family: model.family,
-              dimensions: model.embedding_dimensions,
-              hostInfo: {
-                host: model.host,
                 family: model.family,
+                hostInfo: {
+                  host: model.host,
+                  family: model.family,
+                  size_gb: model.size_gb,
+                  context_window: defaultContext,
+                  max_context_window: maxContext,
+                  min_context_window: minContext,
+                  supports_tools: model.supports_tools,
+                  supports_thinking: model.supports_thinking,
+                },
+              };
+            }),
+            ...discoveryData.embedding_models.map((model: any) => {
+              const defaultContext = model.context_window || 512;
+              const maxContext = Math.max(defaultContext, 2048); // Embedding models typically have smaller context windows
+              const minContext = 128;
+              
+              return {
+                id: `${model.name}@${model.host}`,
+                name: model.name,
+                displayName: model.name,
+                provider: 'ollama' as Provider,
+                type: 'embedding' as const,
+                contextWindow: defaultContext,
+                maxContextWindow: maxContext,
+                minContextWindow: minContext,
+                dimensions: model.embedding_dimensions,
+                toolSupport: false,
+                performance: { speed: 'fast', quality: 'medium' },
+                capabilities: ['Text Embeddings', 'Local Processing', 'Semantic Search'],
+                useCase: ['Private Search', 'Local RAG', 'Offline Embeddings'],
+                status: 'available' as const,
+                description: `${model.family || 'Embedding'} model (${model.embedding_dimensions}D) on ${new URL(model.host).hostname}`,
                 size_gb: model.size_gb,
-                context_window: model.context_window,
-                embedding_dimensions: model.embedding_dimensions,
-              },
-            })),
+                family: model.family,
+                hostInfo: {
+                  host: model.host,
+                  family: model.family,
+                  size_gb: model.size_gb,
+                  context_window: defaultContext,
+                  max_context_window: maxContext,
+                  min_context_window: minContext,
+                  embedding_dimensions: model.embedding_dimensions,
+                },
+              };
+            }),
           ];
 
           setModels(allOllamaModels);
@@ -349,6 +416,79 @@ export const ModelSelectionModal: React.FC<ModelSelectionModalProps> = ({
 
   const handleRefresh = () => {
     setRefreshKey(prev => prev + 1);
+  };
+
+  // Helper function to get embedding-specific use case tags based on dimensions
+  const getEmbeddingUseCaseTags = (dimensions: number, modelName: string) => {
+    const tags: string[] = [];
+    
+    // Dimension-based tags
+    if (dimensions > 2000) {
+      tags.push('High Precision', 'Complex Queries');
+    } else if (dimensions >= 1000) {
+      tags.push('Balanced', 'General Purpose');
+    } else {
+      tags.push('Fast', 'Resource Efficient');
+    }
+    
+    // Model family-specific tags
+    const name = modelName.toLowerCase();
+    if (name.includes('all-minilm')) {
+      tags.push('Semantic Search', 'Document Similarity');
+    } else if (name.includes('all-mpnet')) {
+      tags.push('RAG', 'High Quality');
+    } else if (name.includes('bge') || name.includes('gte')) {
+      tags.push('Multilingual', 'Code Search');
+    } else if (name.includes('e5')) {
+      tags.push('Text Retrieval', 'Cross-lingual');
+    } else if (name.includes('instructor')) {
+      tags.push('Instruction-based', 'Versatile');
+    } else if (name.includes('nomic')) {
+      tags.push('Variable Length', 'Flexible');
+    } else {
+      // Generic embedding tags
+      tags.push('Semantic Search', 'RAG');
+    }
+    
+    return tags;
+  };
+
+  // Helper function to get support level colors
+  const getSupportColor = (supported: boolean | undefined, level: 'full' | 'partial' | 'none' = supported === true ? 'full' : 'none') => {
+    switch (level) {
+      case 'full':
+        return 'text-green-400 border-green-500/30 bg-green-500/10';
+      case 'partial':
+        return 'text-yellow-400 border-yellow-500/30 bg-yellow-500/10';
+      case 'none':
+      default:
+        return 'text-gray-400 border-gray-500/30 bg-gray-500/10';
+    }
+  };
+
+  // Helper function to get performance colors
+  const getPerformanceColor = (value: string, type: 'speed' | 'quality') => {
+    if (type === 'speed') {
+      switch (value) {
+        case 'fast': return 'text-green-400';
+        case 'medium': return 'text-yellow-400';
+        case 'slow': return 'text-red-400';
+        default: return 'text-gray-400';
+      }
+    } else { // quality
+      switch (value) {
+        case 'high': return 'text-green-400';
+        case 'medium': return 'text-yellow-400';
+        case 'low': return 'text-red-400';
+        default: return 'text-gray-400';
+      }
+    }
+  };
+
+  // Helper function to render support indicator dot
+  const SupportDot = ({ supported, level = supported === true ? 'full' : 'none' }: { supported: boolean | undefined, level?: 'full' | 'partial' | 'none' }) => {
+    const colorClass = level === 'full' ? 'bg-green-400' : level === 'partial' ? 'bg-yellow-400' : 'bg-gray-500';
+    return <div className={`w-2 h-2 rounded-full ${colorClass}`} />;
   };
 
   // Filter and sort models
@@ -595,8 +735,8 @@ export const ModelSelectionModal: React.FC<ModelSelectionModalProps> = ({
                   <div className="p-5">
                     {/* Header */}
                     <div className="flex items-start justify-between mb-3">
-                      <div className="flex-1">
-                        <h3 className="font-bold text-lg text-white mb-1 line-clamp-1">
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-bold text-lg text-white mb-1 line-clamp-3 leading-tight">
                           {model.displayName}
                         </h3>
                         <div className="flex items-center gap-2 mb-2">
@@ -610,66 +750,178 @@ export const ModelSelectionModal: React.FC<ModelSelectionModalProps> = ({
                           >
                             {model.type}
                           </Badge>
-                          {model.hostInfo?.host && (
-                            <Badge variant="outline" className="text-xs border-orange-500/30 text-orange-400">
-                              {new URL(model.hostInfo.host).hostname}
-                            </Badge>
-                          )}
                         </div>
                       </div>
                     </div>
 
                     {/* Description */}
                     {model.description && (
-                      <p className="text-sm text-gray-400 mb-4 line-clamp-2">
+                      <p className="text-sm text-gray-400 mb-4 line-clamp-2 leading-relaxed">
                         {model.description}
                       </p>
                     )}
 
-                    {/* Specs */}
+                    {/* Host Information */}
+                    {model.hostInfo?.host && (
+                      <div className="mb-4 p-3 bg-gray-800/30 border border-gray-700/50 rounded-lg">
+                        <div className="flex items-center gap-2 text-sm">
+                          <Server className="w-4 h-4 text-orange-400" />
+                          <span className="text-gray-300 font-medium">Host:</span>
+                          <span className="text-orange-400">{new URL(model.hostInfo.host).hostname}</span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Support Indicators */}
+                    <div className="mb-4 space-y-2">
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        {/* Tool Support */}
+                        {(model.toolSupport !== undefined || model.hostInfo?.supports_tools !== undefined) && (
+                          <div className={`flex items-center gap-2 px-2 py-1 rounded border ${getSupportColor(model.toolSupport || model.hostInfo?.supports_tools)}`}>
+                            <SupportDot supported={model.toolSupport || model.hostInfo?.supports_tools} />
+                            <span className="font-medium">Tools</span>
+                          </div>
+                        )}
+
+                        {/* Thinking Support */}
+                        {model.hostInfo?.supports_thinking !== undefined && (
+                          <div className={`flex items-center gap-2 px-2 py-1 rounded border ${getSupportColor(model.hostInfo.supports_thinking)}`}>
+                            <SupportDot supported={model.hostInfo.supports_thinking} />
+                            <span className="font-medium">Thinking</span>
+                          </div>
+                        )}
+
+                        {/* Vision Support - check capabilities for vision models */}
+                        {(model.type === 'vision' || model.capabilities?.includes('Vision')) && (
+                          <div className={`flex items-center gap-2 px-2 py-1 rounded border ${getSupportColor(model.capabilities?.includes('Vision'))}`}>
+                            <SupportDot supported={model.capabilities?.includes('Vision')} />
+                            <span className="font-medium">Vision</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Specs - Conditional Display for Embedding vs Chat Models */}
                     <div className="space-y-3">
                       <div className="grid grid-cols-2 gap-3 text-xs">
-                        {model.contextWindow && (
-                          <div className="flex items-center gap-1 text-cyan-400">
+                        {/* For Chat Models - Show Context Window */}
+                        {model.type === 'chat' && model.contextWindow && (
+                          <div className="flex items-center gap-1 text-cyan-400 col-span-2">
                             <Cpu className="w-3 h-3" />
-                            <span>{model.contextWindow.toLocaleString()} tokens</span>
+                            <span className="font-medium">
+                              Context: {(() => {
+                                const current = model.contextWindow || 0;
+                                const max = model.maxContextWindow || current;
+                                const min = model.minContextWindow || Math.min(current, 1024);
+                                
+                                // If all values are the same, show simple format
+                                if (current === max && current === min) {
+                                  return `${current.toLocaleString()} tokens`;
+                                }
+                                
+                                // If current and max are same but different from min
+                                if (current === max) {
+                                  return `${current.toLocaleString()} tokens (max)`;
+                                }
+                                
+                                // Full format showing all three values
+                                const formatNumber = (num: number) => {
+                                  if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`;
+                                  if (num >= 1000) return `${Math.round(num / 1000)}K`;
+                                  return num.toString();
+                                };
+                                
+                                return `${formatNumber(current)} (default) / ${formatNumber(max)} (max)`;
+                              })()}
+                            </span>
                           </div>
                         )}
-                        {model.dimensions && (
-                          <div className="flex items-center gap-1 text-purple-400">
-                            <Database className="w-3 h-3" />
-                            <span>{model.dimensions}D</span>
+
+                        {/* For Embedding Models - Show Dimensions Prominently */}
+                        {model.type === 'embedding' && model.dimensions && (
+                          <div className="flex items-center gap-1 text-purple-400 col-span-2">
+                            <Database className="w-4 h-4" />
+                            <span className="font-semibold text-base">
+                              {model.dimensions} dimensions
+                            </span>
                           </div>
                         )}
-                        {model.performance && (
-                          <div className="flex items-center gap-1 text-green-400">
-                            <Zap className="w-3 h-3" />
-                            <span>{model.performance.speed}</span>
-                          </div>
-                        )}
+
+                        {/* Model Size in GB (for all models) */}
                         {model.size_gb && (
                           <div className="flex items-center gap-1 text-orange-400">
                             <Download className="w-3 h-3" />
                             <span>{model.size_gb}GB</span>
                           </div>
                         )}
+
+                        {/* Performance indicators (for all models) */}
+                        {model.performance && (
+                          <>
+                            <div className={`flex items-center gap-1 ${getPerformanceColor(model.performance.speed, 'speed')}`}>
+                              <Zap className="w-3 h-3" />
+                              <span>Speed: {model.performance.speed}</span>
+                            </div>
+                            <div className={`flex items-center gap-1 ${getPerformanceColor(model.performance.quality, 'quality')}`}>
+                              <Clock className="w-3 h-3" />
+                              <span>Quality: {model.performance.quality}</span>
+                            </div>
+                          </>
+                        )}
                       </div>
 
-                      {/* Capabilities */}
+                      {/* Capabilities - Enhanced for Embedding Models */}
                       {model.capabilities && model.capabilities.length > 0 && (
                         <div className="flex flex-wrap gap-1">
-                          {model.capabilities.slice(0, 3).map((cap, index) => (
-                            <Badge
-                              key={index}
-                              variant="outline"
-                              className="text-xs bg-gray-700/50 border-gray-600 text-gray-300"
-                            >
-                              {cap}
-                            </Badge>
-                          ))}
-                          {model.capabilities.length > 3 && (
+                          {/* For embedding models, show dimension-based and specialized tags */}
+                          {model.type === 'embedding' && model.dimensions ? (
+                            getEmbeddingUseCaseTags(model.dimensions, model.displayName).slice(0, 4).map((tag, index) => {
+                              // Color code embedding-specific capabilities
+                              let capColorClass = "text-gray-300 border-gray-600 bg-gray-700/50";
+                              if (tag === 'High Precision' || tag === 'High Quality') capColorClass = "text-green-300 border-green-600/30 bg-green-700/20";
+                              else if (tag === 'Fast' || tag === 'Resource Efficient') capColorClass = "text-blue-300 border-blue-600/30 bg-blue-700/20";
+                              else if (tag === 'Semantic Search' || tag === 'RAG') capColorClass = "text-purple-300 border-purple-600/30 bg-purple-700/20";
+                              else if (tag === 'Code Search' || tag === 'Multilingual') capColorClass = "text-orange-300 border-orange-600/30 bg-orange-700/20";
+                              else if (tag === 'Balanced' || tag === 'General Purpose') capColorClass = "text-yellow-300 border-yellow-600/30 bg-yellow-700/20";
+                              
+                              return (
+                                <Badge
+                                  key={index}
+                                  variant="outline"
+                                  className={`text-xs ${capColorClass}`}
+                                >
+                                  {tag}
+                                </Badge>
+                              );
+                            })
+                          ) : (
+                            /* For non-embedding models, show regular capabilities */
+                            model.capabilities.slice(0, 3).map((cap, index) => {
+                              // Color code capabilities based on type
+                              let capColorClass = "text-gray-300 border-gray-600 bg-gray-700/50";
+                              if (cap === 'Function Calling') capColorClass = "text-green-300 border-green-600/30 bg-green-700/20";
+                              else if (cap === 'Thinking') capColorClass = "text-blue-300 border-blue-600/30 bg-blue-700/20";
+                              else if (cap === 'Vision') capColorClass = "text-purple-300 border-purple-600/30 bg-purple-700/20";
+                              else if (cap === 'Local Processing') capColorClass = "text-orange-300 border-orange-600/30 bg-orange-700/20";
+                              
+                              return (
+                                <Badge
+                                  key={index}
+                                  variant="outline"
+                                  className={`text-xs ${capColorClass}`}
+                                >
+                                  {cap}
+                                </Badge>
+                              );
+                            })
+                          )}
+                          {/* Show overflow indicator if there are more capabilities/tags */}
+                          {((model.type === 'embedding' && model.dimensions && getEmbeddingUseCaseTags(model.dimensions, model.displayName).length > 4) ||
+                            (model.type !== 'embedding' && model.capabilities.length > 3)) && (
                             <Badge variant="outline" className="text-xs bg-gray-700/50 border-gray-600 text-gray-300">
-                              +{model.capabilities.length - 3}
+                              +{model.type === 'embedding' && model.dimensions 
+                                ? getEmbeddingUseCaseTags(model.dimensions, model.displayName).length - 4
+                                : model.capabilities.length - 3}
                             </Badge>
                           )}
                         </div>
@@ -705,8 +957,26 @@ export const ModelSelectionModal: React.FC<ModelSelectionModalProps> = ({
             {filteredAndSortedModels.length} model{filteredAndSortedModels.length !== 1 ? 's' : ''} available
           </div>
           <div className="flex gap-3">
-            <Button variant="outline" onClick={onClose}>
+            <Button
+              variant="outline"
+              onClick={onClose}
+              className="border-gray-600 text-gray-300 hover:bg-gray-800"
+            >
               Cancel
+            </Button>
+            <Button
+              onClick={() => selectedModelId && onSelectModel(filteredAndSortedModels.find(m => m.id === selectedModelId)!)}
+              disabled={!selectedModelId || loading}
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              {loading ? (
+                <>
+                  <Loader className="w-4 h-4 animate-spin mr-2" />
+                  Selecting...
+                </>
+              ) : (
+                'Select Model'
+              )}
             </Button>
           </div>
         </div>

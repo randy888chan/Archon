@@ -7,7 +7,6 @@ import { useStaggeredEntrance } from '../hooks/useStaggeredEntrance';
 import { FeaturesSection } from '../components/settings/FeaturesSection';
 import { APIKeysSection } from '../components/settings/APIKeysSection';
 import { RAGSettings } from '../components/settings/RAGSettings';
-import { EmbeddingModelChanger } from '../components/settings/EmbeddingModelChanger';
 import { CodeExtractionSettings } from '../components/settings/CodeExtractionSettings';
 import { TestStatus } from '../components/settings/TestStatus';
 import { IDEGlobalRules } from '../components/settings/IDEGlobalRules';
@@ -217,17 +216,6 @@ export const SettingsPage = () => {
               defaultExpanded={true}
             >
               <RAGSettings ragSettings={ragSettings} setRagSettings={setRagSettings} />
-            </CollapsibleSettingsCard>
-          </motion.div>
-          <motion.div variants={itemVariants}>
-            <CollapsibleSettingsCard
-              title="Embedding Models"
-              icon={Brain}
-              accentColor="blue"
-              storageKey="embedding-models"
-              defaultExpanded={false}
-            >
-              <EmbeddingModelChanger />
             </CollapsibleSettingsCard>
           </motion.div>
           <motion.div variants={itemVariants}>
