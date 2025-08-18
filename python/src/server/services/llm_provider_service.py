@@ -10,6 +10,7 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 import openai
+from openai import AsyncAzureOpenAI
 
 from ..config.logfire_config import get_logger
 from .credential_service import credential_service
@@ -118,6 +119,35 @@ async def get_llm_client(provider: str | None = None, use_embedding_provider: bo
             )
             logger.info("Google Gemini client created successfully")
 
+        elif provider_name == "azure":
+            if not api_key:
+                raise ValueError("Azure OpenAI API key not found")
+
+            # Check cache for rag_settings to get Azure-specific configuration
+            cache_key = "rag_strategy_settings"
+            rag_settings = _get_cached_settings(cache_key)
+            if rag_settings is None:
+                rag_settings = await credential_service.get_credentials_by_category("rag_strategy")
+                _set_cached_settings(cache_key, rag_settings)
+
+            # Get Azure-specific settings
+            azure_endpoint = rag_settings.get("AZURE_OPENAI_ENDPOINT", "")
+            api_version = rag_settings.get("AZURE_API_VERSION", "2024-12-01-preview")
+
+            if not azure_endpoint:
+                raise ValueError("Azure OpenAI endpoint not configured")
+
+            # Remove trailing slash if present
+            azure_endpoint = azure_endpoint.rstrip("/")
+
+            # Use the correct AsyncAzureOpenAI client initialization
+            client = AsyncAzureOpenAI(
+                api_key=api_key,
+                api_version=api_version,
+                azure_endpoint=azure_endpoint
+            )
+            logger.info(f"Azure OpenAI client created successfully with endpoint: {azure_endpoint}")
+
         else:
             raise ValueError(f"Unsupported LLM provider: {provider_name}")
 
@@ -178,6 +208,10 @@ async def get_embedding_model(provider: str | None = None) -> str:
         elif provider_name == "google":
             # Google's embedding model
             return "text-embedding-004"
+        elif provider_name == "azure":
+            # Azure OpenAI uses deployment names, not model names
+            # User must specify their embedding deployment name
+            return "text-embedding-3-small"  # Fallback deployment name
         else:
             # Fallback to OpenAI's model
             return "text-embedding-3-small"

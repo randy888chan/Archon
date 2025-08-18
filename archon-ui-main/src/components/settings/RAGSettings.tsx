@@ -18,6 +18,9 @@ interface RAGSettingsProps {
     LLM_PROVIDER?: string;
     LLM_BASE_URL?: string;
     EMBEDDING_MODEL?: string;
+    // Azure OpenAI Settings
+    AZURE_OPENAI_ENDPOINT?: string;
+    AZURE_API_VERSION?: string;
     // Crawling Performance Settings
     CRAWL_BATCH_SIZE?: number;
     CRAWL_MAX_CONCURRENT?: number;
@@ -54,61 +57,100 @@ export const RAGSettings = ({
         </p>
         
         {/* Provider Selection Row */}
-        <div className="grid grid-cols-3 gap-4 mb-4">
-          <div>
-            <Select
-              label="LLM Provider"
-              value={ragSettings.LLM_PROVIDER || 'openai'}
-              onChange={e => setRagSettings({
-                ...ragSettings,
-                LLM_PROVIDER: e.target.value
-              })}
-              accentColor="green"
-              options={[
-                { value: 'openai', label: 'OpenAI' },
-                { value: 'google', label: 'Google Gemini' },
-                { value: 'ollama', label: 'Ollama (Coming Soon)' },
-              ]}
-            />
-          </div>
-          {ragSettings.LLM_PROVIDER === 'ollama' && (
+        <div className="mb-4">
+          <div className="grid grid-cols-3 gap-4 mb-4">
             <div>
-              <Input
-                label="Ollama Base URL"
-                value={ragSettings.LLM_BASE_URL || 'http://localhost:11434/v1'}
-                onChange={e => setRagSettings({
+              <Select
+                label="LLM Provider"
+                value={ragSettings.LLM_PROVIDER || 'openai'}
+                onChange={(e: { target: { value: any; }; }) => setRagSettings({
                   ...ragSettings,
-                  LLM_BASE_URL: e.target.value
+                  LLM_PROVIDER: e.target.value
                 })}
-                placeholder="http://localhost:11434/v1"
                 accentColor="green"
+                options={[
+                  { value: 'openai', label: 'OpenAI' },
+                  { value: 'azure', label: 'Azure OpenAI' },
+                  { value: 'google', label: 'Google Gemini' },
+                  { value: 'ollama', label: 'Ollama (Coming Soon)' },
+                ]}
               />
             </div>
-          )}
-          <div className="flex items-end">
-            <Button 
-              variant="outline" 
-              accentColor="green" 
-              icon={saving ? <Loader className="w-4 h-4 mr-1 animate-spin" /> : <Save className="w-4 h-4 mr-1" />}
-              className="w-full whitespace-nowrap"
-              size="md"
-              onClick={async () => {
-                try {
-                  setSaving(true);
-                  await credentialsService.updateRagSettings(ragSettings);
-                  showToast('RAG settings saved successfully!', 'success');
-                } catch (err) {
-                  console.error('Failed to save RAG settings:', err);
-                  showToast('Failed to save settings', 'error');
-                } finally {
-                  setSaving(false);
-                }
-              }}
-              disabled={saving}
-            >
-              {saving ? 'Saving...' : 'Save Settings'}
-            </Button>
+            {ragSettings.LLM_PROVIDER === 'ollama' && (
+              <div>
+                <Input
+                  label="Ollama Base URL"
+                  value={ragSettings.LLM_BASE_URL || 'http://localhost:11434/v1'}
+                  onChange={e => setRagSettings({
+                    ...ragSettings,
+                    LLM_BASE_URL: e.target.value
+                  })}
+                  placeholder="http://localhost:11434/v1"
+                  accentColor="green"
+                />
+              </div>
+            )}
+            <div className="flex items-end">
+              <Button 
+                variant="outline" 
+                accentColor="green" 
+                icon={saving ? <Loader className="w-4 h-4 mr-1 animate-spin" /> : <Save className="w-4 h-4 mr-1" />}
+                className="w-full whitespace-nowrap"
+                size="md"
+                onClick={async () => {
+                  try {
+                    setSaving(true);
+                    await credentialsService.updateRagSettings(ragSettings);
+                    showToast('RAG settings saved successfully!', 'success');
+                  } catch (err) {
+                    console.error('Failed to save RAG settings:', err);
+                    showToast('Failed to save settings', 'error');
+                  } finally {
+                    setSaving(false);
+                  }
+                }}
+                disabled={saving}
+              >
+                {saving ? 'Saving...' : 'Save Settings'}
+              </Button>
+            </div>
           </div>
+          
+          {/* Azure OpenAI Configuration */}
+          {ragSettings.LLM_PROVIDER === 'azure' && (
+            <div className="grid grid-cols-2 gap-4 p-4 border border-blue-500/20 rounded-lg bg-blue-500/5">
+              <div>
+                <Input
+                  label="Azure OpenAI Endpoint"
+                  value={ragSettings.AZURE_OPENAI_ENDPOINT || ''}
+                  onChange={e => setRagSettings({
+                    ...ragSettings,
+                    AZURE_OPENAI_ENDPOINT: e.target.value
+                  })}
+                  placeholder="https://your-resource.openai.azure.com"
+                  accentColor="green"
+                />
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  Your Azure OpenAI resource endpoint
+                </p>
+              </div>
+              <div>
+                <Input
+                  label="API Version"
+                  value={ragSettings.AZURE_API_VERSION || '2024-12-01-preview'}
+                  onChange={e => setRagSettings({
+                    ...ragSettings,
+                    AZURE_API_VERSION: e.target.value
+                  })}
+                  placeholder="2024-12-01-preview"
+                  accentColor="green"
+                />
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  Azure OpenAI API version
+                </p>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Model Settings Row */}
@@ -480,6 +522,8 @@ function getModelPlaceholder(provider: string): string {
   switch (provider) {
     case 'openai':
       return 'e.g., gpt-4o-mini';
+    case 'azure':
+      return 'e.g., your-gpt-4-deployment';
     case 'ollama':
       return 'e.g., llama2, mistral';
     case 'google':
@@ -493,6 +537,8 @@ function getEmbeddingPlaceholder(provider: string): string {
   switch (provider) {
     case 'openai':
       return 'Default: text-embedding-3-small';
+    case 'azure':
+      return 'e.g., your-embedding-deployment';
     case 'ollama':
       return 'e.g., nomic-embed-text';
     case 'google':
