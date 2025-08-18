@@ -133,8 +133,7 @@ LOGFIRE_TOKEN=your_token
 
 Archon supports multiple LLM providers through the Settings UI:
 
-- **OpenAI** (default) - Uses your existing OpenAI API key
-- **Azure OpenAI** - Enterprise-grade AI with your Azure subscription
+- **OpenAI** (default) - Works with OpenAI and OpenAI-compatible services (Azure, Groq, MistralAI, etc.)
 - **Google Gemini** - Google's latest models
 - **Ollama** - Run models locally (free)
 
@@ -142,44 +141,47 @@ Configure in **Settings → RAG Settings → LLM Provider**
 
 <Admonition type="tip" title="Provider Setup">
 - **API Keys**: Add provider-specific keys in Settings → API Keys
-- **Azure OpenAI**: Requires Azure OpenAI resource endpoint and deployment names
+- **Custom Endpoints**: OpenAI provider supports custom endpoints for Azure, Groq, MistralAI, etc.
 - **Ollama**: Requires local installation and custom base URL
 - **Models**: Each provider has different model naming conventions
 </Admonition>
 
-#### Azure OpenAI Configuration
+#### OpenAI-Compatible Services Configuration
+
+The OpenAI provider supports custom endpoints for various OpenAI-compatible services:
 
 <Tabs>
 <TabItem value="onboarding" label="During Onboarding">
 
-1. Select **"Azure OpenAI"** from the provider dropdown
-2. Enter your **Azure OpenAI API Key**
-3. Set your **Azure OpenAI Endpoint** (e.g., `https://your-resource.openai.azure.com`)
-4. Configure **API Version** (default: `2024-12-01-preview`)
+1. Select **"OpenAI"** from the provider dropdown
+2. Enter your **API key** (works for OpenAI, Azure, Groq, etc.)
+3. Optionally check **"Use custom endpoint"** for non-OpenAI services
+4. Enter your **custom endpoint URL** if using Azure, Groq, MistralAI, etc.
 5. Click **"Save & Continue"**
 
 </TabItem>
 <TabItem value="settings" label="In Settings Page">
 
 1. Go to **Settings → RAG Settings**
-2. Select **"Azure OpenAI"** from LLM Provider dropdown
-3. Configure Azure-specific settings:
-   - **Azure OpenAI Endpoint**: Your resource endpoint URL
-   - **API Version**: Azure OpenAI API version
-4. Set your **deployment names**:
-   - **Chat Model**: Your GPT deployment name (e.g., `gpt-4`)
-   - **Embedding Model**: Your embedding deployment name (e.g., `text-embedding-3-small`)
-5. Add **Azure OpenAI API Key** in Settings → API Keys
+2. Select **"OpenAI"** from LLM Provider dropdown
+3. Configure custom endpoint (optional):
+   - **Custom OpenAI Endpoint**: Leave empty for OpenAI, or enter custom URL
+4. Set your **model names**:
+   - **Chat Model**: Model name or deployment name
+   - **Embedding Model**: Embedding model or deployment name
+5. Add **OPENAI_API_KEY** in Settings → API Keys
 6. Click **"Save Settings"**
 
 </TabItem>
 </Tabs>
 
-<Admonition type="info" title="Azure OpenAI Requirements">
-- Active Azure subscription with Azure OpenAI resource
-- Deployed models in your Azure OpenAI resource
-- API key with appropriate permissions
-- Resource endpoint URL from Azure portal
+<Admonition type="info" title="Supported Services">
+**OpenAI-Compatible Services:**
+- **OpenAI**: Leave endpoint empty (default)
+- **Azure OpenAI**: `https://your-resource.openai.azure.com/openai/deployments?api-version=2024-12-01-preview`
+- **Groq**: `https://api.groq.com/openai/v1`
+- **MistralAI**: `https://api.mistral.ai/v1`
+- **Self-hosted**: vLLM, TGI, or any OpenAI-compatible server
 </Admonition>
 
 ### Socket.IO Configuration

@@ -18,9 +18,8 @@ interface RAGSettingsProps {
     LLM_PROVIDER?: string;
     LLM_BASE_URL?: string;
     EMBEDDING_MODEL?: string;
-    // Azure OpenAI Settings
-    AZURE_OPENAI_ENDPOINT?: string;
-    AZURE_API_VERSION?: string;
+    // OpenAI-compatible endpoint (for Azure, Groq, MistralAI, etc.)
+    OPENAI_ENDPOINT?: string;
     // Crawling Performance Settings
     CRAWL_BATCH_SIZE?: number;
     CRAWL_MAX_CONCURRENT?: number;
@@ -70,9 +69,8 @@ export const RAGSettings = ({
                 accentColor="green"
                 options={[
                   { value: 'openai', label: 'OpenAI' },
-                  { value: 'azure', label: 'Azure OpenAI' },
                   { value: 'google', label: 'Google Gemini' },
-                  { value: 'ollama', label: 'Ollama (Coming Soon)' },
+                  { value: 'ollama', label: 'Ollama (Local)' },
                 ]}
               />
             </div>
@@ -116,37 +114,22 @@ export const RAGSettings = ({
             </div>
           </div>
           
-          {/* Azure OpenAI Configuration */}
-          {ragSettings.LLM_PROVIDER === 'azure' && (
-            <div className="grid grid-cols-2 gap-4 p-4 border border-blue-500/20 rounded-lg bg-blue-500/5">
+          {/* Custom OpenAI Endpoint Configuration */}
+          {ragSettings.LLM_PROVIDER === 'openai' && (
+            <div className="p-4 border border-green-500/20 rounded-lg bg-green-500/5">
               <div>
                 <Input
-                  label="Azure OpenAI Endpoint"
-                  value={ragSettings.AZURE_OPENAI_ENDPOINT || ''}
+                  label="Custom OpenAI Endpoint (Optional)"
+                  value={ragSettings.OPENAI_ENDPOINT || ''}
                   onChange={e => setRagSettings({
                     ...ragSettings,
-                    AZURE_OPENAI_ENDPOINT: e.target.value
+                    OPENAI_ENDPOINT: e.target.value
                   })}
-                  placeholder="https://your-resource.openai.azure.com"
+                  placeholder="https://your-resource.openai.azure.com/openai/deployments?api-version=2024-12-01-preview"
                   accentColor="green"
                 />
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                  Your Azure OpenAI resource endpoint
-                </p>
-              </div>
-              <div>
-                <Input
-                  label="API Version"
-                  value={ragSettings.AZURE_API_VERSION || '2024-12-01-preview'}
-                  onChange={e => setRagSettings({
-                    ...ragSettings,
-                    AZURE_API_VERSION: e.target.value
-                  })}
-                  placeholder="2024-12-01-preview"
-                  accentColor="green"
-                />
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                  Azure OpenAI API version
+                  Leave empty for OpenAI. Include API version in URL for Azure OpenAI. Supports Groq, MistralAI, vLLM, or any OpenAI-compatible service.
                 </p>
               </div>
             </div>
@@ -521,9 +504,7 @@ export const RAGSettings = ({
 function getModelPlaceholder(provider: string): string {
   switch (provider) {
     case 'openai':
-      return 'e.g., gpt-4o-mini';
-    case 'azure':
-      return 'e.g., your-gpt-4-deployment';
+      return 'e.g., gpt-4o-mini (or deployment name for Azure)';
     case 'ollama':
       return 'e.g., llama2, mistral';
     case 'google':
@@ -536,9 +517,7 @@ function getModelPlaceholder(provider: string): string {
 function getEmbeddingPlaceholder(provider: string): string {
   switch (provider) {
     case 'openai':
-      return 'Default: text-embedding-3-small';
-    case 'azure':
-      return 'e.g., your-embedding-deployment';
+      return 'Default: text-embedding-3-small (or deployment name for Azure)';
     case 'ollama':
       return 'e.g., nomic-embed-text';
     case 'google':

@@ -16,10 +16,9 @@ export interface ProviderInfo {
  * Logic:
  * - provider := value of 'LLM_PROVIDER' from ragCreds (if present)
  * - if provider === 'openai': check for valid OPENAI_API_KEY
- * - if provider === 'azure': check for valid AZURE_OPENAI_API_KEY
  * - if provider === 'google' or 'gemini': check for valid GOOGLE_API_KEY
  * - if provider === 'ollama': return true (local, no API key needed)
- * - if no provider: check for any valid API key (OpenAI, Azure, or Google)
+ * - if no provider: check for any valid API key (OpenAI or Google)
  */
 export function isLmConfigured(
   ragCreds: NormalizedCredential[],
@@ -50,24 +49,18 @@ export function isLmConfigured(
 
   // Find API keys
   const openAIKeyCred = apiKeyCreds.find(c => c.key.toUpperCase() === 'OPENAI_API_KEY');
-  const azureKeyCred = apiKeyCreds.find(c => c.key.toUpperCase() === 'AZURE_OPENAI_API_KEY');
   const googleKeyCred = apiKeyCreds.find(c => c.key.toUpperCase() === 'GOOGLE_API_KEY');
   
   const hasOpenAIKey = hasValidCredential(openAIKeyCred);
-  const hasAzureKey = hasValidCredential(azureKeyCred);
   const hasGoogleKey = hasValidCredential(googleKeyCred);
 
   console.log('🔎 isLmConfigured - OpenAI key valid:', hasOpenAIKey);
-  console.log('🔎 isLmConfigured - Azure key valid:', hasAzureKey);
   console.log('🔎 isLmConfigured - Google key valid:', hasGoogleKey);
 
   // Check based on provider
   if (provider === 'openai') {
-    // OpenAI provider requires OpenAI API key
+    // OpenAI provider requires OpenAI API key (supports custom endpoints)
     return hasOpenAIKey;
-  } else if (provider === 'azure') {
-    // Azure OpenAI provider requires Azure OpenAI API key
-    return hasAzureKey;
   } else if (provider === 'google' || provider === 'gemini') {
     // Google/Gemini provider requires Google API key
     return hasGoogleKey;
@@ -80,7 +73,7 @@ export function isLmConfigured(
     return true;
   } else {
     // No provider specified, check if ANY API key is configured
-    // This allows users to configure either OpenAI, Azure, or Google without specifying provider
-    return hasOpenAIKey || hasAzureKey || hasGoogleKey;
+    // This allows users to configure either OpenAI or Google without specifying provider
+    return hasOpenAIKey || hasGoogleKey;
   }
 }

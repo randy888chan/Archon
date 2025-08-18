@@ -91,6 +91,8 @@ class TestAsyncLLMProviderService:
     ):
         """Test successful OpenAI client creation"""
         mock_credential_service.get_active_provider.return_value = openai_provider_config
+        # Mock get_credentials_by_category to return empty rag settings (no custom endpoint)
+        mock_credential_service.get_credentials_by_category.return_value = {}
 
         with patch(
             "src.server.services.llm_provider_service.credential_service", mock_credential_service
@@ -187,6 +189,8 @@ class TestAsyncLLMProviderService:
             "embedding_model": "text-embedding-3-large",
         }
         mock_credential_service.get_active_provider.return_value = embedding_config
+        # Mock get_credentials_by_category to return empty rag settings (no custom endpoint)
+        mock_credential_service.get_credentials_by_category.return_value = {}
 
         with patch(
             "src.server.services.llm_provider_service.credential_service", mock_credential_service
@@ -381,6 +385,8 @@ class TestAsyncLLMProviderService:
     ):
         """Test that cache is used to avoid repeated credential service calls"""
         mock_credential_service.get_active_provider.return_value = openai_provider_config
+        # Mock get_credentials_by_category to return empty rag settings (no custom endpoint)
+        mock_credential_service.get_credentials_by_category.return_value = {}
 
         with patch(
             "src.server.services.llm_provider_service.credential_service", mock_credential_service
@@ -419,6 +425,8 @@ class TestAsyncLLMProviderService:
     async def test_context_manager_cleanup(self, mock_credential_service, openai_provider_config):
         """Test that async context manager properly handles cleanup"""
         mock_credential_service.get_active_provider.return_value = openai_provider_config
+        # Mock get_credentials_by_category to return empty rag settings (no custom endpoint)
+        mock_credential_service.get_credentials_by_category.return_value = {}
 
         with patch(
             "src.server.services.llm_provider_service.credential_service", mock_credential_service
@@ -449,6 +457,9 @@ class TestAsyncLLMProviderService:
                 "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
             },
         ]
+        
+        # Mock get_credentials_by_category to return empty rag settings (no custom endpoint)
+        mock_credential_service.get_credentials_by_category.return_value = {}
 
         with patch(
             "src.server.services.llm_provider_service.credential_service", mock_credential_service

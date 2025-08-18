@@ -20,6 +20,8 @@ export interface RagSettings {
   LLM_PROVIDER?: string;
   LLM_BASE_URL?: string;
   EMBEDDING_MODEL?: string;
+  // OpenAI-compatible endpoint (for Azure, Groq, MistralAI, etc.)
+  OPENAI_ENDPOINT?: string;
   // Crawling Performance Settings
   CRAWL_BATCH_SIZE?: number;
   CRAWL_MAX_CONCURRENT?: number;
@@ -128,6 +130,7 @@ class CredentialsService {
       LLM_PROVIDER: 'openai',
       LLM_BASE_URL: '',
       EMBEDDING_MODEL: '',
+      OPENAI_ENDPOINT: '',
       // Crawling Performance Settings defaults
       CRAWL_BATCH_SIZE: 50,
       CRAWL_MAX_CONCURRENT: 10,
@@ -150,7 +153,7 @@ class CredentialsService {
     [...ragCredentials, ...apiKeysCredentials].forEach(cred => {
       if (cred.key in settings) {
         // String fields
-        if (['MODEL_CHOICE', 'LLM_PROVIDER', 'LLM_BASE_URL', 'EMBEDDING_MODEL', 'CRAWL_WAIT_STRATEGY'].includes(cred.key)) {
+        if (['MODEL_CHOICE', 'LLM_PROVIDER', 'LLM_BASE_URL', 'EMBEDDING_MODEL', 'OPENAI_ENDPOINT', 'CRAWL_WAIT_STRATEGY'].includes(cred.key)) {
           (settings as any)[cred.key] = cred.value || '';
         } 
         // Number fields

@@ -445,7 +445,6 @@ class CredentialService:
         """Get API key for a specific provider."""
         key_mapping = {
             "openai": "OPENAI_API_KEY",
-            "azure": "AZURE_OPENAI_API_KEY",
             "google": "GOOGLE_API_KEY",
             "ollama": None,  # No API key needed
         }
@@ -461,10 +460,7 @@ class CredentialService:
             return rag_settings.get("LLM_BASE_URL", "http://localhost:11434/v1")
         elif provider == "google":
             return "https://generativelanguage.googleapis.com/v1beta/openai/"
-        elif provider == "azure":
-            # Azure OpenAI uses direct endpoint - no need for custom base URL
-            return None
-        return None  # Use default for OpenAI
+        return None  # Use default for OpenAI (custom endpoint handled in llm_provider_service)
 
     async def set_active_provider(self, provider: str, service_type: str = "llm") -> bool:
         """Set the active provider for a service type."""
