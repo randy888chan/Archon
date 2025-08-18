@@ -49,7 +49,7 @@ Archon is a **Model Context Protocol (MCP) server** that creates a centralized k
 ### Prerequisites
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed and running
 - [Supabase](https://supabase.com/) account (free tier works)
-- [OpenAI API key](https://platform.openai.com/api-keys) for embeddings
+- AI Provider: [OpenAI API key](https://platform.openai.com/api-keys) or [Azure OpenAI resource](https://portal.azure.com/)
 
 ### 1. Clone & Setup
 
@@ -71,7 +71,9 @@ SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_SERVICE_KEY=your-service-key-here
 
 # Optional (but recommended for monitoring)
-OPENAI_API_KEY=sk-proj-your-openai-key
+# Choose one AI provider:
+OPENAI_API_KEY=sk-proj-your-openai-key        # For OpenAI
+# AZURE_OPENAI_API_KEY=your-azure-key        # For Azure OpenAI (alternative)
 # Unified Logging Configuration (Optional)
 LOGFIRE_ENABLED=false              # true=Logfire logging, false=standard logging
 LOGFIRE_TOKEN=your-logfire-token-here    # Only required when LOGFIRE_ENABLED=true
@@ -147,7 +149,7 @@ Archon includes Hot Module Reload (HMR) for both Python and React code. Changes 
 
 **Initial Configuration:**
 1. Open the **Web Interface** (http://localhost:3737)
-2. Go to **Settings** and add your OpenAI API key
+2. Complete the onboarding flow to configure your AI provider (OpenAI or Azure OpenAI)
 3. Start the MCP server from the **MCP Dashboard**
 4. Get connection details for your AI client
 

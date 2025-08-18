@@ -42,7 +42,7 @@ This new vision for Archon replaces the old one (the agenteer). Archon used to b
 ### Prerequisites
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/)
 - [Supabase](https://supabase.com/) account (free tier or local Supabase both work)
-- [OpenAI API key](https://platform.openai.com/api-keys) (Gemini and Ollama are supported too!)
+- [OpenAI API key](https://platform.openai.com/api-keys) (AzureOpenAI, Gemini and Ollama are supported too!)
 
 ### Setup Instructions
 

@@ -339,7 +339,7 @@ async def join_project(sid, data):
 - Prevents circular imports
 
 ### LLM Provider Service
-- Supports multiple providers: OpenAI, Google Gemini, Ollama
+- Supports multiple providers: OpenAI, Azure OpenAI, Google Gemini, Ollama
 - OpenAI-compatible interface for all providers
 - Automatic provider detection from environment
 - Both async and sync client creation
@@ -436,8 +436,10 @@ services/
 Services are configured via environment variables:
 - `SUPABASE_URL` - Database URL
 - `SUPABASE_SERVICE_KEY` - Database service key  
-- `OPENAI_API_KEY` - For embeddings (or other provider keys)
-- `LLM_PROVIDER` - LLM provider selection (openai, google, ollama)
+- `OPENAI_API_KEY` - For OpenAI models and embeddings
+- `AZURE_OPENAI_API_KEY` - For Azure OpenAI models and embeddings
+- `GOOGLE_API_KEY` - For Google Gemini models
+- `LLM_PROVIDER` - LLM provider selection (openai, azure, google, ollama)
 - `CODE_BLOCK_MIN_LENGTH` - Minimum code block length in characters (default: 1000)
 - `USE_CONTEXTUAL_EMBEDDINGS` - Enable contextual embeddings
 - `USE_HYBRID_SEARCH` - Enable hybrid search mode
