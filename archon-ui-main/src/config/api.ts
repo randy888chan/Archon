@@ -42,6 +42,11 @@ export function getApiBasePath(): string {
     return '/api';
   }
   
+  // If VITE_API_URL is already a path like "/api", return it directly
+  if (import.meta.env.VITE_API_URL && import.meta.env.VITE_API_URL.startsWith('/')) {
+    return import.meta.env.VITE_API_URL;
+  }
+  
   // Otherwise, append /api to the base URL
   return `${apiUrl}/api`;
 }
