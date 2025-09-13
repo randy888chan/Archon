@@ -3,4 +3,17 @@ __pycache__
 .serena
 .claude/settings.local.json
 PRPs/local
+PRPs/completed/
 /logs/
+.zed
+tmp/
+temp/
+
+# Added from original_archon/.gitignore
+workbench
+venv
+.langgraph_api
+.env.temp
+.env.test
+env_vars.json
+.DS_Store

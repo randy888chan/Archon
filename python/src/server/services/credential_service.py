@@ -69,9 +69,9 @@ class CredentialService:
                 match = re.match(r"https://([^.]+)\.supabase\.co", url)
                 if match:
                     project_id = match.group(1)
-                    logger.info(f"Supabase client initialized for project: {project_id}")
+                    logger.debug(f"Supabase client initialized for project: {project_id}")
                 else:
-                    logger.info("Supabase client initialized successfully")
+                    logger.debug("Supabase client initialized successfully")
 
             except Exception as e:
                 logger.error(f"Error initializing Supabase client: {e}")
@@ -303,7 +303,7 @@ class CredentialService:
                 key = item["key"]
                 if item["is_encrypted"]:
                     credentials[key] = {
-                        "encrypted_value": item["encrypted_value"],
+                        "value": "[ENCRYPTED]",
                         "is_encrypted": True,
                         "description": item["description"],
                     }
@@ -330,31 +330,16 @@ class CredentialService:
 
             credentials = []
             for item in result.data:
-                # For encrypted values, decrypt them for UI display
                 if item["is_encrypted"] and item["encrypted_value"]:
-                    try:
-                        decrypted_value = self._decrypt_value(item["encrypted_value"])
-                        cred = CredentialItem(
-                            key=item["key"],
-                            value=decrypted_value,
-                            encrypted_value=None,  # Don't expose encrypted value
-                            is_encrypted=item["is_encrypted"],
-                            category=item["category"],
-                            description=item["description"],
-                        )
-                    except Exception as e:
-                        logger.error(f"Failed to decrypt credential {item['key']}: {e}")
-                        # If decryption fails, show placeholder
-                        cred = CredentialItem(
-                            key=item["key"],
-                            value="[DECRYPTION ERROR]",
-                            encrypted_value=None,
-                            is_encrypted=item["is_encrypted"],
-                            category=item["category"],
-                            description=item["description"],
-                        )
+                    cred = CredentialItem(
+                        key=item["key"],
+                        value="[ENCRYPTED]",
+                        encrypted_value=None,
+                        is_encrypted=item["is_encrypted"],
+                        category=item["category"],
+                        description=item["description"],
+                    )
                 else:
-                    # Plain text values
                     cred = CredentialItem(
                         key=item["key"],
                         value=item["value"],

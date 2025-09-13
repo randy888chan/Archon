@@ -4,7 +4,7 @@ import { Card } from '../ui/Card';
 import { Input } from '../ui/Input';
 import { Select } from '../ui/Select';
 import { Button } from '../ui/Button';
-import { useToast } from '../../contexts/ToastContext';
+import { useToast } from '../../features/ui/hooks/useToast';
 import { credentialsService } from '../../services/credentialsService';
 
 interface RAGSettingsProps {
@@ -325,7 +325,7 @@ export const RAGSettings = ({
                     })}
                     className="w-full px-3 py-2 border border-green-500/30 rounded-md bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white focus:border-green-500 focus:ring-1 focus:ring-green-500"
                   />
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Browser sessions (1-20)</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Pages to crawl in parallel per operation (1-20)</p>
                 </div>
               </div>
               

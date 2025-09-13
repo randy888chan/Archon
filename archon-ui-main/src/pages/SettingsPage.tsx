@@ -8,19 +8,17 @@ import {
   Key,
   Brain,
   Code,
-  Activity,
   FileCode,
   Bug,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useToast } from "../contexts/ToastContext";
+import { useToast } from "../features/ui/hooks/useToast";
 import { useSettings } from "../contexts/SettingsContext";
 import { useStaggeredEntrance } from "../hooks/useStaggeredEntrance";
 import { FeaturesSection } from "../components/settings/FeaturesSection";
 import { APIKeysSection } from "../components/settings/APIKeysSection";
 import { RAGSettings } from "../components/settings/RAGSettings";
 import { CodeExtractionSettings } from "../components/settings/CodeExtractionSettings";
-import { TestStatus } from "../components/settings/TestStatus";
 import { IDEGlobalRules } from "../components/settings/IDEGlobalRules";
 import { ButtonPlayground } from "../components/settings/ButtonPlayground";
 import { CollapsibleSettingsCard } from "../components/ui/CollapsibleSettingsCard";
@@ -151,17 +149,6 @@ export const SettingsPage = () => {
               </CollapsibleSettingsCard>
             </motion.div>
           )}
-          <motion.div variants={itemVariants}>
-            <CollapsibleSettingsCard
-              title="Test Status"
-              icon={Activity}
-              accentColor="cyan"
-              storageKey="test-status"
-              defaultExpanded={true}
-            >
-              <TestStatus />
-            </CollapsibleSettingsCard>
-          </motion.div>
         </div>
 
         {/* Right Column */}
@@ -217,8 +204,7 @@ export const SettingsPage = () => {
             >
               <div className="space-y-4">
                 <p className="text-sm text-gray-600 dark:text-gray-400">
-                  Found a bug or issue? Report it to help improve Archon V2
-                  Alpha.
+                  Found a bug or issue? Report it to help improve Archon Beta.
                 </p>
                 <div className="flex justify-start">
                   <BugReportButton variant="secondary" size="md">
